@@ -2,14 +2,61 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>WebSocket Test</title>
+    <title>WebSocket Chat Rooms</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+      .user-info { background: #f0f0f0; padding: 10px; border-radius: 5px; margin-bottom: 20px; }
+      .room-controls, .chat-container { border: 1px solid #ccc; padding: 20px; border-radius: 5px; }
+      .room-controls { text-align: center; }
+      .room-controls button { margin: 10px; padding: 10px 20px; font-size: 16px; }
+      .chat-header { background: #e0e0e0; padding: 10px; margin-bottom: 10px; border-radius: 3px; }
+      #messages { list-style: none; padding: 0; max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin: 10px 0; }
+      #messages li { margin: 5px 0; padding: 5px; border-radius: 3px; }
+      .system-message { background: #e7f3ff; font-style: italic; }
+      .own-message { background: #dcf8c6; text-align: right; }
+      .other-message { background: #f1f1f1; }
+      .error-message { background: #ffe7e7; color: red; }
+      .input-group { display: flex; gap: 10px; margin: 10px 0; }
+      .input-group input { flex: 1; padding: 8px; }
+      .input-group button { padding: 8px 16px; }
+      .room-link { width: 100%; padding: 5px; margin: 5px 0; }
+      .hidden { display: none; }
+    </style>
   </head>
   <body>
-    <h1>WebSocket Test</h1>
-    <input id="msg" placeholder="Type a message" />
-    <button id="sendBtn">Send</button>
-    <ul id="messages"></ul>
+    <h1>WebSocket Chat Rooms</h1>
+    
+    <div class="user-info">
+      <strong>Your User ID:</strong> <span id="userId"></span>
+    </div>
 
-    <script src="/client.js"></script>
+    <div id="roomControls" class="room-controls">
+      <h2>Choose an Option</h2>
+      <button id="hostBtn">Host a Room</button>
+      <button id="joinBtn">Join a Room</button>
+    </div>
+
+    <div id="chatContainer" class="chat-container" style="display: none;">
+      <div class="chat-header">
+        <strong>Room ID:</strong> <span id="roomId"></span>
+        <br>
+        <strong>Room Link:</strong>
+        <div class="input-group">
+          <input id="roomLink" class="room-link" readonly>
+          <button id="copyLinkBtn">Copy Link</button>
+          <button id="leaveBtn">Leave Room</button>
+        </div>
+      </div>
+
+      <ul id="messages"></ul>
+      
+      <div class="input-group">
+        <input id="msg" placeholder="Type a message" />
+        <button id="sendBtn">Send</button>
+      </div>
+    </div>
+
+    <!-- Single bundled file -->
+    <script src="/app.js"></script>
   </body>
 </html>
