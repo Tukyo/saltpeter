@@ -1,39 +1,15 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>WebSocket Test</title>
+  </head>
+  <body>
+    <h1>WebSocket Test</h1>
+    <input id="msg" placeholder="Type a message" />
+    <button id="sendBtn">Send</button>
+    <ul id="messages"></ul>
 
-<head>
-  <meta charset="UTF-8" />
-  <title>WebSocket Test</title>
-</head>
-
-<body>
-  <h1>WebSocket Test</h1>
-  <input id="msg" placeholder="Type a message" />
-  <button onclick="sendMessage()">Send</button>
-  <ul id="messages"></ul>
-
-  <script>
-    const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${wsProtocol}//${location.host}`);
-    const messagesList = document.getElementById("messages");
-
-    ws.onmessage = (event) => {
-      const li = document.createElement("li");
-      li.textContent = event.data;
-      messagesList.appendChild(li);
-    };
-
-    function sendMessage() {
-      const input = document.getElementById("msg");
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(input.value);
-      } else {
-        alert("WebSocket is not connected.");
-      }
-      input.value = "";
-    }
-  </script>
-
-</body>
-
+    <script src="/client.js"></script>
+  </body>
 </html>
