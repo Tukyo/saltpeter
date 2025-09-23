@@ -1,19 +1,5 @@
+import { RoomMessage } from './defs';
 import { generateRoomId, createRoomLink, updateURLWithRoom } from './utils';
-
-export interface Room {
-  id: string;
-  hostUserId: string;
-  participants: string[];
-  createdAt: Date;
-}
-
-export interface RoomMessage {
-  type: 'join-room' | 'create-room' | 'leave-room' | 'room-message' | 'room-created' | 'room-joined' | 'room-error' | 'user-joined' | 'user-left';
-  roomId?: string;
-  userId: string;
-  message?: string;
-  data?: any;
-}
 
 export class RoomManager {
   private currentRoom: string | null = null;

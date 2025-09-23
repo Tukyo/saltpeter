@@ -1,9 +1,21 @@
+import { ROOM } from './config';
+
 export function generateUID(): string {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
+  let result = '';
+  for (let i = 0; i < ROOM.USER_ID_LENGTH; i++) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return result;
 }
 
 export function generateRoomId(): string {
-  return 'room_' + Math.random().toString(36).substring(2, 10);
+  const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
+  let result = ROOM.ID_PREFIX;
+  for (let i = 0; i < ROOM.ID_LENGTH; i++) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return result;
 }
 
 export function createRoomLink(roomId: string): string {

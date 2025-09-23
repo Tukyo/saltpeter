@@ -9,19 +9,26 @@ const rooms = new Map(); // roomId -> { hostUserId, participants: Set<ws> }
 // Create HTTP server to serve files
 const server = http.createServer((req, res) => {
   let filePath = req.url === "/" ? "/index.html" : req.url;
-  filePath = path.join(__dirname, "public", filePath);
+
+  // Serve app.js from dist, everything else from public
+  if (filePath === "/app.js") {
+    filePath = path.join(__dirname, "dist", "app.js");
+  } else {
+    filePath = path.join(__dirname, "public", filePath);
+  }
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
       res.writeHead(404);
       return res.end("File not found");
     }
-    
-    // Set proper content type for JS modules
+
+    // Set proper content type
     const ext = path.extname(filePath);
     let contentType = 'text/html';
     if (ext === '.js') contentType = 'application/javascript';
-    
+    if (ext === '.css') contentType = 'text/css';
+
     res.writeHead(200, { 'Content-Type': contentType });
     res.end(data);
   });
@@ -62,7 +69,7 @@ wss.on("connection", (ws) => {
 
 function handleRoomMessage(ws, message) {
   console.log('Received room message:', message);
-  
+
   switch (message.type) {
     case 'create-room':
       createRoom(ws, message.roomId, message.userId);
