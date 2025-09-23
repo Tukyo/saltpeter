@@ -2,61 +2,149 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>WebSocket Chat Rooms</title>
+    <title>WebSocket Multiplayer Game</title>
     <style>
-      body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
-      .user-info { background: #f0f0f0; padding: 10px; border-radius: 5px; margin-bottom: 20px; }
-      .room-controls, .chat-container { border: 1px solid #ccc; padding: 20px; border-radius: 5px; }
+      body { 
+        font-family: Arial, sans-serif; 
+        padding: 20px; 
+        max-width: 900px; 
+        margin: 0 auto;
+        background: #f5f5f5;
+      }
+      .user-info { 
+        background: #fff; 
+        padding: 15px; 
+        border-radius: 8px; 
+        margin-bottom: 20px; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .room-controls, .game-container { 
+        background: #fff;
+        border: 1px solid #ddd; 
+        padding: 20px; 
+        border-radius: 8px; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
       .room-controls { text-align: center; }
-      .room-controls button { margin: 10px; padding: 10px 20px; font-size: 16px; }
-      .chat-header { background: #e0e0e0; padding: 10px; margin-bottom: 10px; border-radius: 3px; }
-      #messages { list-style: none; padding: 0; max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin: 10px 0; }
-      #messages li { margin: 5px 0; padding: 5px; border-radius: 3px; }
-      .system-message { background: #e7f3ff; font-style: italic; }
-      .own-message { background: #dcf8c6; text-align: right; }
-      .other-message { background: #f1f1f1; }
-      .error-message { background: #ffe7e7; color: red; }
-      .input-group { display: flex; gap: 10px; margin: 10px 0; }
-      .input-group input { flex: 1; padding: 8px; }
-      .input-group button { padding: 8px 16px; }
-      .room-link { width: 100%; padding: 5px; margin: 5px 0; }
+      .room-controls h2 { color: #333; margin-bottom: 20px; }
+      .room-controls button { 
+        margin: 10px; 
+        padding: 12px 24px; 
+        font-size: 16px; 
+        background: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.3s;
+      }
+      .room-controls button:hover { background: #45a049; }
+      
+      .game-header { 
+        background: #e9ecef; 
+        padding: 15px; 
+        margin-bottom: 15px; 
+        border-radius: 6px; 
+        border: 1px solid #dee2e6;
+      }
+      .game-header h3 { margin: 0 0 10px 0; color: #495057; }
+      
+      #gameCanvas { 
+        border: 3px solid #333; 
+        border-radius: 8px;
+        background: #f8f9fa;
+        display: block;
+        margin: 15px auto;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      }
+      
+      .controls-info {
+        text-align: center;
+        margin: 15px 0;
+        padding: 10px;
+        background: #e7f3ff;
+        border-radius: 6px;
+        border: 1px solid #b8daff;
+      }
+      
+      .input-group { 
+        display: flex; 
+        gap: 10px; 
+        margin: 10px 0; 
+        align-items: center;
+      }
+      .input-group input { 
+        flex: 1; 
+        padding: 8px 12px; 
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      .input-group button { 
+        padding: 8px 16px; 
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .input-group button:hover { background: #0056b3; }
+      .input-group button.danger { background: #dc3545; }
+      .input-group button.danger:hover { background: #c82333; }
+      
+      .room-link { 
+        width: 100%; 
+        padding: 8px 12px; 
+        margin: 5px 0; 
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: #f8f9fa;
+      }
       .hidden { display: none; }
+      
+      .game-stats {
+        text-align: center;
+        margin: 10px 0;
+        color: #666;
+        font-size: 14px;
+      }
     </style>
   </head>
   <body>
-    <h1>WebSocket Chat Rooms</h1>
+    <h1>🎮 Multiplayer Dot Game</h1>
     
     <div class="user-info">
-      <strong>Your User ID:</strong> <span id="userId"></span>
+      <strong>Your Player ID:</strong> <span id="userId"></span>
     </div>
 
     <div id="roomControls" class="room-controls">
-      <h2>Choose an Option</h2>
-      <button id="hostBtn">Host a Room</button>
-      <button id="joinBtn">Join a Room</button>
+      <h2>Welcome to Dot Game!</h2>
+      <p>Move around as a colored dot and see other players in real-time</p>
+      <button id="hostBtn">🎯 Host a Game Room</button>
+      <button id="joinBtn">🚪 Join a Game Room</button>
     </div>
 
-    <div id="chatContainer" class="chat-container" style="display: none;">
-      <div class="chat-header">
-        <strong>Room ID:</strong> <span id="roomId"></span>
-        <br>
-        <strong>Room Link:</strong>
+    <div id="gameContainer" class="game-container" style="display: none;">
+      <div class="game-header">
+        <h3>🎮 Game Room: <span id="roomId"></span></h3>
         <div class="input-group">
+          <label><strong>Share this link:</strong></label>
           <input id="roomLink" class="room-link" readonly>
-          <button id="copyLinkBtn">Copy Link</button>
-          <button id="leaveBtn">Leave Room</button>
+          <button id="copyLinkBtn">📋 Copy Link</button>
+          <button id="leaveBtn" class="danger">🚪 Leave Room</button>
         </div>
       </div>
 
-      <ul id="messages"></ul>
+      <div class="controls-info">
+        <strong>🎮 Controls:</strong> Use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> keys to move your dot around!
+      </div>
+
+      <canvas id="gameCanvas" width="800" height="600"></canvas>
       
-      <div class="input-group">
-        <input id="msg" placeholder="Type a message" />
-        <button id="sendBtn">Send</button>
+      <div class="game-stats">
+        Your dot has a black border • Other players appear as colored dots
       </div>
     </div>
 
-    <!-- Single bundled file -->
     <script src="/app.js"></script>
   </body>
 </html>

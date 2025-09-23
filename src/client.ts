@@ -1,24 +1,42 @@
 import { generateUID, getRoomIdFromURL } from './utils';
 import { RoomManager, RoomMessage } from './roomManager';
 
-class ChatClient {
+interface Player {
+  id: string;
+  x: number;
+  y: number;
+  color: string;
+}
+
+class GameClient {
   private ws: WebSocket | null = null;
   private userId: string;
   private roomManager: RoomManager;
-  private messagesList: HTMLUListElement | null = null;
-  private messageInput: HTMLInputElement | null = null;
-  private sendBtn: HTMLButtonElement | null = null;
+  private canvas: HTMLCanvasElement | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
   private roomControls: HTMLDivElement | null = null;
-  private chatContainer: HTMLDivElement | null = null;
+  private gameContainer: HTMLDivElement | null = null;
   private userIdDisplay: HTMLSpanElement | null = null;
   private roomIdDisplay: HTMLSpanElement | null = null;
   private roomLinkDisplay: HTMLInputElement | null = null;
+  
+  private players: Map<string, Player> = new Map();
+  private myPlayer: Player;
+  private keys: Set<string> = new Set();
+  private gameRunning = false;
 
   constructor() {
     this.userId = generateUID();
     this.roomManager = new RoomManager(this.userId);
     
-    // Wait for DOM to be ready
+    // Initialize my player
+    this.myPlayer = {
+      id: this.userId,
+      x: Math.random() * 760 + 20, // Random position within canvas bounds
+      y: Math.random() * 560 + 20,
+      color: this.getRandomColor()
+    };
+    
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => {
         this.initializeElements();
@@ -33,20 +51,22 @@ class ChatClient {
   }
 
   private initializeElements(): void {
-    this.messagesList = document.getElementById("messages") as HTMLUListElement;
-    this.messageInput = document.getElementById("msg") as HTMLInputElement;
-    this.sendBtn = document.getElementById("sendBtn") as HTMLButtonElement;
+    this.canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
     this.roomControls = document.getElementById("roomControls") as HTMLDivElement;
-    this.chatContainer = document.getElementById("chatContainer") as HTMLDivElement;
+    this.gameContainer = document.getElementById("gameContainer") as HTMLDivElement;
     this.userIdDisplay = document.getElementById("userId") as HTMLSpanElement;
     this.roomIdDisplay = document.getElementById("roomId") as HTMLSpanElement;
     this.roomLinkDisplay = document.getElementById("roomLink") as HTMLInputElement;
 
-    // Verify all elements exist
-    if (!this.messagesList || !this.messageInput || !this.sendBtn || 
-        !this.roomControls || !this.chatContainer || !this.userIdDisplay || 
-        !this.roomIdDisplay || !this.roomLinkDisplay) {
+    if (!this.canvas || !this.roomControls || !this.gameContainer || 
+        !this.userIdDisplay || !this.roomIdDisplay || !this.roomLinkDisplay) {
       console.error('Some required DOM elements are missing');
+      return;
+    }
+
+    this.ctx = this.canvas.getContext('2d');
+    if (!this.ctx) {
+      console.error('Could not get canvas context');
       return;
     }
 
@@ -55,18 +75,15 @@ class ChatClient {
   }
 
   private setupEventListeners(): void {
-    if (!this.sendBtn || !this.messageInput) return;
-
-    this.sendBtn.addEventListener("click", () => this.sendMessage());
-    this.messageInput.addEventListener("keypress", (e) => {
-      if (e.key === "Enter") this.sendMessage();
-    });
-
     // Room control buttons
     document.getElementById("hostBtn")?.addEventListener("click", () => this.hostRoom());
     document.getElementById("joinBtn")?.addEventListener("click", () => this.joinRoom());
     document.getElementById("leaveBtn")?.addEventListener("click", () => this.leaveRoom());
     document.getElementById("copyLinkBtn")?.addEventListener("click", () => this.copyRoomLink());
+
+    // Keyboard controls
+    document.addEventListener('keydown', (e) => this.onKeyDown(e));
+    document.addEventListener('keyup', (e) => this.onKeyUp(e));
 
     // Room manager message handler
     this.roomManager.onMessage((message) => this.handleRoomMessage(message));
@@ -83,7 +100,8 @@ class ChatClient {
 
     this.ws.onclose = () => {
       console.log("Disconnected from WebSocket");
-      setTimeout(() => this.connectWebSocket(), 3000); // Auto-reconnect
+      this.gameRunning = false;
+      setTimeout(() => this.connectWebSocket(), 3000);
     };
 
     this.ws.onerror = (error) => {
@@ -95,7 +113,6 @@ class ChatClient {
     const roomId = getRoomIdFromURL();
     if (roomId) {
       this.connectWebSocket();
-      // Wait for connection then join room
       setTimeout(() => {
         this.roomManager.joinRoom(roomId);
       }, 1000);
@@ -107,11 +124,11 @@ class ChatClient {
       this.connectWebSocket();
       setTimeout(() => {
         const roomId = this.roomManager.createRoom();
-        this.showChatContainer(roomId);
+        this.showGameContainer(roomId);
       }, 1000);
     } else {
       const roomId = this.roomManager.createRoom();
-      this.showChatContainer(roomId);
+      this.showGameContainer(roomId);
     }
   }
 
@@ -132,11 +149,11 @@ class ChatClient {
         this.connectWebSocket();
         setTimeout(() => {
           this.roomManager.joinRoom(roomId);
-          this.showChatContainer(roomId);
+          this.showGameContainer(roomId);
         }, 1000);
       } else {
         this.roomManager.joinRoom(roomId);
-        this.showChatContainer(roomId);
+        this.showGameContainer(roomId);
       }
     } catch (error) {
       alert("Invalid room link format");
@@ -145,17 +162,9 @@ class ChatClient {
 
   private leaveRoom(): void {
     this.roomManager.leaveRoom();
+    this.gameRunning = false;
+    this.players.clear();
     this.showRoomControls();
-  }
-
-  private sendMessage(): void {
-    if (!this.messageInput) return;
-    
-    const message = this.messageInput.value.trim();
-    if (message) {
-      this.roomManager.sendMessage(message);
-      this.messageInput.value = "";
-    }
   }
 
   private copyRoomLink(): void {
@@ -168,7 +177,6 @@ class ChatClient {
         document.execCommand('copy');
         alert("Room link copied to clipboard!");
       } catch (error) {
-        // Fallback for modern browsers
         navigator.clipboard?.writeText(link).then(() => {
           alert("Room link copied to clipboard!");
         }).catch(() => {
@@ -178,67 +186,206 @@ class ChatClient {
     }
   }
 
-  private handleRoomMessage(message: RoomMessage): void {
-    if (!this.messagesList) return;
-
-    const li = document.createElement("li");
+  private onKeyDown(e: KeyboardEvent): void {
+    if (!this.gameRunning) return;
     
-    switch (message.type) {
-      case 'room-created':
-        li.textContent = `Room created! Share this link: ${this.roomManager.getRoomLink()}`;
-        li.className = 'system-message';
-        break;
-      case 'room-joined':
-        li.textContent = `Joined room: ${message.roomId}`;
-        li.className = 'system-message';
-        break;
-      case 'user-joined':
-        li.textContent = `User ${message.userId} joined the room`;
-        li.className = 'system-message';
-        break;
-      case 'user-left':
-        li.textContent = `User ${message.userId} left the room`;
-        li.className = 'system-message';
-        break;
-      case 'room-message':
-        const isOwnMessage = message.userId === this.userId;
-        li.textContent = `${isOwnMessage ? 'You' : message.userId}: ${message.message}`;
-        li.className = isOwnMessage ? 'own-message' : 'other-message';
-        break;
-      case 'room-error':
-        li.textContent = `Error: ${message.message}`;
-        li.className = 'error-message';
-        break;
-      default:
-        li.textContent = message.message || '';
+    const key = e.key.toLowerCase();
+    if (['w', 'a', 's', 'd'].includes(key)) {
+      e.preventDefault();
+      this.keys.add(key);
+    }
+  }
+
+  private onKeyUp(e: KeyboardEvent): void {
+    if (!this.gameRunning) return;
+    
+    const key = e.key.toLowerCase();
+    if (['w', 'a', 's', 'd'].includes(key)) {
+      e.preventDefault();
+      this.keys.delete(key);
+    }
+  }
+
+  private updatePlayerPosition(): void {
+    if (!this.gameRunning) return;
+
+    const speed = 5;
+    let moved = false;
+    
+    if (this.keys.has('w') && this.myPlayer.y > 15) {
+      this.myPlayer.y -= speed;
+      moved = true;
+    }
+    if (this.keys.has('s') && this.myPlayer.y < 585) {
+      this.myPlayer.y += speed;
+      moved = true;
+    }
+    if (this.keys.has('a') && this.myPlayer.x > 15) {
+      this.myPlayer.x -= speed;
+      moved = true;
+    }
+    if (this.keys.has('d') && this.myPlayer.x < 785) {
+      this.myPlayer.x += speed;
+      moved = true;
     }
 
-    this.messagesList.appendChild(li);
-    this.messagesList.scrollTop = this.messagesList.scrollHeight;
+    if (moved) {
+      this.roomManager.sendMessage(JSON.stringify({
+        type: 'player-move',
+        x: this.myPlayer.x,
+        y: this.myPlayer.y
+      }));
+    }
+  }
+
+  private handleRoomMessage(message: RoomMessage): void {
+    switch (message.type) {
+      case 'room-created':
+        console.log('Room created');
+        this.startGame();
+        break;
+      case 'room-joined':
+        console.log('Joined room');
+        this.startGame();
+        // Send my initial position
+        this.roomManager.sendMessage(JSON.stringify({
+          type: 'player-join',
+          x: this.myPlayer.x,
+          y: this.myPlayer.y,
+          color: this.myPlayer.color
+        }));
+        break;
+      case 'user-joined':
+        console.log(`User ${message.userId} joined`);
+        break;
+      case 'user-left':
+        console.log(`User ${message.userId} left`);
+        this.players.delete(message.userId);
+        break;
+      case 'room-message':
+        this.handleGameMessage(message);
+        break;
+      case 'room-error':
+        alert(`Error: ${message.message}`);
+        break;
+    }
+  }
+
+  private handleGameMessage(message: RoomMessage): void {
+    if (!message.message) return;
+    
+    try {
+      const gameData = JSON.parse(message.message);
+      
+      switch (gameData.type) {
+        case 'player-join':
+          this.players.set(message.userId, {
+            id: message.userId,
+            x: gameData.x,
+            y: gameData.y,
+            color: gameData.color
+          });
+          // Send my position to the new player
+          this.roomManager.sendMessage(JSON.stringify({
+            type: 'player-join',
+            x: this.myPlayer.x,
+            y: this.myPlayer.y,
+            color: this.myPlayer.color
+          }));
+          break;
+        case 'player-move':
+          if (this.players.has(message.userId)) {
+            const player = this.players.get(message.userId)!;
+            player.x = gameData.x;
+            player.y = gameData.y;
+          }
+          break;
+      }
+    } catch (error) {
+      console.error('Error parsing game message:', error);
+    }
+  }
+
+  private startGame(): void {
+    this.gameRunning = true;
+    this.gameLoop();
+  }
+
+  private gameLoop(): void {
+    if (!this.gameRunning || !this.ctx || !this.canvas) return;
+
+    // Update
+    this.updatePlayerPosition();
+
+    // Clear canvas
+    this.ctx.fillStyle = '#f0f0f0';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Draw border
+    this.ctx.strokeStyle = '#333';
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Draw other players
+    this.players.forEach(player => {
+      this.drawPlayer(player);
+    });
+
+    // Draw my player
+    this.drawPlayer(this.myPlayer, true);
+
+    // Continue game loop
+    requestAnimationFrame(() => this.gameLoop());
+  }
+
+  private drawPlayer(player: Player, isMe: boolean = false): void {
+    if (!this.ctx) return;
+
+    this.ctx.beginPath();
+    this.ctx.arc(player.x, player.y, 15, 0, 2 * Math.PI);
+    this.ctx.fillStyle = player.color;
+    this.ctx.fill();
+    
+    if (isMe) {
+      this.ctx.strokeStyle = '#000';
+      this.ctx.lineWidth = 3;
+      this.ctx.stroke();
+    }
+    
+    // Draw player ID
+    this.ctx.fillStyle = '#000';
+    this.ctx.font = '12px Arial';
+    this.ctx.textAlign = 'center';
+    this.ctx.fillText(isMe ? 'You' : player.id.substring(0, 6), player.x, player.y - 25);
+  }
+
+  private getRandomColor(): string {
+    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8'];
+    return colors[Math.floor(Math.random() * colors.length)];
   }
 
   private showRoomControls(): void {
-    if (this.roomControls && this.chatContainer) {
+    if (this.roomControls && this.gameContainer) {
       this.roomControls.style.display = 'block';
-      this.chatContainer.style.display = 'none';
+      this.gameContainer.style.display = 'none';
     }
   }
 
-  private showChatContainer(roomId: string): void {
-    if (this.roomControls && this.chatContainer && this.roomIdDisplay && this.roomLinkDisplay) {
+  private showGameContainer(roomId: string): void {
+    if (this.roomControls && this.gameContainer && this.roomIdDisplay && this.roomLinkDisplay) {
       this.roomControls.style.display = 'none';
-      this.chatContainer.style.display = 'block';
+      this.gameContainer.style.display = 'block';
       this.roomIdDisplay.textContent = roomId;
       this.roomLinkDisplay.value = this.roomManager.getRoomLink() || '';
     }
   }
 }
 
-// Initialize the chat client when DOM is ready
+// Initialize the game client
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    new ChatClient();
+    new GameClient();
   });
 } else {
-  new ChatClient();
+  new GameClient();
 }
