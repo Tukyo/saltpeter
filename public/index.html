@@ -1,46 +1,75 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>WebSocket Multiplayer Game</title>
-    <link rel="stylesheet" type="text/css" href="style.css" />
-  </head>
-  <body>
-    <h1>🎮 Multiplayer Dot Game</h1>
-    
-    <div class="user-info">
-      <strong>Your Player ID:</strong> <span id="userId"></span>
-    </div>
 
-    <div id="roomControls" class="room-controls">
-      <h2>Welcome to Dot Game!</h2>
-      <p>Move around as a colored dot and see other players in real-time</p>
-      <button id="hostBtn">🎯 Host a Game Room</button>
-      <button id="joinBtn">🚪 Join a Game Room</button>
-    </div>
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" type="text/css" href="style.css" />
+</head>
 
-    <div id="gameContainer" class="game-container" style="display: none;">
-      <div class="game-header">
-        <h3>🎮 Game Room: <span id="roomId"></span></h3>
-        <div class="input-group">
-          <label><strong>Share this link:</strong></label>
-          <input id="roomLink" class="room-link" readonly>
-          <button id="copyLinkBtn">📋 Copy Link</button>
-          <button id="leaveBtn" class="danger">🚪 Leave Room</button>
-        </div>
-      </div>
+<body>
+  <div id="fg"></div>
 
-      <div class="controls-info">
-        <strong>🎮 Controls:</strong> Use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> keys to move • <strong>Hold Left Click</strong> to shoot towards mouse!
-      </div>
+  <canvas class='hacker hacker_3d'></canvas>
+  <canvas class='hacker hacker_bars'></canvas>
+  <div class="hacker hacker_console"></div>
 
-      <canvas id="gameCanvas"></canvas>
-      
-      <div class="game-stats">
-        Your dot has a black border • Other players appear as colored dots • Red dots are projectiles
+  <h1>WEB SOCKET</h1>
+
+  <div class="user_info">
+    <strong>Neural ID:</strong> <span id="userId"></span>
+  </div>
+
+  <div id="roomControls" class="container room_controls">
+    <h2>Neural Network Control Panel</h2>
+    <p>Create a session for other hackers to join, or join an ongoing neural link.</p>
+    <button id="hostBtn">Host Session</button>
+    <button id="joinBtn">Join Session</button>
+  </div>
+
+  <div id="lobbyContainer" class="container lobby_container" style="display: none;">
+    <div class="container game_header">
+      <h3><span id="roomId"></span></h3>
+      <div class="container row">
+        <button id="lobbyCodeBtn">Copy Room Code</button>
+        <button id="lobbyLeaveBtn" class="danger">Leave Room</button>
       </div>
     </div>
 
-    <script src="/app.js"></script>
-  </body>
+    <div class="lobby-players">
+      <h4>Players:</h4>
+      <div id="lobbyPlayersList" class="players-list"></div>
+    </div>
+
+    <button id="startGameBtn" class="start-game-btn" style="display: none;">Start Game</button>
+  </div>
+
+  <div id="gameContainer" class="container game_container" style="display: none;">
+    <div class="container game_header">
+      <h3><span id="gameRoomId"></span></h3>
+      <div class="container row">
+        <button id="gameCodeBtn">Copy Room Code</button>
+        <button id="gameLeaveBtn" class="danger">Leave Room</button>
+      </div>
+    </div>
+
+    <div class="container controls_info">
+      <div class="controls_item"><strong>Move:</strong> <span class="controls_span">W A S D</span></div>
+      <div class="controls_item"><strong>Shoot: </strong> <span class="controls_span">Left Click</span></div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+  </div>
+
+  <div id="chatContainer" class="chat-container" style="display: none;">
+    <div id="chatMessages" class="chat-messages"></div>
+    <div class="chat-input-row">
+      <input type="text" id="chatInput" class="chat-input" placeholder="Type a message..." maxlength="200">
+      <button id="chatSendBtn" class="chat-send-btn">Send</button>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script src="/assets/scripts/vfx.js"></script>
+</body>
+
 </html>

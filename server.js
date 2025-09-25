@@ -3,14 +3,20 @@ const fs = require("fs");
 const path = require("path");
 const WebSocket = require("ws");
 
-// Room management
-const rooms = new Map(); // roomId -> { hostUserId, participants: Set<ws> }
+// Room management - now includes game state
+const rooms = new Map(); // roomId -> { hostUserId, participants: Set<ws>, gameActive: boolean }
 
 // Create HTTP server to serve files
 const server = http.createServer((req, res) => {
+  // Handle room redirect
+  if (req.url && req.url.startsWith("/room_")) {
+    const roomId = req.url.split("/")[1]; // remove leading slash
+    res.writeHead(302, { Location: `/?room=${roomId}` });
+    return res.end();
+  }
+
   let filePath = req.url === "/" ? "/index.html" : req.url;
 
-  // Serve app.js from dist, everything else from public
   if (filePath === "/app.js") {
     filePath = path.join(__dirname, "dist", "app.js");
   } else {
@@ -23,13 +29,12 @@ const server = http.createServer((req, res) => {
       return res.end("File not found");
     }
 
-    // Set proper content type
     const ext = path.extname(filePath);
-    let contentType = 'text/html';
-    if (ext === '.js') contentType = 'application/javascript';
-    if (ext === '.css') contentType = 'text/css';
+    let contentType = "text/html";
+    if (ext === ".js") contentType = "application/javascript";
+    if (ext === ".css") contentType = "text/css";
 
-    res.writeHead(200, { 'Content-Type': contentType });
+    res.writeHead(200, { "Content-Type": contentType });
     res.end(data);
   });
 });
@@ -82,6 +87,23 @@ function handleRoomMessage(ws, message) {
       break;
     case 'room-message':
       if (ws.currentRoom === message.roomId) {
+        // Handle special game state messages
+        if (message.message) {
+          try {
+            const gameData = JSON.parse(message.message);
+            if (gameData.type === 'start-game') {
+              // Mark room as having active game
+              const room = rooms.get(message.roomId);
+              if (room) {
+                room.gameActive = true;
+                console.log(`Game started in room ${message.roomId}`);
+              }
+            }
+          } catch (e) {
+            // Not JSON, continue normally
+          }
+        }
+
         broadcastToRoom(message.roomId, {
           type: 'room-message',
           userId: message.userId,
@@ -105,7 +127,8 @@ function createRoom(ws, roomId, userId) {
 
   rooms.set(roomId, {
     hostUserId: userId,
-    participants: new Set([ws])
+    participants: new Set([ws]),
+    gameActive: false // Track game state
   });
 
   ws.currentRoom = roomId;
@@ -135,12 +158,24 @@ function joinRoom(ws, roomId, userId) {
   ws.currentRoom = roomId;
   ws.userId = userId;
 
-  // Notify user they joined
-  ws.send(JSON.stringify({
-    type: 'room-joined',
-    roomId: roomId,
-    userId: 'server'
-  }));
+  // Check if game is active and send appropriate response
+  if (room.gameActive) {
+    // Game in progress - join directly into game
+    ws.send(JSON.stringify({
+      type: 'room-joined-game',
+      roomId: roomId,
+      userId: 'server',
+      gameActive: true
+    }));
+  } else {
+    // Join lobby
+    ws.send(JSON.stringify({
+      type: 'room-joined',
+      roomId: roomId,
+      userId: 'server',
+      gameActive: false
+    }));
+  }
 
   // Notify others in room
   broadcastToRoom(roomId, {
@@ -149,22 +184,62 @@ function joinRoom(ws, roomId, userId) {
     roomId: roomId
   }, ws);
 
-  console.log(`User ${userId} joined room ${roomId}`);
+  console.log(`User ${userId} joined room ${roomId} (game active: ${room.gameActive})`);
 }
 
 function leaveRoom(ws, roomId) {
   if (!rooms.has(roomId)) return;
 
   const room = rooms.get(roomId);
+  const wasHost = room.hostUserId === ws.userId;
   room.participants.delete(ws);
 
-  // Notify others in room
+  // Notify others in room that user left
   if (ws.userId) {
     broadcastToRoom(roomId, {
       type: 'user-left',
       userId: ws.userId,
       roomId: roomId
     }, ws);
+  }
+
+  // Handle different scenarios based on remaining players
+  if (room.participants.size === 1 && room.gameActive) {
+    // Only 1 player left during active game - return to lobby
+    const lastPlayer = Array.from(room.participants)[0];
+    room.hostUserId = lastPlayer.userId;
+    room.gameActive = false;
+    
+    broadcastToRoom(roomId, {
+      type: 'room-message',
+      userId: 'server',
+      message: JSON.stringify({
+        type: 'return-to-lobby',
+        reason: 'last-player',
+        newHostId: lastPlayer.userId
+      }),
+      roomId: roomId
+    }, null);
+    
+    console.log(`Last player ${lastPlayer.userId} in room ${roomId}, returning to lobby as host`);
+    
+  } else if (wasHost && room.participants.size > 0) {
+    // Host left but others remain - migrate host
+    const newHost = Array.from(room.participants)[0];
+    room.hostUserId = newHost.userId;
+    
+    broadcastToRoom(roomId, {
+      type: 'room-message',
+      userId: 'server',
+      message: JSON.stringify({
+        type: 'promote-player',
+        targetPlayerId: newHost.userId,
+        reason: 'host-migration'
+      }),
+      roomId: roomId
+    }, null);
+    
+    console.log(`Host migrated from ${ws.userId} to ${newHost.userId} in room ${roomId}`);
   }
 
   // Delete room if empty
@@ -184,7 +259,11 @@ function broadcastToRoom(roomId, message, sender = null) {
   const messageStr = JSON.stringify(message);
 
   room.participants.forEach(client => {
-    if (client !== sender && client.readyState === WebSocket.OPEN) {
+    // Send to all if sender is null, or exclude sender unless it's a promote-player message
+    if (client.readyState === WebSocket.OPEN && 
+        (sender === null || 
+         client !== sender || 
+         message.message?.includes('"type":"promote-player"'))) {
       client.send(messageStr);
     }
   });

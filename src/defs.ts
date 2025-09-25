@@ -3,6 +3,7 @@ export interface Player {
   x: number;
   y: number;
   color: string;
+  health: number;
 }
 
 export interface Projectile {
@@ -17,17 +18,17 @@ export interface Projectile {
   timestamp: number;
 }
 
-export interface Room {
-  id: string;
-  hostUserId: string;
-  participants: string[];
-  createdAt: Date;
-}
-
 export interface RoomMessage {
-  type: 'join-room' | 'create-room' | 'leave-room' | 'room-message' | 'room-created' | 'room-joined' | 'room-error' | 'user-joined' | 'user-left';
+  type: 'join-room' | 'create-room' | 'leave-room' | 'room-message' | 'room-created' | 'room-joined' | 'room-joined-game' | 'room-error' | 'user-joined' | 'user-left';
   roomId?: string;
   userId: string;
   message?: string;
   data?: any;
+  gameActive?: boolean;
+}
+
+export interface LobbyPlayer {
+  id: string;
+  color: string;
+  isHost: boolean;
 }
