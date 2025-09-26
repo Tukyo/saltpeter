@@ -1,7 +1,7 @@
-import { generateUID, getRoomIdFromURL, getRandomColor } from './utils';
+import { generateUID, getRoomIdFromURL, getRandomColor, hexToRgb } from './utils';
 import { RoomManager } from './roomManager';
-import { Player, RoomMessage, Projectile, LobbyPlayer } from './defs';
-import { PLAYER, CANVAS, GAME, UI, PROJECTILE, ATTACK_PARAMS, CHAT } from './config';
+import { Player, RoomMessage, Projectile, LobbyPlayer, Leaderboard, LeaderboardEntry, Decal } from './defs';
+import { PLAYER, CANVAS, GAME, UI, CHAT, DECALS } from './config';
 
 class GameClient {
     private ws: WebSocket | null = null;
@@ -10,6 +10,8 @@ class GameClient {
 
     private canvas: HTMLCanvasElement | null = null;
     private ctx: CanvasRenderingContext2D | null = null;
+    private decalCanvas: HTMLCanvasElement | null = null;
+    private decalCtx: CanvasRenderingContext2D | null = null;
 
     private roomControls: HTMLDivElement | null = null;
     private gameContainer: HTMLDivElement | null = null;
@@ -18,6 +20,7 @@ class GameClient {
     private lobbyContainer: HTMLDivElement | null = null;
     private lobbyPlayersList: HTMLDivElement | null = null;
     private startGameBtn: HTMLButtonElement | null = null;
+    private gameOptionsContainer: HTMLDivElement | null = null;
     private chatContainer: HTMLDivElement | null = null;
     private chatMessages: HTMLDivElement | null = null;
     private chatInput: HTMLInputElement | null = null;
@@ -32,6 +35,7 @@ class GameClient {
     private players: Map<string, Player> = new Map();
     private lobbyPlayers: Map<string, LobbyPlayer> = new Map();
     private projectiles: Map<string, Projectile> = new Map();
+    private decals: Map<string, { x: number, y: number, params: Decal }> = new Map();
 
     private keys: Set<string> = new Set();
 
@@ -40,14 +44,26 @@ class GameClient {
     private inLobby = false;
 
     // Shooting mechanics
-    private isMouseDown = false;
+    private canShoot = true;
     private mouseX = 0;
     private mouseY = 0;
-    private lastBurstTime = 0;
     private currentBurstShot = 0;
     private burstInProgress = false;
     private nextBurstShotTime = 0;
     private projectileOffset = 5;
+
+    private currentAmmo = PLAYER.ATTACK.MAGAZINE.SIZE;
+    private isReloading = false;
+    private reloadStartTime = 0;
+
+    private leaderboardContainer: HTMLDivElement | null = null;
+    private leaderboardBody: HTMLTableSectionElement | null = null;
+
+    private leaderboard: Leaderboard = new Map();
+    private roundInProgress = false;
+    private roundWinner: string | null = null;
+    private gameWinner: string | null = null;
+    private alivePlayersCount = 0;
 
     // #region [ Initialization ]
     //
@@ -57,8 +73,8 @@ class GameClient {
 
         this.myPlayer = {
             id: this.userId,
-            x: Math.random() * (CANVAS.WIDTH - PLAYER.BORDER_MARGIN * 2) + PLAYER.BORDER_MARGIN,
-            y: Math.random() * (CANVAS.HEIGHT - PLAYER.BORDER_MARGIN * 2) + PLAYER.BORDER_MARGIN,
+            x: Math.random() * (CANVAS.WIDTH - PLAYER.VISUAL.BORDER_MARGIN * 2) + PLAYER.VISUAL.BORDER_MARGIN,
+            y: Math.random() * (CANVAS.HEIGHT - PLAYER.VISUAL.BORDER_MARGIN * 2) + PLAYER.VISUAL.BORDER_MARGIN,
             color: getRandomColor(),
             health: PLAYER.STATS.HEALTH
         };
@@ -78,32 +94,42 @@ class GameClient {
 
     private initializeElements(): void {
         this.canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
+        this.decalCanvas = document.createElement('canvas') as HTMLCanvasElement;
+
         this.roomControls = document.getElementById("roomControls") as HTMLDivElement;
         this.gameContainer = document.getElementById("gameContainer") as HTMLDivElement;
         this.lobbyContainer = document.getElementById("lobbyContainer") as HTMLDivElement;
         this.lobbyPlayersList = document.getElementById("lobbyPlayersList") as HTMLDivElement;
         this.startGameBtn = document.getElementById("startGameBtn") as HTMLButtonElement;
+        this.gameOptionsContainer = document.getElementById("gameOptionsContainer") as HTMLDivElement;
         this.userIdDisplay = document.getElementById("userId") as HTMLSpanElement;
         this.roomIdDisplay = document.getElementById("roomId") as HTMLSpanElement;
 
-        // Add chat elements
         this.chatContainer = document.getElementById("chatContainer") as HTMLDivElement;
         this.chatMessages = document.getElementById("chatMessages") as HTMLDivElement;
         this.chatInput = document.getElementById("chatInput") as HTMLInputElement;
         this.chatSendBtn = document.getElementById("chatSendBtn") as HTMLButtonElement;
 
-        if (!this.canvas || !this.roomControls || !this.gameContainer || !this.lobbyContainer ||
+        this.leaderboardContainer = document.getElementById("leaderboardContainer") as HTMLDivElement;
+        this.leaderboardBody = document.getElementById("leaderboardBody") as HTMLTableSectionElement;
+
+        if (!this.canvas || !this.decalCanvas || !this.roomControls || !this.gameContainer || !this.lobbyContainer ||
             !this.userIdDisplay || !this.roomIdDisplay || !this.lobbyPlayersList || !this.startGameBtn ||
-            !this.chatContainer || !this.chatMessages || !this.chatInput || !this.chatSendBtn) {
+            !this.gameOptionsContainer || !this.chatContainer || !this.chatMessages || !this.chatInput ||
+            !this.chatSendBtn || !this.leaderboardContainer || !this.leaderboardBody) {
             console.error('Some required DOM elements are missing');
             return;
         }
 
         this.canvas.width = CANVAS.WIDTH;
         this.canvas.height = CANVAS.HEIGHT;
+        this.decalCanvas.width = CANVAS.WIDTH;
+        this.decalCanvas.height = CANVAS.HEIGHT;
 
         this.ctx = this.canvas.getContext('2d');
-        if (!this.ctx) {
+        this.decalCtx = this.decalCanvas.getContext('2d');
+
+        if (!this.ctx || !this.decalCtx) {
             console.error('Could not get canvas context');
             return;
         }
@@ -159,7 +185,7 @@ class GameClient {
                     isHost: this.isHost
                 });
                 this.updateLobbyPlayersList();
-                this.updateStartButton();
+                this.updateHostDisplay();
                 break;
             case 'user-joined':
                 console.log(`User ${message.userId} joined`);
@@ -170,7 +196,8 @@ class GameClient {
                         type: 'player-join',
                         x: this.myPlayer.x,
                         y: this.myPlayer.y,
-                        color: this.myPlayer.color
+                        color: this.myPlayer.color,
+                        leaderboard: Array.from(this.leaderboard.entries())
                     }));
                 }
                 break;
@@ -185,6 +212,12 @@ class GameClient {
                 console.log(`User ${message.userId} left`);
                 this.lobbyPlayers.delete(message.userId);
                 this.players.delete(message.userId);
+
+                // Remove from leaderboard when player leaves
+                this.leaderboard.delete(message.userId);
+                this.updateLeaderboardDisplay();
+                console.log(`Removed ${message.userId} from leaderboard`);
+
                 // Remove projectiles from disconnected player
                 this.projectiles.forEach((projectile, id) => {
                     if (projectile.ownerId === message.userId) {
@@ -233,7 +266,7 @@ class GameClient {
                         this.lobbyPlayers.set(player.id, player);
                     });
                     this.updateLobbyPlayersList();
-                    this.updateStartButton();
+                    this.updateHostDisplay();
                     break;
 
                 case 'promote-player':
@@ -251,7 +284,7 @@ class GameClient {
                     }
 
                     this.updateLobbyPlayersList();
-                    this.updateStartButton();
+                    this.updateHostDisplay();
                     break;
 
                 case 'return-to-lobby': // New message type
@@ -278,7 +311,7 @@ class GameClient {
                         this.leaveRoom();
                     }
                     break;
-                case 'chat-message':
+                case 'chat_message':
                     if (message.userId !== this.userId) {
                         this.displayChatMessage(message.userId, gameData.message, false);
                     }
@@ -300,6 +333,14 @@ class GameClient {
                             health: gameData.health || PLAYER.STATS.HEALTH
                         });
                     }
+
+                    if (gameData.leaderboard) {
+                        gameData.leaderboard.forEach(([playerId, entry]: [string, LeaderboardEntry]) => {
+                            this.leaderboard.set(playerId, entry);
+                        });
+                    }
+
+                    this.createLeaderboard();
                     break;
 
                 case 'player-move':
@@ -309,7 +350,6 @@ class GameClient {
                         player.y = gameData.y;
                     }
                     break;
-                // Update the player-hit case in handleGameMessage
                 case 'player-hit':
                     // Remove the projectile for everyone
                     if (gameData.projectileId) {
@@ -317,27 +357,36 @@ class GameClient {
                     }
 
                     if (gameData.targetId === this.userId) {
-                        // I was hit - use the synchronized health value
                         this.myPlayer.health = gameData.newHealth;
-                        console.log(`I was hit for ${gameData.damage} damage by ${gameData.shooterId}`);
-
-                        // Check if I died
                         if (this.myPlayer.health <= 0) {
-                            this.respawnPlayer();
+                            this.recordDeath();
+                            this.checkRoundEnd();
                         }
                     } else if (this.players.has(gameData.targetId)) {
-                        // Another player was hit, update their health
                         const hitPlayer = this.players.get(gameData.targetId)!;
                         hitPlayer.health = gameData.newHealth;
-                        console.log(`Player ${hitPlayer.id} was hit for ${gameData.damage} damage`);
 
-                        // If they died, they'll send a respawn message soon
                         if (hitPlayer.health <= 0) {
                             console.log(`Player ${hitPlayer.id} died`);
+                            this.checkRoundEnd();
                         }
                     }
-                    break;
 
+                    if (gameData.wasKill) {
+                        // Increment kills for shooter
+                        if (this.leaderboard.has(gameData.shooterId)) {
+                            this.leaderboard.get(gameData.shooterId)!.kills++;
+                        }
+                        // Increment deaths for victim
+                        if (this.leaderboard.has(gameData.targetId)) {
+                            this.leaderboard.get(gameData.targetId)!.deaths++;
+                        }
+                        this.updateLeaderboardDisplay();
+                    }
+                    break;
+                case 'player-death':
+                    // TODO Death processing
+                    break;
                 case 'player-respawn':
                     if (this.players.has(message.userId)) {
                         const player = this.players.get(message.userId)!;
@@ -357,6 +406,37 @@ class GameClient {
                 case 'projectile-remove':
                     if (!this.inLobby) {
                         this.projectiles.delete(gameData.projectileId);
+                    }
+                    break;
+
+                case 'round-end':
+                    console.log(`Round ended! Winner: ${gameData.winnerId || 'No one'}`);
+                    this.roundInProgress = false;
+                    this.roundWinner = gameData.winnerId;
+                    break;
+
+                case 'game-end':
+                    console.log(`Game ended! Winner: ${gameData.winnerId}`);
+                    this.gameWinner = gameData.winnerId;
+                    break;
+
+                case 'new-round':
+                    console.log('New round started! Everyone respawning...');
+                    this.roundInProgress = true;
+                    this.roundWinner = null;
+
+                    // Respawn other players
+                    if (this.players.has(message.userId)) {
+                        const player = this.players.get(message.userId)!;
+                        player.x = gameData.x;
+                        player.y = gameData.y;
+                        player.health = gameData.health;
+                    }
+                    break;
+
+                case 'add-decal':
+                    if (message.userId !== this.userId) {
+                        this.applyDecal(gameData.x, gameData.y, gameData.decalId, gameData.params);
                     }
                     break;
             }
@@ -422,6 +502,30 @@ class GameClient {
         }
     }
 
+    private quickPlay(): void {
+        fetch('/quickplay')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('No available rooms');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (!this.ws) {
+                    this.connectWebSocket();
+                    setTimeout(() => {
+                        this.roomManager.joinRoom(data.roomId);
+                    }, GAME.CONNECTION_TIMEOUT);
+                } else {
+                    this.roomManager.joinRoom(data.roomId);
+                }
+            })
+            .catch(error => {
+                alert('No available games found. Try hosting a new session!');
+                console.log('Quickplay error:', error);
+            });
+    }
+
     private leaveRoom(): void {
         this.roomManager.leaveRoom();
         this.gameRunning = false;
@@ -431,7 +535,19 @@ class GameClient {
         this.projectiles.clear();
         this.lobbyPlayers.clear();
         this.clearChat();
+        this.clearLeaderboard();
         this.showRoomControls();
+
+        // Clear decals
+        this.decals.clear();
+        if (this.decalCtx) {
+            this.decalCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+        }
+
+        // Clear main
+        if (this.ctx) {
+            this.ctx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+        }
     }
 
     private checkForRoomInURL(): void {
@@ -474,7 +590,7 @@ class GameClient {
         });
 
         this.updateLobbyPlayersList();
-        this.updateStartButton();
+        this.updateHostDisplay();
     }
 
     private updateLobbyPlayersList(): void {
@@ -491,18 +607,18 @@ class GameClient {
 
         sortedPlayers.forEach(player => {
             const playerDiv = document.createElement('div');
-            playerDiv.className = 'lobby-player';
+            playerDiv.className = 'lobby_player';
 
             const colorDiv = document.createElement('div');
-            colorDiv.className = 'player-color';
+            colorDiv.className = 'player_color';
             colorDiv.style.backgroundColor = player.color;
 
             const nameDiv = document.createElement('div');
-            nameDiv.className = 'player-name';
+            nameDiv.className = 'player_name';
             nameDiv.textContent = `${player.id}${player.isHost ? ' (Host)' : ''}`;
 
             const controlsDiv = document.createElement('div');
-            controlsDiv.className = 'player-controls';
+            controlsDiv.className = 'player_controls';
 
             // Only show controls if I'm the host and this isn't me
             if (this.isHost && player.id !== this.userId) {
@@ -529,13 +645,6 @@ class GameClient {
         });
     }
 
-    private updateStartButton(): void {
-        if (!this.startGameBtn) return;
-
-        this.startGameBtn.style.display = this.isHost ? 'block' : 'none';
-        this.startGameBtn.disabled = this.lobbyPlayers.size < 1;
-    }
-
     private promotePlayer(playerId: string): void {
         this.roomManager.sendMessage(JSON.stringify({
             type: 'promote-player',
@@ -547,6 +656,141 @@ class GameClient {
         this.roomManager.sendMessage(JSON.stringify({
             type: 'kick-player',
             targetPlayerId: playerId
+        }));
+    }
+
+    private returnToLobby(): void {
+        this.gameRunning = false;
+        this.roundInProgress = false;
+        this.leaderboard.clear();
+        this.gameWinner = null;
+        this.roundWinner = null;
+        this.players.clear();
+        this.projectiles.clear();
+
+        // Clear decals
+        this.decals.clear();
+        if (this.decalCtx) {
+            this.decalCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+        }
+
+        // Clear main
+        if (this.ctx) {
+            this.ctx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+        }
+
+        // Clear chat
+        this.clearChat();
+
+        // Clear leaderboard
+        this.clearLeaderboard();
+
+        // Notify others and return to lobby
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'return-to-lobby',
+            reason: 'game-ended'
+        }));
+
+        this.showLobbyControls(this.roomManager.getCurrentRoom() || '');
+    }
+    //
+    // #endregion
+
+    // #region [ Round Management ]
+    //
+    private checkRoundEnd(): void {
+        if (!this.roundInProgress) return;
+
+        // Count alive players (including myself if I'm alive)
+        let aliveCount = this.myPlayer.health > 0 ? 1 : 0;
+        let lastAlivePlayer = this.myPlayer.health > 0 ? this.userId : null;
+
+        this.players.forEach((player) => {
+            if (player.health > 0) {
+                aliveCount++;
+                lastAlivePlayer = player.id;
+            }
+        });
+
+        // Round ends when only 1 or 0 players are alive
+        if (aliveCount <= 1) {
+            this.endRound(lastAlivePlayer);
+        }
+    }
+
+    private endRound(winnerId: string | null): void {
+        if (!this.roundInProgress) return;
+
+        this.roundInProgress = false;
+        this.roundWinner = winnerId;
+
+        // Increment win for the winner
+        if (winnerId && this.leaderboard.has(winnerId)) {
+            const winnerEntry = this.leaderboard.get(winnerId)!;
+            winnerEntry.wins++;
+            console.log(`${winnerId} won the round! Total wins: ${winnerEntry.wins}`);
+
+            // Check if they've won the game
+            if (winnerEntry.wins >= GAME.MAX_WINS) {
+                this.endGame(winnerId);
+                return; // Don't start a new round
+            }
+
+            // Update display to show new win count
+            this.updateLeaderboardDisplay();
+        }
+
+        // Show round results and start new round after delay
+        setTimeout(() => {
+            this.startNewRound();
+        }, GAME.ROUND_END_DELAY);
+    }
+
+    private endGame(winnerId: string): void {
+        this.gameWinner = winnerId;
+        console.log(`${winnerId} won the game with ${GAME.MAX_WINS} wins!`);
+
+        // Send game end message
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'game-end',
+            winnerId: winnerId
+        }));
+
+        // Return to lobby after delay
+        setTimeout(() => {
+            this.returnToLobby();
+        }, GAME.GAME_END_DELAY);
+    }
+
+    private startNewRound(): void {
+        console.log('Starting new round...');
+
+        // Reset all players (including myself)
+        this.myPlayer.health = PLAYER.STATS.HEALTH;
+        this.myPlayer.x = Math.random() * (CANVAS.WIDTH - PLAYER.VISUAL.BORDER_MARGIN * 2) + PLAYER.VISUAL.BORDER_MARGIN;
+        this.myPlayer.y = Math.random() * (CANVAS.HEIGHT - PLAYER.VISUAL.BORDER_MARGIN * 2) + PLAYER.VISUAL.BORDER_MARGIN;
+
+        this.currentAmmo = PLAYER.ATTACK.MAGAZINE.SIZE;
+        this.isReloading = false;
+        this.burstInProgress = false;
+        this.currentBurstShot = 0;
+
+        // Reset all other players
+        this.players.forEach(player => {
+            player.health = PLAYER.STATS.HEALTH;
+            player.x = Math.random() * (CANVAS.WIDTH - PLAYER.VISUAL.BORDER_MARGIN * 2) + PLAYER.VISUAL.BORDER_MARGIN;
+            player.y = Math.random() * (CANVAS.HEIGHT - PLAYER.VISUAL.BORDER_MARGIN * 2) + PLAYER.VISUAL.BORDER_MARGIN;
+        });
+
+        this.roundInProgress = true;
+        this.roundWinner = null;
+
+        // Notify others of new round with my spawn position
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'new-round',
+            x: this.myPlayer.x,
+            y: this.myPlayer.y,
+            health: this.myPlayer.health
         }));
     }
     //
@@ -581,7 +825,7 @@ class GameClient {
         if (!this.chatMessages) return;
 
         const messageDiv = document.createElement('div');
-        messageDiv.className = `chat-message ${isOwn ? 'own' : 'other'}`;
+        messageDiv.className = `chat_message ${isOwn ? 'own' : 'other'}`;
 
         const senderSpan = document.createElement('span');
         senderSpan.className = 'sender';
@@ -621,6 +865,7 @@ class GameClient {
     private setupEventListeners(): void {
         document.getElementById("hostBtn")?.addEventListener("click", () => this.hostRoom());
         document.getElementById("joinBtn")?.addEventListener("click", () => this.joinRoom());
+        document.getElementById("quickBtn")?.addEventListener("click", () => this.quickPlay());
 
         document.getElementById("lobbyLeaveBtn")?.addEventListener("click", () => this.leaveRoom());
         document.getElementById("lobbyCodeBtn")?.addEventListener("click", () => this.copyRoomCode());
@@ -639,27 +884,49 @@ class GameClient {
             }
         });
 
+        // Add focus/blur listeners to chat input
+        this.chatInput?.addEventListener("focus", () => {
+            this.keys.clear();
+            this.canShoot = false; // Disable shooting when typing
+            this.burstInProgress = false;
+            this.currentBurstShot = 0;
+        });
+
+        this.chatInput?.addEventListener("blur", () => {
+            this.keys.clear();
+            this.canShoot = true; // Re-enable shooting when done typing
+        });
+
+        // Keep keyboard events on document (for WASD movement)
         document.addEventListener('keydown', (e) => this.onKeyDown(e));
         document.addEventListener('keyup', (e) => this.onKeyUp(e));
-        document.addEventListener('mousedown', (e) => this.onMouseDown(e));
-        document.addEventListener('mouseup', (e) => this.onMouseUp(e));
-        document.addEventListener('mousemove', (e) => this.onMouseMove(e));
+
+        // CHANGE: Move mouse events to canvas only
+        this.canvas?.addEventListener('mousedown', (e) => this.onMouseDown(e));
+        this.canvas?.addEventListener('mouseup', (e) => this.onMouseUp(e));
+        this.canvas?.addEventListener('mousemove', (e) => this.onMouseMove(e));
 
         // Room manager message handler
         this.roomManager.onMessage((message) => this.handleRoomMessage(message));
     }
 
     private onKeyDown(e: KeyboardEvent): void {
+        if (this.chatInput === document.activeElement) return;
         if (!this.gameRunning) return;
 
         const key = e.key.toLowerCase();
         if (GAME.CONTROLS.includes(key)) {
             e.preventDefault();
             this.keys.add(key);
+
+            if (key === 'r' && !this.isReloading && this.currentAmmo < PLAYER.ATTACK.MAGAZINE.SIZE) {
+                this.startReload();
+            }
         }
     }
 
     private onKeyUp(e: KeyboardEvent): void {
+        if (this.chatInput === document.activeElement) return;
         if (!this.gameRunning) return;
 
         const key = e.key.toLowerCase();
@@ -670,30 +937,33 @@ class GameClient {
     }
 
     private onMouseDown(e: MouseEvent): void {
+        if (this.chatInput === document.activeElement) return;
         if (!this.gameRunning || !this.canvas) return;
 
-        if (e.button === 0) { // Left mouse button
-            this.isMouseDown = true;
+        if (e.button === 0 && this.canShoot && !this.burstInProgress) { // Left mouse button
             this.updateMousePosition(e);
+            this.startBurst(); // Trigger burst on click
+            this.canShoot = false; // Prevent shooting until mouse up
         }
     }
 
     private onMouseUp(e: MouseEvent): void {
+        if (this.chatInput === document.activeElement) return;
         if (!this.gameRunning) return;
 
         if (e.button === 0) { // Left mouse button
-            this.isMouseDown = false;
-            this.burstInProgress = false;
-            this.currentBurstShot = 0;
+            this.canShoot = true; // Allow shooting again
         }
     }
 
     private onMouseMove(e: MouseEvent): void {
+        if (this.chatInput === document.activeElement) return;
         if (!this.gameRunning) return;
         this.updateMousePosition(e);
     }
 
     private updateMousePosition(e: MouseEvent): void {
+        if (this.chatInput === document.activeElement) return;
         if (!this.canvas) return;
 
         const rect = this.canvas.getBoundingClientRect();
@@ -706,29 +976,79 @@ class GameClient {
     // #region [ Attack ]
     //
     private updateAttack(): void {
-        if (!this.isMouseDown || !this.gameRunning) return;
+        if (!this.gameRunning || this.myPlayer.health <= 0) return;
 
         const currentTime = Date.now();
 
-        // Check if we should start a new burst
-        if (!this.burstInProgress && currentTime - this.lastBurstTime >= ATTACK_PARAMS.SHOT_DELAY) {
-            this.burstInProgress = true;
-            this.currentBurstShot = 0;
-            this.nextBurstShotTime = currentTime;
-            this.lastBurstTime = currentTime;
+        // Handle reload
+        if (this.isReloading) {
+            if (currentTime >= this.reloadStartTime + PLAYER.ATTACK.RELOAD.TIME) {
+                // Reload complete
+                this.isReloading = false;
+                this.currentAmmo = PLAYER.ATTACK.MAGAZINE.SIZE;
+                console.log('Reload complete!');
+            }
+            return; // Can't shoot while reloading
         }
 
-        // Handle burst shooting
+        // Handle ongoing burst
         if (this.burstInProgress && currentTime >= this.nextBurstShotTime) {
-            this.launchProjectile();
-            this.currentBurstShot++;
+            // Check if we still have ammo and haven't finished the intended burst amount
+            const ammoNeeded = PLAYER.ATTACK.BURST.AMOUNT;
+            if (this.currentAmmo > 0 && this.currentBurstShot < ammoNeeded) {
+                this.launchProjectile();
+                this.currentBurstShot++;
+                this.currentAmmo--; // Use 1 ammo per shot in burst
 
-            if (this.currentBurstShot >= ATTACK_PARAMS.BURST_AMOUNT) {
-                this.burstInProgress = false;
+                console.log(`Burst shot ${this.currentBurstShot}! Ammo: ${this.currentAmmo}/${PLAYER.ATTACK.MAGAZINE.SIZE}`);
+
+                // Check if we should continue the burst
+                if (this.currentBurstShot >= ammoNeeded || this.currentAmmo === 0) {
+                    // Burst complete (reached intended amount or out of ammo)
+                    this.burstInProgress = false;
+                    this.currentBurstShot = 0;
+                } else {
+                    // Schedule next shot in burst
+                    this.nextBurstShotTime = currentTime + PLAYER.ATTACK.BURST.DELAY;
+                }
             } else {
-                this.nextBurstShotTime = currentTime + ATTACK_PARAMS.BURST_DELAY;
+                // Out of ammo or reached burst limit
+                this.burstInProgress = false;
+                this.currentBurstShot = 0;
             }
         }
+    }
+
+    private startBurst(): void {
+        if (this.burstInProgress || this.myPlayer.health <= 0 || this.isReloading) return;
+
+        // Check if we have enough ammo for the burst
+        const ammoNeeded = PLAYER.ATTACK.BURST.AMOUNT;
+        const ammoToUse = Math.min(ammoNeeded, this.currentAmmo);
+
+        if (ammoToUse === 0) {
+            // TODO: Implement no ammo feedback
+            return;
+        }
+
+        this.burstInProgress = true;
+        this.currentBurstShot = 0;
+
+        // Fire first shot immediately
+        this.launchProjectile();
+        this.currentBurstShot++;
+        this.currentAmmo--; // Use 1 ammo per shot in burst
+
+        // If burst has more shots and we have ammo, schedule the next ones
+        if (PLAYER.ATTACK.BURST.AMOUNT > 1 && this.currentAmmo > 0 && this.currentBurstShot < ammoToUse) {
+            this.nextBurstShotTime = Date.now() + PLAYER.ATTACK.BURST.DELAY;
+        } else {
+            // Burst complete (either single shot or out of ammo)
+            this.burstInProgress = false;
+            this.currentBurstShot = 0;
+        }
+
+        console.log(`Fired shot! Ammo: ${this.currentAmmo}/${PLAYER.ATTACK.MAGAZINE.SIZE}`);
     }
 
     private launchProjectile(): void {
@@ -742,20 +1062,20 @@ class GameClient {
         const dirY = dy / distance;
 
         // Calculate spawn offset to prevent immediate collision
-        const spawnOffset = PLAYER.STATS.SIZE + PROJECTILE.SIZE + this.projectileOffset;
+        const spawnOffset = PLAYER.STATS.SIZE + PLAYER.PROJECTILE.SIZE + this.projectileOffset;
 
         // Create projectiles based on PROJECTILE.AMOUNT with spread
-        for (let i = 0; i < PROJECTILE.AMOUNT; i++) {
-            const spread = (Math.random() - 0.5) * PROJECTILE.SPREAD;
+        for (let i = 0; i < PLAYER.PROJECTILE.AMOUNT; i++) {
+            const spread = (Math.random() - 0.5) * PLAYER.PROJECTILE.SPREAD;
             const angle = Math.atan2(dirY, dirX) + spread;
 
             const projectile: Projectile = {
                 id: generateUID(),
                 x: this.myPlayer.x + Math.cos(angle) * spawnOffset, // Spawn with offset
                 y: this.myPlayer.y + Math.sin(angle) * spawnOffset, // Spawn with offset
-                velocityX: Math.cos(angle) * PROJECTILE.SPEED,
-                velocityY: Math.sin(angle) * PROJECTILE.SPEED,
-                range: PROJECTILE.RANGE,
+                velocityX: Math.cos(angle) * PLAYER.PROJECTILE.SPEED,
+                velocityY: Math.sin(angle) * PLAYER.PROJECTILE.SPEED,
+                range: PLAYER.PROJECTILE.RANGE,
                 distanceTraveled: 0,
                 ownerId: this.userId,
                 timestamp: Date.now()
@@ -785,58 +1105,84 @@ class GameClient {
             );
             projectile.distanceTraveled += frameDistance;
 
-            // Check collision with my player
-            const dx = projectile.x - this.myPlayer.x;
-            const dy = projectile.y - this.myPlayer.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
+            // Check collision with my player (only if I'm alive)
+            if (this.myPlayer.health > 0) {
+                const dx = projectile.x - this.myPlayer.x;
+                const dy = projectile.y - this.myPlayer.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
 
-            if (distance <= PLAYER.STATS.SIZE + PROJECTILE.SIZE) {
-                // Hit! Take damage and remove projectile
-                this.myPlayer.health -= PROJECTILE.DAMAGE;
-                projectilesToRemove.push(id);
+                if (distance <= PLAYER.STATS.SIZE + PLAYER.PROJECTILE.SIZE) {
+                    this.myPlayer.health -= PLAYER.PROJECTILE.DAMAGE;
+                    projectilesToRemove.push(id);
 
-                // Notify everyone I was hit (including my new health)
-                this.roomManager.sendMessage(JSON.stringify({
-                    type: 'player-hit',
-                    targetId: this.userId,
-                    shooterId: projectile.ownerId,
-                    damage: PROJECTILE.DAMAGE,
-                    newHealth: this.myPlayer.health,
-                    projectileId: id
-                }));
+                    this.createDecal(projectile.x, projectile.y, `blood_${id}`, DECALS.BLOOD);
 
-                // Check if I died
-                if (this.myPlayer.health <= 0) {
-                    this.respawnPlayer();
+                    // Notify everyone I was hit
+                    this.roomManager.sendMessage(JSON.stringify({
+                        type: 'player-hit',
+                        targetId: this.userId,
+                        shooterId: projectile.ownerId,
+                        damage: PLAYER.PROJECTILE.DAMAGE,
+                        newHealth: this.myPlayer.health,
+                        projectileId: id
+                    }));
+
+                    // Check if I died
+                    if (this.myPlayer.health <= 0) {
+                        this.recordDeath();
+                        this.checkRoundEnd();
+                    }
                 }
             }
 
             // Check collision with other players (for my projectiles only)
             if (projectile.ownerId === this.userId) {
                 this.players.forEach((player, playerId) => {
-                    const dx2 = projectile.x - player.x;
-                    const dy2 = projectile.y - player.y;
-                    const distance2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+                    // Only check collision if the target player is alive
+                    if (player.health > 0) {
+                        const dx2 = projectile.x - player.x;
+                        const dy2 = projectile.y - player.y;
+                        const distance2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
 
-                    if (distance2 <= PLAYER.STATS.SIZE + PROJECTILE.SIZE) {
-                        // Hit another player!
-                        projectilesToRemove.push(id);
+                        if (distance2 <= PLAYER.STATS.SIZE + PLAYER.PROJECTILE.SIZE) {
+                            // Hit another player!
+                            projectilesToRemove.push(id);
 
-                        // Calculate their new health
-                        const newHealth = Math.max(0, player.health - PROJECTILE.DAMAGE);
+                            // Calculate their new health
+                            const newHealth = Math.max(0, player.health - PLAYER.PROJECTILE.DAMAGE);
+                            player.health = newHealth;
 
-                        // UPDATE THEIR HEALTH LOCALLY - ADD THIS LINE
-                        player.health = newHealth;
+                            this.createDecal(projectile.x, projectile.y, `blood_${id}`, DECALS.BLOOD);
 
-                        // Notify everyone about the hit
-                        this.roomManager.sendMessage(JSON.stringify({
-                            type: 'player-hit',
-                            targetId: playerId,
-                            shooterId: this.userId,
-                            damage: PROJECTILE.DAMAGE,
-                            newHealth: newHealth,
-                            projectileId: id
-                        }));
+                            // If they died, I get a kill
+                            if (newHealth <= 0) {
+                                console.log(`I killed ${playerId}!`);
+                                // Update my own kill count immediately
+                                if (this.leaderboard.has(this.userId)) {
+                                    this.leaderboard.get(this.userId)!.kills++;
+                                }
+                                // Update their death count immediately
+                                if (this.leaderboard.has(playerId)) {
+                                    this.leaderboard.get(playerId)!.deaths++;
+                                }
+                                this.updateLeaderboardDisplay();
+                            }
+
+                            // Notify everyone about the hit
+                            this.roomManager.sendMessage(JSON.stringify({
+                                type: 'player-hit',
+                                targetId: playerId,
+                                shooterId: this.userId,
+                                damage: PLAYER.PROJECTILE.DAMAGE,
+                                newHealth: newHealth,
+                                projectileId: id,
+                                wasKill: newHealth <= 0
+                            }));
+
+                            if (newHealth <= 0) {
+                                this.checkRoundEnd();
+                            }
+                        }
                     }
                 });
             }
@@ -845,10 +1191,16 @@ class GameClient {
             if (projectile.distanceTraveled >= projectile.range ||
                 projectile.x < 0 || projectile.x > CANVAS.WIDTH ||
                 projectile.y < 0 || projectile.y > CANVAS.HEIGHT) {
+
                 projectilesToRemove.push(id);
 
-                // Notify others to remove out-of-bounds projectile if it's mine
+                // Create burn mark where projectile expired (only for my projectiles)
                 if (projectile.ownerId === this.userId) {
+                    if (projectile.distanceTraveled >= projectile.range) {
+                        this.createDecal(projectile.x, projectile.y, `impact_${id}`, DECALS.PROJECTILE);
+                    }
+
+                    // Notify others to remove projectile
                     this.roomManager.sendMessage(JSON.stringify({
                         type: 'projectile-remove',
                         projectileId: id
@@ -862,13 +1214,25 @@ class GameClient {
             this.projectiles.delete(id);
         });
     }
+
+    private startReload(): void {
+        if (this.isReloading || this.currentAmmo >= PLAYER.ATTACK.MAGAZINE.SIZE) return;
+        
+        console.log('Reloading...');
+        this.isReloading = true;
+        this.reloadStartTime = Date.now();
+        
+        // Cancel any ongoing burst
+        this.burstInProgress = false;
+        this.currentBurstShot = 0;
+    }
     //
     // #endregion
 
     // #region [ Player ]
     //
     private updatePlayerPosition(): void {
-        if (!this.gameRunning) return;
+        if (!this.gameRunning || this.myPlayer.health <= 0) return;
 
         let inputX = 0;
         let inputY = 0;
@@ -887,8 +1251,8 @@ class GameClient {
         }
 
         // Calculate target velocity
-        const targetVelocityX = inputX * PLAYER.PHYSICS.MAX_SPEED;
-        const targetVelocityY = inputY * PLAYER.PHYSICS.MAX_SPEED;
+        const targetVelocityX = inputX * PLAYER.STATS.SPEED;
+        const targetVelocityY = inputY * PLAYER.STATS.SPEED;
 
         // Apply acceleration towards target
         this.playerVelocityX += (targetVelocityX - this.playerVelocityX) * PLAYER.PHYSICS.ACCELERATION;
@@ -907,14 +1271,14 @@ class GameClient {
         // Check boundaries
         let moved = false;
 
-        if (newX >= PLAYER.BORDER_MARGIN && newX <= CANVAS.WIDTH - PLAYER.BORDER_MARGIN) {
+        if (newX >= PLAYER.VISUAL.BORDER_MARGIN && newX <= CANVAS.WIDTH - PLAYER.VISUAL.BORDER_MARGIN) {
             this.myPlayer.x = newX;
             moved = true;
         } else {
             this.playerVelocityX = 0;
         }
 
-        if (newY >= PLAYER.BORDER_MARGIN && newY <= CANVAS.HEIGHT - PLAYER.BORDER_MARGIN) {
+        if (newY >= PLAYER.VISUAL.BORDER_MARGIN && newY <= CANVAS.HEIGHT - PLAYER.VISUAL.BORDER_MARGIN) {
             this.myPlayer.y = newY;
             moved = true;
         } else {
@@ -943,20 +1307,12 @@ class GameClient {
         if (Math.abs(this.playerVelocityY) < 0.01) this.playerVelocityY = 0;
     }
 
-    private respawnPlayer(): void {
-        console.log('I died! Respawning...');
+    private recordDeath(): void {
+        console.log('I died! Waiting for round to end...');
 
-        // Reset health and position
-        this.myPlayer.health = PLAYER.STATS.HEALTH;
-        this.myPlayer.x = Math.random() * (CANVAS.WIDTH - PLAYER.BORDER_MARGIN * 2) + PLAYER.BORDER_MARGIN;
-        this.myPlayer.y = Math.random() * (CANVAS.HEIGHT - PLAYER.BORDER_MARGIN * 2) + PLAYER.BORDER_MARGIN;
-
-        // Notify others of respawn - ADD THIS
         this.roomManager.sendMessage(JSON.stringify({
-            type: 'player-respawn',
-            x: this.myPlayer.x,
-            y: this.myPlayer.y,
-            health: this.myPlayer.health
+            type: 'player-death',
+            playerId: this.userId
         }));
     }
     //
@@ -983,6 +1339,13 @@ class GameClient {
 
     private startGameLoop(): void {
         this.gameRunning = true;
+        this.roundInProgress = true;
+
+        this.currentAmmo = PLAYER.ATTACK.MAGAZINE.SIZE;
+        this.isReloading = false;
+
+        this.createLeaderboard();
+
         // Send my initial position
         this.roomManager.sendMessage(JSON.stringify({
             type: 'player-join',
@@ -991,19 +1354,25 @@ class GameClient {
             color: this.myPlayer.color,
             health: this.myPlayer.health
         }));
+
         this.gameLoop();
     }
 
     private gameLoop(): void {
-        if (!this.gameRunning || !this.ctx || !this.canvas) return;
+        if (!this.gameRunning || !this.ctx || !this.canvas || !this.decalCtx || !this.decalCanvas) return;
 
         // Update
         this.updatePlayerPosition();
         this.updateAttack();
         this.updateProjectiles();
 
-        // Clear canvas - use clearRect instead of fillRect to show CSS background
+        // Clear canvas - used to show bg img
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Draw decals
+        if (this.decalCanvas) {
+            this.ctx.drawImage(this.decalCanvas, 0, 0)
+        }
 
         // Draw border
         this.ctx.strokeStyle = CANVAS.BORDER_COLOR;
@@ -1029,10 +1398,121 @@ class GameClient {
     //
     // #endregion
 
+    // #region [ Leaderboard ]
+    //
+    private createLeaderboard(): void {
+        console.log('Creating/updating leaderboard for all players');
+
+        // Get all current players (from game or lobby)
+        const allPlayers = new Set<string>();
+
+        // Add myself
+        allPlayers.add(this.userId);
+
+        // Add players from game
+        this.players.forEach((_, playerId) => {
+            allPlayers.add(playerId);
+        });
+
+        // Add players from lobby
+        this.lobbyPlayers.forEach((_, playerId) => {
+            allPlayers.add(playerId);
+        });
+
+        // Create/update leaderboard entries for all players
+        allPlayers.forEach(playerId => {
+            if (!this.leaderboard.has(playerId)) {
+                // Create new entry with 0 stats
+                this.leaderboard.set(playerId, {
+                    playerId: playerId,
+                    wins: 0,
+                    kills: 0,
+                    deaths: 0
+                });
+                console.log(`Created leaderboard entry for ${playerId}`);
+            }
+            // If entry already exists, leave it alone (preserves existing stats)
+        });
+
+        // Update the visual display
+        this.updateLeaderboardDisplay();
+
+        console.log('Leaderboard created/updated:', Array.from(this.leaderboard.entries()));
+    }
+
+    private updateLeaderboardDisplay(): void {
+        if (!this.leaderboardBody) return;
+
+        // Clear existing rows
+        this.leaderboardBody.innerHTML = '';
+
+        // Sort by wins (highest first), then by kills
+        const sortedEntries = Array.from(this.leaderboard.entries()).sort((a, b) => {
+            const [, entryA] = a;
+            const [, entryB] = b;
+
+            // First sort by wins (descending)
+            if (entryB.wins !== entryA.wins) {
+                return entryB.wins - entryA.wins;
+            }
+            // Then by kills (descending)
+            return entryB.kills - entryA.kills;
+        });
+
+        // Create table rows
+        sortedEntries.forEach(([playerId, entry]) => {
+            const row = document.createElement('tr');
+            row.className = 'leaderboard_row';
+
+            // Highlight current player
+            if (playerId === this.userId) {
+                row.classList.add('current-player');
+            }
+
+            // Player name
+            const nameCell = document.createElement('td');
+            nameCell.textContent = playerId === this.userId ? 'You' : playerId.substring(0, 8);
+            nameCell.className = 'player_name';
+            row.appendChild(nameCell);
+
+            // Wins
+            const winsCell = document.createElement('td');
+            winsCell.textContent = entry.wins.toString();
+            winsCell.className = 'wins';
+            row.appendChild(winsCell);
+
+            // Kills
+            const killsCell = document.createElement('td');
+            killsCell.textContent = entry.kills.toString();
+            killsCell.className = 'kills';
+            row.appendChild(killsCell);
+
+            // Deaths
+            const deathsCell = document.createElement('td');
+            deathsCell.textContent = entry.deaths.toString();
+            deathsCell.className = 'deaths';
+            row.appendChild(deathsCell);
+
+            if (this.leaderboardBody) {
+                this.leaderboardBody.appendChild(row);
+            }
+        });
+    }
+
+    private clearLeaderboard(): void {
+        this.leaderboard.clear();
+        if (this.leaderboardBody) {
+            this.leaderboardBody.innerHTML = '';
+        }
+    }
+    //
+    // #endregion
+
     // #region [ Rendering ]
     //
     private drawPlayer(player: Player, isMe: boolean = false): void {
         if (!this.ctx) return;
+        if (player.health <= 0) return;
 
         this.ctx.beginPath();
         this.ctx.arc(player.x, player.y, PLAYER.STATS.SIZE, 0, 2 * Math.PI);
@@ -1041,32 +1521,149 @@ class GameClient {
 
         if (isMe) {
             this.ctx.strokeStyle = UI.TEXT_COLOR;
-            this.ctx.lineWidth = PLAYER.STROKE_WIDTH;
+            this.ctx.lineWidth = PLAYER.VISUAL.STROKE_WIDTH;
             this.ctx.stroke();
         }
 
-        // Draw player ID and health
+        // Draw player info
         this.ctx.fillStyle = UI.TEXT_COLOR;
         this.ctx.font = UI.FONT;
         this.ctx.textAlign = 'center';
 
-        const displayName = isMe ? 'You' : player.id.substring(4, 10);
-        const healthText = `${displayName} (${player.health}HP)`;
-
+        const displayName = isMe ? 'You' : player.id.substring(0, 6);
         this.ctx.fillText(
-            healthText,
+            displayName,
             player.x,
-            player.y - PLAYER.ID_DISPLAY_OFFSET
+            player.y - PLAYER.VISUAL.ID_DISPLAY_OFFSET
         );
     }
 
     private drawProjectile(projectile: Projectile): void {
         if (!this.ctx) return;
 
+        // Calculate projectile direction
+        const speed = Math.sqrt(projectile.velocityX * projectile.velocityX + projectile.velocityY * projectile.velocityY);
+        const dirX = projectile.velocityX / speed;
+        const dirY = projectile.velocityY / speed;
+
+        // Calculate front and back points
+        const frontX = projectile.x + dirX * (PLAYER.PROJECTILE.LENGTH / 2);
+        const frontY = projectile.y + dirY * (PLAYER.PROJECTILE.LENGTH / 2);
+        const backX = projectile.x - dirX * (PLAYER.PROJECTILE.LENGTH / 2);
+        const backY = projectile.y - dirY * (PLAYER.PROJECTILE.LENGTH / 2);
+
+        // Draw the capsule body (rectangle)
+        this.ctx.fillStyle = PLAYER.PROJECTILE.COLOR;
+        this.ctx.strokeStyle = PLAYER.PROJECTILE.COLOR;
+        this.ctx.lineWidth = PLAYER.PROJECTILE.SIZE * 2;
+        this.ctx.lineCap = 'round';
+
         this.ctx.beginPath();
-        this.ctx.arc(projectile.x, projectile.y, PROJECTILE.SIZE, 0, 2 * Math.PI);
-        this.ctx.fillStyle = PROJECTILE.COLOR;
-        this.ctx.fill();
+        this.ctx.moveTo(backX, backY);
+        this.ctx.lineTo(frontX, frontY);
+        this.ctx.stroke();
+    }
+    //
+    // #endregion
+
+    // #region [ Decals ]
+    //
+    private createDecal(x: number, y: number, decalId: string, params: Decal = DECALS.PROJECTILE): void {
+        if (!this.decalCtx) return;
+
+        // Don't create decals outside canvas bounds
+        if (x < 0 || x > CANVAS.WIDTH || y < 0 || y > CANVAS.HEIGHT) return;
+
+        const numPixels = Math.floor((params.radius * params.radius * Math.PI) * params.density);
+
+        const rgb = hexToRgb(params.color);
+        if (!rgb) {
+            console.error(`Invalid hex color: ${params.color}`);
+            return;
+        }
+
+        this.decalCtx.save();
+        this.decalCtx.globalCompositeOperation = 'source-over';
+
+        // Create scattered decal pixels around impact point
+        for (let i = 0; i < numPixels; i++) {
+            // Random position within decal radius
+            const angle = Math.random() * Math.PI * 2;
+            const distance = Math.random() * params.radius;
+            const pixelX = x + Math.cos(angle) * distance;
+            const pixelY = y + Math.sin(angle) * distance;
+
+            // Skip if outside canvas
+            if (pixelX < 0 || pixelX >= CANVAS.WIDTH || pixelY < 0 || pixelY >= CANVAS.HEIGHT) continue;
+
+            // Random opacity with variation
+            const opacity = params.opacity + (Math.random() - 0.5) * params.variation;
+            const clampedOpacity = Math.max(0.05, Math.min(0.6, opacity));
+
+            // Use custom color from params
+            this.decalCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clampedOpacity})`;
+            this.decalCtx.fillRect(Math.floor(pixelX), Math.floor(pixelY), 1, 1);
+        }
+
+        this.decalCtx.restore();
+
+        // Store decal with params for network sync
+        this.decals.set(decalId, { x, y, params });
+
+        // Send decal to other clients with params
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'add-decal',
+            decalId: decalId,
+            x: x,
+            y: y,
+            params: params
+        }));
+    }
+
+    private applyDecal(x: number, y: number, decalId: string, params: Decal): void {
+        if (!this.decalCtx) return;
+
+        // Don't create duplicate decals
+        if (this.decals.has(decalId)) return;
+
+        // Don't create decals outside canvas bounds
+        if (x < 0 || x > CANVAS.WIDTH || y < 0 || y > CANVAS.HEIGHT) return;
+
+        const numPixels = Math.floor((params.radius * params.radius * Math.PI) * params.density);
+
+        const rgb = hexToRgb(params.color);
+        if (!rgb) {
+            console.error(`Invalid hex color: ${params.color}`);
+            return;
+        }
+
+        this.decalCtx.save();
+        this.decalCtx.globalCompositeOperation = 'source-over';
+
+        // Create scattered decal pixels around impact point
+        for (let i = 0; i < numPixels; i++) {
+            // Random position within decal radius
+            const angle = Math.random() * Math.PI * 2;
+            const distance = Math.random() * params.radius;
+            const pixelX = x + Math.cos(angle) * distance;
+            const pixelY = y + Math.sin(angle) * distance;
+
+            // Skip if outside canvas
+            if (pixelX < 0 || pixelX >= CANVAS.WIDTH || pixelY < 0 || pixelY >= CANVAS.HEIGHT) continue;
+
+            // Random opacity with variation
+            const opacity = params.opacity + (Math.random() - 0.5) * params.variation;
+            const clampedOpacity = Math.max(0.05, Math.min(0.6, opacity));
+
+            // Use custom color from params
+            this.decalCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clampedOpacity})`;
+            this.decalCtx.fillRect(Math.floor(pixelX), Math.floor(pixelY), 1, 1);
+        }
+
+        this.decalCtx.restore();
+
+        // Store decal with params
+        this.decals.set(decalId, { x, y, params });
     }
     //
     // #endregion
@@ -1074,13 +1671,15 @@ class GameClient {
     // #region [ UI ]
     //
     private updateDisplay(target: "lobby" | "room" | "game", roomId?: string): void {
-        if (!this.roomControls || !this.lobbyContainer || !this.gameContainer || !this.chatContainer) return;
+        if (!this.roomControls || !this.lobbyContainer || !this.gameContainer ||
+            !this.chatContainer || !this.leaderboardContainer) return;
 
         // Hide all
         this.roomControls.style.display = "none";
         this.lobbyContainer.style.display = "none";
         this.gameContainer.style.display = "none";
         this.chatContainer.style.display = "none";
+        this.leaderboardContainer.style.display = "none";
 
         switch (target) {
             case "lobby":
@@ -1100,12 +1699,24 @@ class GameClient {
             case "game":
                 this.gameContainer.style.display = "flex";
                 this.chatContainer.style.display = "flex"; // Show chat in game
+                this.leaderboardContainer.style.display = "flex"; // Show leaderboard in game
                 if (roomId) {
                     const gameRoomId = document.getElementById("gameRoomId");
                     if (gameRoomId) gameRoomId.textContent = roomId;
                 }
                 this.inLobby = false;
                 break;
+        }
+    }
+
+    private updateHostDisplay(): void {
+        if (!this.startGameBtn) return;
+
+        this.startGameBtn.style.display = this.isHost ? 'block' : 'none';
+        this.startGameBtn.disabled = this.lobbyPlayers.size < 1;
+
+        if (this.gameOptionsContainer) {
+            this.gameOptionsContainer.style.display = this.isHost ? 'flex' : 'none';
         }
     }
     //

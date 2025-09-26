@@ -23,7 +23,10 @@
     <h2>Neural Network Control Panel</h2>
     <p>Create a session for other hackers to join, or join an ongoing neural link.</p>
     <button id="hostBtn">Host Session</button>
-    <button id="joinBtn">Join Session</button>
+    <div id="joinButtons" class="container row">
+      <button id="joinBtn">Join Session</button>
+      <button id="quickBtn">Quickplay</button>
+    </div>
   </div>
 
   <div id="lobbyContainer" class="container lobby_container" style="display: none;">
@@ -35,12 +38,27 @@
       </div>
     </div>
 
-    <div class="lobby-players">
+    <div class="lobby_players">
       <h4>Players:</h4>
-      <div id="lobbyPlayersList" class="players-list"></div>
+      <div id="lobbyPlayersList" class="players_list"></div>
     </div>
 
-    <button id="startGameBtn" class="start-game-btn" style="display: none;">Start Game</button>
+    <button id="startGameBtn" class="start_game_btn" style="display: none;">Start Game</button>
+
+    <div id="gameOptionsContainer" class="container game_options">
+        <!-- <div class="container row game_option">
+            <span>Private</span>
+            <toggle id="privateToggle" role="switch" aria-checked="false"></toggle>
+        </div>
+        <div class="container row game_option">
+            <span>Wins</span>
+            <input type="number" id="winsInput" min="1" value="5">
+        </div>
+        <div class="container row game_option">
+            <span>Upgrades</span>
+            <toggle id="upgradesToggle" role="switch" aria-checked="true" checked></toggle>
+        </div> -->
+    </div>
   </div>
 
   <div id="gameContainer" class="container game_container" style="display: none;">
@@ -60,12 +78,26 @@
     <canvas id="gameCanvas"></canvas>
   </div>
 
-  <div id="chatContainer" class="chat-container" style="display: none;">
-    <div id="chatMessages" class="chat-messages"></div>
-    <div class="chat-input-row">
-      <input type="text" id="chatInput" class="chat-input" placeholder="Type a message..." maxlength="200">
-      <button id="chatSendBtn" class="chat-send-btn">Send</button>
+  <div id="chatContainer" class="chat_container" style="display: none;">
+    <div id="chatMessages" class="chat_messages"></div>
+    <div class="chat_input_row">
+      <input type="text" id="chatInput" class="chat_input" placeholder="Type a message..." maxlength="200">
+      <button id="chatSendBtn" class="chat_send_btn">Send</button>
     </div>
+  </div>
+
+  <div id="leaderboardContainer" class="leaderboard_container" style="display: none;">
+    <table class="leaderboard_table">
+      <thead>
+        <tr class="leaderboard_header">
+          <th>Player</th>
+          <th>Wins</th>
+          <th>Kills</th>
+          <th>Deaths</th>
+        </tr>
+      </thead>
+      <tbody id="leaderboardBody"></tbody>
+    </table>
   </div>
 
   <script src="/app.js"></script>

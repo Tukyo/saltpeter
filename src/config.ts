@@ -1,16 +1,70 @@
 export const PLAYER = {
+    ATTACK: {
+        BURST: {
+            AMOUNT: 1,
+            DELAY: 75 // ms
+        },
+        MAGAZINE: {
+            SIZE: 10
+        },
+        RELOAD: {
+            TIME: 2000 // ms
+        }
+    },
+    INVENTORY: {
+        AMMO: 0,
+        MAX_AMMO: 50
+    },
     PHYSICS: {
         FRICTION: 0.85,
-        ACCELERATION: 0.55,
-        MAX_SPEED: 8
+        ACCELERATION: 0.55
+    },
+    PROJECTILE: {
+        AMOUNT: 1,
+        COLOR: '#fff5beff',
+        DAMAGE: 25,
+        LENGTH: 15,
+        RANGE: 450,
+        SIZE: 1,
+        SPEED: 20,
+        SPREAD: 0.1
     },
     STATS: {
         HEALTH: 100,
-        SIZE: 15
+        LUCK: 1,
+        SIZE: 15,
+        SPEED: 8,
+        STAMINA: 100
     },
-    BORDER_MARGIN: 15,
-    ID_DISPLAY_OFFSET: 25,
-    STROKE_WIDTH: 3
+    VISUAL: {
+        BORDER_MARGIN: 15,
+        ID_DISPLAY_OFFSET: 25,
+        STROKE_WIDTH: 3
+    }
+};
+
+export const DECALS = {
+    PROJECTILE: {
+        radius: 8,
+        density: 0.35,
+        opacity: 0.25,
+        variation: 0.215,
+        color: "#000000"
+    },
+    BLOOD: {
+        radius: 25,
+        density: 0.125,
+        opacity: 0.275,
+        variation: 0.45,
+        color: "#781414"
+    },
+    EXPLOSION: {
+        radius: 20,
+        density: 0.5,
+        opacity: 0.2,
+        variation: 0.2,
+        color: "#434343"
+    }
 };
 
 export const CANVAS = {
@@ -23,7 +77,10 @@ export const CANVAS = {
 export const GAME = {
     RECONNECT_DELAY: 3000,
     CONNECTION_TIMEOUT: 1000,
-    CONTROLS: ['w', 'a', 's', 'd']
+    CONTROLS: ['w', 'a', 's', 'd', 'r'],
+    MAX_WINS: 5,
+    ROUND_END_DELAY: 3000,
+    GAME_END_DELAY: 5000
 };
 
 export const UI = {
@@ -47,19 +104,3 @@ export const CHAT = {
     MAX_MESSAGES: 100,
     MAX_MESSAGE_LENGTH: 200
 };
-
-export const PROJECTILE = {
-    DAMAGE: 25,
-    SPEED: 8,
-    RANGE: 250,
-    AMOUNT: 1,
-    SPREAD: 0.1,
-    SIZE: 3,
-    COLOR: '#ff4444'
-}
-
-export const ATTACK_PARAMS = {
-    SHOT_DELAY: 500, //ms
-    BURST_AMOUNT: 1,
-    BURST_DELAY: 100 //ms
-}

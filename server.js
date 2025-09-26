@@ -6,8 +6,38 @@ const WebSocket = require("ws");
 // Room management - now includes game state
 const rooms = new Map(); // roomId -> { hostUserId, participants: Set<ws>, gameActive: boolean }
 
+const MAX_PLAYERS = 8;
+
 // Create HTTP server to serve files
 const server = http.createServer((req, res) => {
+  // Handle quickplay endpoint
+  if (req.url === "/quickplay") {
+    const availableRooms = [];
+    
+    rooms.forEach((room, roomId) => {
+      // Only consider rooms in lobby state with available slots
+      if (!room.gameActive && room.participants.size < MAX_PLAYERS) {
+        availableRooms.push({
+          roomId: roomId,
+          playerCount: room.participants.size
+        });
+      }
+    });
+    
+    if (availableRooms.length === 0) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "No available rooms" }));
+      return;
+    }
+    
+    // Pick random room
+    const randomRoom = availableRooms[Math.floor(Math.random() * availableRooms.length)];
+    
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ roomId: randomRoom.roomId }));
+    return;
+  }
+
   // Handle room redirect
   if (req.url && req.url.startsWith("/room_")) {
     const roomId = req.url.split("/")[1]; // remove leading slash

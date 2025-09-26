@@ -18,6 +18,14 @@ export interface Projectile {
   timestamp: number;
 }
 
+export interface Decal {
+    radius: number;
+    density: number;
+    opacity: number;
+    variation: number;
+    color: string;
+}
+
 export interface RoomMessage {
   type: 'join-room' | 'create-room' | 'leave-room' | 'room-message' | 'room-created' | 'room-joined' | 'room-joined-game' | 'room-error' | 'user-joined' | 'user-left';
   roomId?: string;
@@ -32,3 +40,12 @@ export interface LobbyPlayer {
   color: string;
   isHost: boolean;
 }
+
+export interface LeaderboardEntry {
+    playerId: string;
+    kills: number;
+    deaths: number;
+    wins: number;
+}
+
+export type Leaderboard = Map<string, LeaderboardEntry>;
