@@ -13,7 +13,7 @@
   <canvas class='hacker hacker_bars'></canvas>
   <div class="hacker hacker_console"></div>
 
-  <h1>WEB SOCKET</h1>
+  <h1 id="webSocketTitle">WEB SOCKET</h1>
 
   <div class="user_info">
     <strong>Neural ID:</strong> <span id="userId"></span>
@@ -46,15 +46,15 @@
     <button id="startGameBtn" class="start_game_btn" style="display: none;">Start Game</button>
 
     <div id="gameOptionsContainer" class="container game_options">
-        <!-- <div class="container row game_option">
-            <span>Private</span>
-            <toggle id="privateToggle" role="switch" aria-checked="false"></toggle>
-        </div>
-        <div class="container row game_option">
-            <span>Wins</span>
-            <input type="number" id="winsInput" min="1" value="5">
-        </div>
-        <div class="container row game_option">
+      <div class="container row game_option">
+        <span>Private</span>
+        <toggle id="privateToggle" role="switch" aria-checked="false"></toggle>
+      </div>
+      <div class="container row game_option">
+        <span>Wins</span>
+        <input type="number" id="winsInput" min="1" value="5">
+      </div>
+      <!-- <div class="container row game_option">
             <span>Upgrades</span>
             <toggle id="upgradesToggle" role="switch" aria-checked="true" checked></toggle>
         </div> -->
@@ -70,13 +70,50 @@
       </div>
     </div>
 
-    <div class="container controls_info">
-      <div class="controls_item"><strong>Move:</strong> <span class="controls_span">W A S D</span></div>
-      <div class="controls_item"><strong>Shoot: </strong> <span class="controls_span">Left Click</span></div>
-    </div>
-
     <canvas id="gameCanvas"></canvas>
+
+    <div id="hud" class="container">
+      <div id="inventory" class="container">
+        <div id="consumable"></div>
+      </div>
+      <!-- <div id="weaponInfo" class="container">
+        <div id="ammoCount">
+          <span id="currentAmmo">10</span> / <span id="inventoryAmmo">25</span>
+        </div>
+        <div id="reloadBar" class="reload_bar">
+          <div id="reloadFill" class="reload_fill"></div>
+        </div>
+      </div> -->
+      <div id="playerStats" class="container row">
+        <div id="statDamage" class="stat">
+          <span id="damageLabel">Damage:</span>
+          <span id="damageValue">25</span>
+        </div>
+        <div id="statLuck" class="stat">
+          <span id="luckLabel">Luck:</span>
+          <span id="luckValue">1</span>
+        </div>
+        <div id="statRange" class="stat">
+          <span id="rangeLabel">Range:</span>
+          <span id="rangeValue">5</span>
+        </div>
+        <div id="statSpeed" class="stat">
+          <span id="speedLabel">Speed:</span>
+          <span id="speedValue">6</span>
+        </div>
+      </div>
+      <div id="vitals" class="container">
+        <div id="healthBar" class="health_bar">
+          <div id="healthFill" class="health_fill"></div>
+        </div>
+        <div id="staminaBar" class="stamina_bar">
+          <div id="staminaFill" class="stamina_fill"></div>
+        </div>
+      </div>
+    </div>
   </div>
+
+  <div id="upgradeContainer" class="container upgrade_container" style="display: none;"></div>
 
   <div id="chatContainer" class="chat_container" style="display: none;">
     <div id="chatMessages" class="chat_messages"></div>

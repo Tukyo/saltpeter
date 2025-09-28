@@ -6,33 +6,33 @@ const WebSocket = require("ws");
 // Room management - now includes game state
 const rooms = new Map(); // roomId -> { hostUserId, participants: Set<ws>, gameActive: boolean }
 
-const MAX_PLAYERS = 8;
+const MAX_PLAYERS = 8; // TODO: do not hardcode this, sync it with the max players for each individual room 
 
 // Create HTTP server to serve files
 const server = http.createServer((req, res) => {
   // Handle quickplay endpoint
   if (req.url === "/quickplay") {
     const availableRooms = [];
-    
+
     rooms.forEach((room, roomId) => {
       // Only consider rooms in lobby state with available slots
-      if (!room.gameActive && room.participants.size < MAX_PLAYERS) {
+      if (!room.gameActive && !room.isPrivate && room.participants.size < MAX_PLAYERS) {
         availableRooms.push({
           roomId: roomId,
           playerCount: room.participants.size
         });
       }
     });
-    
+
     if (availableRooms.length === 0) {
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "No available rooms" }));
       return;
     }
-    
+
     // Pick random room
     const randomRoom = availableRooms[Math.floor(Math.random() * availableRooms.length)];
-    
+
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ roomId: randomRoom.roomId }));
     return;
@@ -117,10 +117,26 @@ function handleRoomMessage(ws, message) {
       break;
     case 'room-message':
       if (ws.currentRoom === message.roomId) {
-        // Handle special game state messages
+        // Handle special messages
         if (message.message) {
           try {
             const gameData = JSON.parse(message.message);
+
+            // Handle lobby options changes
+            if (gameData.type === 'lobby-options') {
+              const room = rooms.get(message.roomId);
+              if (room && room.hostUserId === message.userId) {
+                if (gameData.privateRoom !== undefined) { //TODO: MAYBE TRACK ROOM MAX PLAYERS HERE?
+                  room.isPrivate = gameData.privateRoom;
+                  console.log(`Room ${message.roomId} privacy changed to: ${room.isPrivate ? 'Private' : 'Public'}`);
+                }
+                if (gameData.maxWins !== undefined) {
+                  room.maxWins = gameData.maxWins;
+                  console.log(`Room ${message.roomId} max wins changed to: ${room.maxWins}`);
+                }
+              }
+            }
+
             if (gameData.type === 'start-game') {
               // Mark room as having active game
               const room = rooms.get(message.roomId);
@@ -133,6 +149,7 @@ function handleRoomMessage(ws, message) {
             // Not JSON, continue normally
           }
         }
+
 
         broadcastToRoom(message.roomId, {
           type: 'room-message',
@@ -158,7 +175,9 @@ function createRoom(ws, roomId, userId) {
   rooms.set(roomId, {
     hostUserId: userId,
     participants: new Set([ws]),
-    gameActive: false // Track game state
+    gameActive: false,
+    isPrivate: false,
+    maxWins: 5
   });
 
   ws.currentRoom = roomId;
@@ -239,7 +258,7 @@ function leaveRoom(ws, roomId) {
     const lastPlayer = Array.from(room.participants)[0];
     room.hostUserId = lastPlayer.userId;
     room.gameActive = false;
-    
+
     broadcastToRoom(roomId, {
       type: 'room-message',
       userId: 'server',
@@ -250,14 +269,14 @@ function leaveRoom(ws, roomId) {
       }),
       roomId: roomId
     }, null);
-    
+
     console.log(`Last player ${lastPlayer.userId} in room ${roomId}, returning to lobby as host`);
-    
+
   } else if (wasHost && room.participants.size > 0) {
     // Host left but others remain - migrate host
     const newHost = Array.from(room.participants)[0];
     room.hostUserId = newHost.userId;
-    
+
     broadcastToRoom(roomId, {
       type: 'room-message',
       userId: 'server',
@@ -268,7 +287,7 @@ function leaveRoom(ws, roomId) {
       }),
       roomId: roomId
     }, null);
-    
+
     console.log(`Host migrated from ${ws.userId} to ${newHost.userId} in room ${roomId}`);
   }
 
@@ -290,10 +309,10 @@ function broadcastToRoom(roomId, message, sender = null) {
 
   room.participants.forEach(client => {
     // Send to all if sender is null, or exclude sender unless it's a promote-player message
-    if (client.readyState === WebSocket.OPEN && 
-        (sender === null || 
-         client !== sender || 
-         message.message?.includes('"type":"promote-player"'))) {
+    if (client.readyState === WebSocket.OPEN &&
+      (sender === null ||
+        client !== sender ||
+        message.message?.includes('"type":"promote-player"'))) {
       client.send(messageStr);
     }
   });

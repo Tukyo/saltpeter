@@ -45,3 +45,70 @@ export function hexToRgb(hex: string): { r: number, g: number, b: number } | nul
         b: parseInt(result[3], 16)
     } : null;
 }
+
+// #region [ UI Utilities ]
+//
+export function setSlider(sliderId: string, targetValue: number, maxValue: number = 100, lerpTime: number = 300): void {
+    const sliderContainer = document.getElementById(sliderId);
+    const sliderFill = sliderContainer?.querySelector('div') as HTMLElement;
+    
+    if (!sliderContainer || !sliderFill) {
+        console.warn(`Slider not found: ${sliderId}`);
+        return;
+    }
+
+    // Clamp target value between 0 and maxValue
+    const clampedTarget = Math.max(0, Math.min(maxValue, targetValue));
+    const targetPercentage = (clampedTarget / maxValue) * 100;
+
+    // Get current width percentage
+    const currentWidthStr = sliderFill.style.width || '100%';
+    const currentPercentage = parseFloat(currentWidthStr.replace('%', ''));
+
+    // If already at target, no animation needed
+    if (Math.abs(currentPercentage - targetPercentage) < 0.1) return;
+
+    // Animate using CSS transition
+    sliderFill.style.transition = `width ${lerpTime}ms ease-out`;
+    sliderFill.style.width = `${targetPercentage}%`;
+
+    // Clear transition after animation completes to avoid interfering with future updates
+    setTimeout(() => {
+        if (sliderFill) {
+            sliderFill.style.transition = '';
+        }
+    }, lerpTime);
+}
+
+export function setHudValue(spanId: string, value: string | number): void {
+    const spanElement = document.getElementById(spanId);
+    
+    if (!spanElement) {
+        console.warn(`HUD element not found: ${spanId}`);
+        return;
+    }
+
+    spanElement.textContent = value.toString();
+}
+
+export function updateToggle(toggleId: string, isChecked: boolean): void {
+    const toggle = document.getElementById(toggleId);
+    if (toggle) {
+        if (isChecked) {
+            toggle.setAttribute('checked', 'true');
+            toggle.setAttribute('aria-checked', 'true');
+        } else {
+            toggle.removeAttribute('checked');
+            toggle.setAttribute('aria-checked', 'false');
+        }
+    }
+}
+
+export function updateInput(inputId: string, value: number): void {
+    const inputElement = document.getElementById(inputId) as HTMLInputElement | null;
+    if (inputElement) {
+        inputElement.value = value.toString();
+    }
+}
+//
+// #endregion
