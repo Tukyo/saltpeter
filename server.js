@@ -6,8 +6,6 @@ const WebSocket = require("ws");
 // Room management - now includes game state
 const rooms = new Map(); // roomId -> { hostUserId, participants: Set<ws>, gameActive: boolean }
 
-const MAX_PLAYERS = 8; // TODO: do not hardcode this, sync it with the max players for each individual room 
-
 // Create HTTP server to serve files
 const server = http.createServer((req, res) => {
   // Handle quickplay endpoint
@@ -16,7 +14,7 @@ const server = http.createServer((req, res) => {
 
     rooms.forEach((room, roomId) => {
       // Only consider rooms in lobby state with available slots
-      if (!room.gameActive && !room.isPrivate && room.participants.size < MAX_PLAYERS) {
+      if (!room.gameActive && !room.isPrivate && room.participants.size < room.maxPlayers) {
         availableRooms.push({
           roomId: roomId,
           playerCount: room.participants.size
@@ -134,6 +132,11 @@ function handleRoomMessage(ws, message) {
                   room.maxWins = gameData.maxWins;
                   console.log(`Room ${message.roomId} max wins changed to: ${room.maxWins}`);
                 }
+
+                if (gameData.maxPlayers !== undefined) {
+                  room.maxPlayers = gameData.maxPlayers;
+                  console.log(`Room ${message.roomId} max players changed to: ${room.maxPlayers}`);
+                }
               }
             }
 
@@ -177,7 +180,8 @@ function createRoom(ws, roomId, userId) {
     participants: new Set([ws]),
     gameActive: false,
     isPrivate: false,
-    maxWins: 5
+    maxWins: 5,
+    maxPlayers: 4
   });
 
   ws.currentRoom = roomId;

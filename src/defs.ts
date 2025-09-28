@@ -4,6 +4,7 @@ export interface Player {
   y: number;
   color: string;
   health: number;
+  rotation?: number;
 }
 
 export interface Projectile {

@@ -64,32 +64,7 @@ export const UPGRADES: Upgrade[] = [
             PLAYER.PROJECTILE.DAMAGE *= 1.05;
             PLAYER.PROJECTILE.SPREAD *= 1.025;
 
-            console.log(`Upgrade taken: Bigger is Better`);
-        }
-    },
-    {
-        id: "bigger_is_worse",
-        name: "Bigger is Worse?",
-        subtitle: "Big boned.",
-        type: UpgradeType.STAT,
-        rarity: UpgradeRarity.COMMON,
-        unique: false,
-        func: () => {
-
-        }
-    },
-    {
-        id: "smaller_is_better",
-        name: "Smaller is Better",
-        subtitle: "Have I always been this small?",
-        type: UpgradeType.STAT,
-        rarity: UpgradeRarity.COMMON,
-        unique: false,
-        func: () => {
-            PLAYER.VISUAL.SIZE *= 0.9;
-            PLAYER.STATS.MAX_HEALTH = Math.max(1, Math.floor(PLAYER.STATS.MAX_HEALTH * 0.95));
-
-            console.log(`Upgrade taken: Smaller is Better`);
+            console.log("[Bigger is Better] - Projectile Changes: ", "Size: ", PLAYER.PROJECTILE.SIZE, "Dmg: ", PLAYER.PROJECTILE.DAMAGE, "Spread: ", PLAYER.PROJECTILE.SPREAD);
         }
     },
     //
@@ -97,17 +72,20 @@ export const UPGRADES: Upgrade[] = [
     //
     // #region [ EQUIPMENT ]
     //
-    // {
-    //     id: "",
-    //     name: "",
-    //     subtitle: "",
-    //     type: UpgradeType.EQUIPMENT,
-    //     rarity: UpgradeRarity.COMMON,
-    //     unique: false,
-    //     func: () => {
+    {
+        id: "neural_target_interface",
+        name: "Neural Target Interface",
+        subtitle: "G.I.M.P. proprietary targeting module.",
+        type: UpgradeType.EQUIPMENT,
+        rarity: UpgradeRarity.UNCOMMON,
+        unique: false,
+        func: () => {
+            PLAYER.EQUIPMENT.CROSSHAIR = true;
+            PLAYER.PROJECTILE.SPREAD *= 0.95;
 
-    //     }
-    // },
+            console.log("[Neural Target Interface] - Crosshair enabled.", "Spread: ", PLAYER.PROJECTILE.SPREAD);
+        }
+    },
     //
     // #endregion
     //

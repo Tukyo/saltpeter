@@ -50,9 +50,15 @@
         <span>Private</span>
         <toggle id="privateToggle" role="switch" aria-checked="false"></toggle>
       </div>
-      <div class="container row game_option">
-        <span>Wins</span>
-        <input type="number" id="winsInput" min="1" value="5">
+      <div class="container game_options_row">
+        <div class="container row game_option">
+          <span>Wins</span>
+          <input type="number" id="winsInput" class="game_option_input" min="1" value="5">
+        </div>
+        <div class="container row game_option">
+          <span>Players</span>
+          <input type="number" id="playersInput" class="game_option_input" min="1" value="4">
+        </div>
       </div>
       <!-- <div class="container row game_option">
             <span>Upgrades</span>
@@ -114,6 +120,8 @@
   </div>
 
   <div id="upgradeContainer" class="container upgrade_container" style="display: none;"></div>
+
+  <div id="crosshair" style="display: none;"></div>
 
   <div id="chatContainer" class="chat_container" style="display: none;">
     <div id="chatMessages" class="chat_messages"></div>

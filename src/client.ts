@@ -3,6 +3,7 @@ import { RoomManager } from './roomManager';
 import { Player, RoomMessage, Projectile, LobbyPlayer, Leaderboard, LeaderboardEntry } from './defs';
 import { PLAYER, CANVAS, GAME, UI, CHAT, DECALS, PARTICLES } from './config';
 import { applyUpgrade, getUpgrades, removeUpgradeFromPool, resetUpgrades, UPGRADES } from './upgrades';
+import { CHARACTER, CharacterLayer, getCharacterAsset } from './char';
 
 class GameClient {
     private ws: WebSocket | null = null;
@@ -29,14 +30,31 @@ class GameClient {
     private chatSendBtn: HTMLButtonElement | null = null;
     private privateToggle: HTMLElement | null = null;
     private winsInput: HTMLInputElement | null = null;
+    private playersInput: HTMLInputElement | null = null;
+    private upgradeContainer: HTMLElement | null = null;
+
+    private crosshair: HTMLElement | null = null;
 
     private myPlayer: Player;
     private playerVelocityX = 0;
     private playerVelocityY = 0;
     private lastSentX = 0;
     private lastSentY = 0;
+    private lastSentRotation = 0;
 
     private defaultPlayerConfig = JSON.parse(JSON.stringify(PLAYER));
+
+    private characterImages: Map<string, HTMLImageElement> = new Map();
+    private characterOffsets: Map<string, { x: number, y: number }> = new Map();
+    private characterAnimations: Map<string, {
+        playerId: string;
+        part: string;
+        partIndex?: number;
+        frames: { [key: number]: { x: number, y: number } };
+        duration: number;
+        startTime: number;
+        originalOffset: { x: number, y: number };
+    }> = new Map();
 
     private players: Map<string, Player> = new Map();
     private lobbyPlayers: Map<string, LobbyPlayer> = new Map();
@@ -66,17 +84,28 @@ class GameClient {
         x: number,
         y: number
     }> = new Map();
+    private emitters: Map<string, {
+        playerId: string;
+        offsetX: number;
+        offsetY: number;
+        direction: number;
+        lifetime: number;
+        age: number;
+        lastEmission: number;
+        emissionInterval: number;
+    }> = new Map();
 
     private keys: Set<string> = new Set();
 
     private gamePaused = false; // Tracks paused state of game
     private gameRunning = false; // Actual websocket connection tracking, deeper than pause
-    private pausedPlayers = new Set<string>();
+    private pausedPlayers = new Set<string>(); // Tracks which players are paused for consensus
 
     private isHost = false;
     private inLobby = false;
     private isPrivateRoom = false;
     private gameMaxWins = GAME.MAX_WINS;
+    private gameMaxPlayers = GAME.MAX_PLAYERS;
 
     // Shooting mechanics
     private canShoot = true;
@@ -85,7 +114,7 @@ class GameClient {
     private currentBurstShot = 0;
     private burstInProgress = false;
     private nextBurstShotTime = 0;
-    private projectileOffset = 5;
+    private projectileOffset = 1.75;
 
     private inventoryAmmo = Math.floor(PLAYER.INVENTORY.MAX_AMMO / 2);
     private currentAmmo = PLAYER.ATTACK.MAGAZINE.SIZE;
@@ -106,8 +135,6 @@ class GameClient {
 
     private leaderboardContainer: HTMLDivElement | null = null;
     private leaderboardBody: HTMLTableSectionElement | null = null;
-
-    private completedUpgrades = new Set<string>();
 
     private leaderboard: Leaderboard = new Map();
     private roundInProgress = false;
@@ -164,6 +191,11 @@ class GameClient {
 
         this.privateToggle = document.getElementById('privateToggle') as HTMLElement;
         this.winsInput = document.getElementById('winsInput') as HTMLInputElement;
+        this.playersInput = document.getElementById('playersInput') as HTMLInputElement;
+
+        this.upgradeContainer = document.getElementById('upgradeContainer') as HTMLElement;
+
+        this.crosshair = document.getElementById('crosshair') as HTMLElement;
 
         this.leaderboardContainer = document.getElementById("leaderboardContainer") as HTMLDivElement;
         this.leaderboardBody = document.getElementById("leaderboardBody") as HTMLTableSectionElement;
@@ -417,6 +449,9 @@ class GameClient {
                         const player = this.players.get(message.userId)!;
                         player.x = gameData.x;
                         player.y = gameData.y;
+                        if (gameData.rotation !== undefined) {
+                            player.rotation = gameData.rotation;
+                        }
                     }
                     break;
                 case 'player-hit':
@@ -540,6 +575,11 @@ class GameClient {
                 case 'upgrade-complete':
                     this.togglePause();
 
+                    // Winner is last paused player
+                    if (this.roundWinner === this.userId && this.pausedPlayers.size === 1) {
+                        this.showWinnerContinueButton();
+                    }
+
                     // If no one is paused anymore, everyone is done - start new round
                     if (this.pausedPlayers.size === 0) {
                         setTimeout(() => {
@@ -581,6 +621,31 @@ class GameClient {
                             gameData.size,
                             gameData.rotation,
                             gameData.torque
+                        );
+                    }
+                    break;
+                case 'particle-emitter':
+                    if (message.userId !== this.userId) {
+                        this.emitters.set(gameData.emitterId, {
+                            playerId: gameData.playerId,
+                            offsetX: gameData.offsetX,
+                            offsetY: gameData.offsetY,
+                            direction: gameData.direction || 0,
+                            lifetime: gameData.lifetime,
+                            age: 0,
+                            lastEmission: 0,
+                            emissionInterval: 200 + Math.random() * 300
+                        });
+                    }
+                    break;
+                case 'character-animation':
+                    if (gameData.playerId !== this.userId) { // Only apply animations from other players
+                        this.animateCharacterPart(
+                            gameData.playerId,
+                            gameData.part,
+                            gameData.frames,
+                            gameData.duration,
+                            gameData.partIndex
                         );
                     }
                     break;
@@ -751,12 +816,11 @@ class GameClient {
     private setupLobbyOptions(): void {
         if (this.privateToggle) {
             this.privateToggle.addEventListener('click', () => {
-                if (!this.isHost) return; // Only host can change options
+                if (!this.isHost) return;
 
                 this.isPrivateRoom = !this.isPrivateRoom;
                 updateToggle('privateToggle', this.isPrivateRoom);
 
-                // Send lobby options update to all clients
                 this.roomManager.sendMessage(JSON.stringify({
                     type: 'lobby-options',
                     privateRoom: this.isPrivateRoom
@@ -768,7 +832,7 @@ class GameClient {
 
         if (this.winsInput) {
             this.winsInput.addEventListener('change', () => {
-                if (!this.isHost) return; // Only host can change options
+                if (!this.isHost) return;
                 if (!this.winsInput) return;
 
                 const newWins = parseInt(this.winsInput.value);
@@ -780,13 +844,35 @@ class GameClient {
                 this.gameMaxWins = newWins;
                 updateInput('winsInput', this.gameMaxWins);
 
-                // Send lobby options update to all clients
                 this.roomManager.sendMessage(JSON.stringify({
                     type: 'lobby-options',
                     maxWins: this.gameMaxWins
                 }));
 
                 console.log(`Game max wins changed to: ${this.gameMaxWins}`);
+            });
+        }
+
+        if (this.playersInput) {
+            this.playersInput.addEventListener('change', () => {
+                if (!this.isHost) return;
+                if (!this.playersInput) return;
+
+                const newPlayers = parseInt(this.playersInput.value);
+                if (isNaN(newPlayers) || newPlayers < 1) {
+                    this.playersInput.value = this.gameMaxPlayers.toString();
+                    return;
+                }
+
+                this.gameMaxPlayers = newPlayers;
+                updateInput('playersInput', this.gameMaxPlayers);
+
+                this.roomManager.sendMessage(JSON.stringify({
+                    type: 'lobby-options',
+                    maxPlayers: this.gameMaxPlayers
+                }));
+
+                console.log(`Game max players changed to: ${this.gameMaxPlayers}`);
             });
         }
     }
@@ -804,6 +890,13 @@ class GameClient {
             updateInput('winsInput', this.gameMaxWins);
             console.log(`Game max wins synced to: ${this.gameMaxWins}`);
         }
+
+        if (options.maxPlayers !== undefined) {
+            this.gameMaxPlayers = options.maxPlayers;
+            updateInput('playersInput', this.gameMaxPlayers);
+            console.log(`Game max players synced to: ${this.gameMaxPlayers}`);
+        }
+
         // if (options.upgradesEnabled !== undefined) { ... }
     }
 
@@ -1128,7 +1221,7 @@ class GameClient {
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.gameRunning && !this.inLobby) {
                 e.preventDefault();
-                this.togglePause();
+                // Use this to test stuff
             }
         });
 
@@ -1207,7 +1300,34 @@ class GameClient {
     private onMouseMove(e: MouseEvent): void {
         if (this.chatInput === document.activeElement) return;
         if (!this.gameRunning || this.gamePaused) return;
+
         this.updateMousePosition(e);
+
+        // Calculate rotation based on mouse position
+        const dx = this.mouseX - this.myPlayer.x;
+        const dy = this.mouseY - this.myPlayer.y;
+        const rotation = Math.atan2(dy, dx) + Math.PI / 2;
+
+        // Rotate my character
+        this.rotateCharacterPart(this.userId, rotation);
+
+        // Send rotation update if it changed significantly (avoid spamming)
+        const rotationDiff = Math.abs(rotation - this.lastSentRotation);
+        if (rotationDiff > 0.1) {
+            this.roomManager.sendMessage(JSON.stringify({
+                type: 'player-move',
+                x: this.myPlayer.x,
+                y: this.myPlayer.y,
+                rotation: this.myPlayer.rotation
+            }));
+
+            this.lastSentRotation = rotation;
+        }
+
+        if (this.crosshair && PLAYER.EQUIPMENT.CROSSHAIR) {
+            this.crosshair.style.left = `${e.clientX}px`;
+            this.crosshair.style.top = `${e.clientY}px`;
+        }
     }
 
     private updateMousePosition(e: MouseEvent): void {
@@ -1305,7 +1425,6 @@ class GameClient {
         console.log(`Fired shot! Magazine: ${this.currentAmmo}/${PLAYER.ATTACK.MAGAZINE.SIZE}, Inventory: ${this.inventoryAmmo}/${PLAYER.INVENTORY.MAX_AMMO}`);
     }
 
-
     private launchProjectile(): void {
         const dx = this.mouseX - this.myPlayer.x;
         const dy = this.mouseY - this.myPlayer.y;
@@ -1316,16 +1435,23 @@ class GameClient {
         const dirX = dx / distance;
         const dirY = dy / distance;
 
+        // Animate weapon slide (glock_slide.png is index 1 in the WEAPON.GLOCK array)
+        this.animateCharacterPart(this.userId, 'WEAPON', {
+            0: { x: 0, y: 0 },    // Start position
+            0.5: { x: 0, y: 25 }, // Pull back slide
+            1: { x: 0, y: 0 }     // Return to start
+        }, 175, 1);
+
         this.createParticles(
-            this.myPlayer.x + dirX * (PLAYER.VISUAL.SIZE + 5),
-            this.myPlayer.y + dirY * (PLAYER.VISUAL.SIZE + 5),
+            this.myPlayer.x + dirX * (PLAYER.VISUAL.SIZE / 1.425),
+            this.myPlayer.y + dirY * (PLAYER.VISUAL.SIZE / 1.425),
             `muzzle_${Date.now()}`,
             PARTICLES.MUZZLE_FLASH,
             { x: dirX, y: dirY }
         );
 
         // Calculate spawn offset to prevent immediate collision
-        const spawnOffset = PLAYER.VISUAL.SIZE + PLAYER.PROJECTILE.SIZE + this.projectileOffset;
+        const spawnOffset = ((PLAYER.VISUAL.SIZE + PLAYER.PROJECTILE.SIZE) / 2) + this.projectileOffset;
         const bulletSpawnX = this.myPlayer.x + dirX * spawnOffset;
         const bulletSpawnY = this.myPlayer.y + dirY * spawnOffset;
         const rightX = -dirY;
@@ -1386,7 +1512,7 @@ class GameClient {
                 const dy = projectile.y - this.myPlayer.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
 
-                if (distance <= PLAYER.VISUAL.SIZE + PLAYER.PROJECTILE.SIZE) {
+                if (distance <= (PLAYER.VISUAL.SIZE + PLAYER.PROJECTILE.SIZE) / 2) {
                     this.myPlayer.health -= PLAYER.PROJECTILE.DAMAGE;
                     setSlider('healthBar', this.myPlayer.health, PLAYER.STATS.MAX_HEALTH);
 
@@ -1400,6 +1526,7 @@ class GameClient {
                         y: -projectile.velocityY / Math.sqrt(projectile.velocityX ** 2 + projectile.velocityY ** 2)
                     };
                     this.createParticles(projectile.x, projectile.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
+                    this.createEmitter(this.userId, projectile.x, projectile.y);
 
                     // Notify everyone I was hit
                     this.roomManager.sendMessage(JSON.stringify({
@@ -1428,7 +1555,7 @@ class GameClient {
                         const dy2 = projectile.y - player.y;
                         const distance2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
 
-                        if (distance2 <= PLAYER.VISUAL.SIZE + PLAYER.PROJECTILE.SIZE) {
+                        if (distance2 <= (PLAYER.VISUAL.SIZE + PLAYER.PROJECTILE.SIZE) / 2) {
                             // Hit another player!
                             projectilesToRemove.push(id);
 
@@ -1444,6 +1571,7 @@ class GameClient {
                                 y: -projectile.velocityY / Math.sqrt(projectile.velocityX ** 2 + projectile.velocityY ** 2)
                             };
                             this.createParticles(projectile.x, projectile.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
+                            this.createEmitter(playerId, projectile.x, projectile.y);
 
                             // If they died, I get a kill
                             if (newHealth <= 0) {
@@ -1568,11 +1696,13 @@ class GameClient {
                 this.roomManager.sendMessage(JSON.stringify({
                     type: 'player-move',
                     x: this.myPlayer.x,
-                    y: this.myPlayer.y
+                    y: this.myPlayer.y,
+                    rotation: this.myPlayer.rotation
                 }));
 
                 this.lastSentX = this.myPlayer.x;
                 this.lastSentY = this.myPlayer.y;
+                this.lastSentRotation = this.myPlayer.rotation || 0;
             }
 
             return; // Exit early, skip normal movement
@@ -1643,15 +1773,25 @@ class GameClient {
             this.roomManager.sendMessage(JSON.stringify({
                 type: 'player-move',
                 x: this.myPlayer.x,
-                y: this.myPlayer.y
+                y: this.myPlayer.y,
+                rotation: this.myPlayer.rotation
             }));
 
             this.lastSentX = this.myPlayer.x;
             this.lastSentY = this.myPlayer.y;
+            this.lastSentRotation = this.myPlayer.rotation || 0;
         }
 
         if (Math.abs(this.playerVelocityX) < 0.01) this.playerVelocityX = 0;
         if (Math.abs(this.playerVelocityY) < 0.01) this.playerVelocityY = 0;
+    }
+
+    private rotateCharacterPart(playerId: string, rotation: number): void {
+        if (playerId === this.userId) {
+            this.myPlayer.rotation = rotation;
+        } else if (this.players.has(playerId)) {
+            this.players.get(playerId)!.rotation = rotation;
+        }
     }
 
     private recordDeath(): void {
@@ -1665,6 +1805,11 @@ class GameClient {
 
     private resetPlayerConfig(): void {
         Object.assign(PLAYER, JSON.parse(JSON.stringify(this.defaultPlayerConfig)));
+
+        if (this.crosshair) {
+            this.toggleCrosshair();
+        }
+
         console.log('Player config reset to defaults');
     }
 
@@ -1837,6 +1982,8 @@ class GameClient {
         this.updateAttack();
         this.updateProjectiles();
         this.updateParticles();
+        this.updateEmitters();
+        this.updateCharacterAnimations();
 
         setSlider('staminaBar', this.currentStamina, PLAYER.STATS.MAX_STAMINA);
 
@@ -1860,10 +2007,10 @@ class GameClient {
 
         // Draw other players
         this.players.forEach(player => {
-            this.drawPlayer(player);
+            this.drawCharacter(player);
         });
 
-        this.drawPlayer(this.myPlayer, true);
+        this.drawCharacter(this.myPlayer, true);
         this.drawParticles();
 
         // Continue game loop
@@ -1917,6 +2064,9 @@ class GameClient {
         this.updatePauseState();
     }
 
+    /**
+     * DO NOT CALL THIS FUNCTION - CALL togglePause();
+     */
     private updatePauseState(): void {
         const shouldPause = this.pausedPlayers.size > 0;
 
@@ -1935,14 +2085,7 @@ class GameClient {
     //
     private startUpgradePhase(winnerId: string | null): void {
         console.log('Starting upgrade phase...');
-
-        // Force everyone to pause for upgrade selection
-        this.pausedPlayers.add(this.userId);
-        this.roomManager.sendMessage(JSON.stringify({
-            type: 'player-pause',
-            userId: this.userId
-        }));
-        this.updatePauseState();
+        this.togglePause();
 
         // Show upgrade UI based on if I won or lost
         if (winnerId === this.userId) {
@@ -1953,37 +2096,50 @@ class GameClient {
     }
 
     private showWinnerWaitScreen(): void {
-        const upgradeContainer = document.getElementById('upgradeContainer');
-        if (!upgradeContainer) return;
+        if (!this.upgradeContainer) return;
 
-        upgradeContainer.innerHTML = '';
+        this.upgradeContainer.innerHTML = '';
 
         const waitingDiv = document.createElement('div');
         waitingDiv.className = 'upgrade_waiting';
-        waitingDiv.textContent = 'You won! Other players are selecting upgrades...';
+        waitingDiv.textContent = 'Waiting for other players...';
+
+        this.upgradeContainer.appendChild(waitingDiv);
+        this.upgradeContainer.style.display = 'flex';
+    }
+
+    private showWinnerContinueButton(): void {
+        if (!this.upgradeContainer) return;
+
+        // Clear existing content
+        this.upgradeContainer.innerHTML = '';
+
+        const waitingDiv = document.createElement('div');
+        waitingDiv.className = 'upgrade_waiting';
+        waitingDiv.textContent = 'Upgrade phase complete.';
 
         const continueBtn = document.createElement('button');
-        continueBtn.textContent = 'Continue to Next Round';
+        continueBtn.textContent = 'Continue';
         continueBtn.onclick = () => {
+            if (!this.upgradeContainer) return;
             console.log("Winner pressed continue...");
-            // Hide UI and signal completion
-            upgradeContainer.style.display = 'none';
+
+            this.upgradeContainer.style.display = 'none';
             this.roomManager.sendMessage(JSON.stringify({
                 type: 'upgrade-complete',
                 userId: this.userId
             }));
         };
 
-        upgradeContainer.appendChild(waitingDiv);
-        upgradeContainer.appendChild(continueBtn);
-        upgradeContainer.style.display = 'flex';
+        this.upgradeContainer.appendChild(waitingDiv);
+        this.upgradeContainer.appendChild(continueBtn);
+        this.upgradeContainer.style.display = 'flex';
     }
 
     private showUpgradeSelection(): void {
-        const upgradeContainer = document.getElementById('upgradeContainer');
-        if (!upgradeContainer) return;
+        if (!this.upgradeContainer) return;
 
-        upgradeContainer.innerHTML = '';
+        this.upgradeContainer.innerHTML = '';
 
         // Get 3 random upgrades
         const availableUpgrades = getUpgrades(3);
@@ -2005,21 +2161,26 @@ class GameClient {
             upgradeDiv.appendChild(subtitleDiv);
 
             upgradeDiv.addEventListener('click', () => {
+                console.log("Selected upgrade: ", upgrade.name);
                 this.selectUpgrade(upgrade.id);
             });
 
-            upgradeContainer.appendChild(upgradeDiv);
+            if (!this.upgradeContainer) return;
+            this.upgradeContainer.appendChild(upgradeDiv);
         });
 
-        upgradeContainer.style.display = 'flex';
+        this.upgradeContainer.style.display = 'flex';
     }
 
     private selectUpgrade(upgradeId: string): void {
-        // Apply upgrade locally
         const success = applyUpgrade(upgradeId);
         if (!success) {
             console.error('Failed to apply upgrade');
             return;
+        }
+
+        if (upgradeId === 'neural_target_interface') {
+            this.toggleCrosshair();
         }
 
         // Notify others about upgrade taken
@@ -2043,6 +2204,18 @@ class GameClient {
         }));
 
         console.log('Upgrade selected, waiting for others...');
+    }
+
+    public toggleCrosshair(): void {
+        if (!this.crosshair) return;
+
+        if (PLAYER.EQUIPMENT.CROSSHAIR) {
+            this.crosshair.style.display = 'block';
+            console.log('Crosshair enabled');
+        } else {
+            this.crosshair.style.display = 'none';
+            console.log('Crosshair disabled');
+        }
     }
     //
     // #endregion
@@ -2159,22 +2332,20 @@ class GameClient {
 
     // #region [ Rendering ]
     //
-    private drawPlayer(player: Player, isMe: boolean = false): void {
+    private drawCharacter(player: Player, isMe: boolean = false): void {
         if (!this.ctx) return;
         if (player.health <= 0) return;
 
-        this.ctx.beginPath();
-        this.ctx.arc(player.x, player.y, PLAYER.VISUAL.SIZE, 0, 2 * Math.PI);
-        this.ctx.fillStyle = player.color;
-        this.ctx.fill();
+        // For now, use default character config - later this will be per-player
+        const characterConfig = CHARACTER;
 
-        if (isMe) {
-            this.ctx.strokeStyle = UI.TEXT_COLOR;
-            this.ctx.lineWidth = PLAYER.VISUAL.STROKE_WIDTH;
-            this.ctx.stroke();
-        }
+        // Render layers in order: BODY → WEAPON → HEAD → HEADWEAR
+        this.drawCharacterLayer(player, 'BODY', characterConfig.body);
+        this.drawCharacterLayer(player, 'WEAPON', characterConfig.weapon);
+        this.drawCharacterLayer(player, 'HEAD', characterConfig.head);
+        this.drawCharacterLayer(player, 'HEADWEAR', characterConfig.headwear);
 
-        // Draw player info
+        // Draw player name/info (existing code)
         this.ctx.fillStyle = UI.TEXT_COLOR;
         this.ctx.font = UI.FONT;
         this.ctx.textAlign = 'center';
@@ -2185,6 +2356,71 @@ class GameClient {
             player.x,
             player.y - PLAYER.VISUAL.ID_DISPLAY_OFFSET
         );
+    }
+
+    private drawCharacterLayer(player: Player, layer: CharacterLayer, variant: string): void {
+        if (!this.ctx) return;
+
+        const assets = getCharacterAsset(layer, variant);
+
+        if (typeof assets === 'string') {
+            this.drawCharacterPart(player, assets, layer);
+        }
+        else if (Array.isArray(assets)) {
+            assets.forEach((assetPath, index) => {
+                this.drawCharacterPart(player, assetPath, layer, index);
+            });
+        }
+    }
+
+    private drawCharacterPart(player: Player, assetPath: string, partType: CharacterLayer, partIndex?: number): void {
+        if (!this.ctx) return;
+
+        let image = this.characterImages.get(assetPath);
+
+        if (!image) {
+            image = new Image();
+            image.src = assetPath;
+            this.characterImages.set(assetPath, image);
+            if (!image.complete) return;
+        }
+
+        if (!image.complete || image.naturalWidth === 0) return;
+
+        const drawSize = PLAYER.VISUAL.SIZE * 2;
+
+        // Check for animation offset
+        const animationId = `${player.id}_${partType}_${partIndex || 0}`;
+        const animationOffset = this.characterOffsets?.get(animationId) || { x: 0, y: 0 };
+
+        this.ctx.save();
+
+        // Apply rotation if it exists
+        if (player.rotation !== undefined) {
+            this.ctx.translate(player.x, player.y);
+            this.ctx.rotate(player.rotation);
+
+            // Apply animation offset
+            this.ctx.translate(animationOffset.x, animationOffset.y);
+
+            this.ctx.drawImage(
+                image,
+                -drawSize / 2,
+                -drawSize / 2,
+                drawSize,
+                drawSize
+            );
+        } else {
+            this.ctx.drawImage(
+                image,
+                player.x - drawSize / 2 + animationOffset.x,
+                player.y - drawSize / 2 + animationOffset.y,
+                drawSize,
+                drawSize
+            );
+        }
+
+        this.ctx.restore();
     }
 
     private drawProjectile(projectile: Projectile): void {
@@ -2238,6 +2474,90 @@ class GameClient {
             this.ctx.restore();
         });
     }
+    //
+    // #endregion
+
+    // #region [ Animation ]
+    //
+    private animateCharacterPart(playerId: string, part: string, frames: { [key: number]: { x: number, y: number } }, duration: number, partIndex?: number): void {
+        const animationId = `${playerId}_${part}_${partIndex || 0}`;
+
+        this.characterAnimations.set(animationId, {
+            playerId: playerId,
+            part: part,
+            partIndex: partIndex,
+            frames: frames,
+            duration: duration,
+            startTime: Date.now(),
+            originalOffset: { x: 0, y: 0 }
+        });
+
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'character-animation',
+            playerId: playerId,
+            part: part,
+            partIndex: partIndex,
+            frames: frames,
+            duration: duration
+        }));
+    }
+
+    // Add to gameLoop update section (around line 1925, after updateParticles)
+    private updateCharacterAnimations(): void {
+        const animationsToRemove: string[] = [];
+        const currentTime = Date.now();
+
+        this.characterAnimations.forEach((animation, animationId) => {
+            const elapsed = currentTime - animation.startTime;
+            const progress = elapsed / animation.duration;
+
+            if (progress >= 1) {
+                // Animation complete, remove it
+                animationsToRemove.push(animationId);
+                return;
+            }
+
+            // Find current keyframe
+            const frameKeys = Object.keys(animation.frames).map(Number).sort((a, b) => a - b);
+            let currentFrameIndex = 0;
+
+            for (let i = 0; i < frameKeys.length - 1; i++) {
+                const frameProgress = frameKeys[i];
+                const nextFrameProgress = frameKeys[i + 1];
+
+                if (progress >= frameProgress && progress < nextFrameProgress) {
+                    currentFrameIndex = i;
+                    break;
+                }
+            }
+
+            // Get current and next frame
+            const currentFrame = animation.frames[frameKeys[currentFrameIndex]];
+            const nextFrame = animation.frames[frameKeys[currentFrameIndex + 1]] || currentFrame;
+
+            // Calculate lerp between frames
+            const frameProgress = (progress - frameKeys[currentFrameIndex]) / (frameKeys[currentFrameIndex + 1] - frameKeys[currentFrameIndex]) || 0;
+
+            const lerpedX = currentFrame.x + (nextFrame.x - currentFrame.x) * frameProgress;
+            const lerpedY = currentFrame.y + (nextFrame.y - currentFrame.y) * frameProgress;
+
+            // Store the animation offset (will be used in drawCharacterPart)
+            if (!this.characterOffsets) {
+                this.characterOffsets = new Map();
+            }
+
+            this.characterOffsets.set(animationId, { x: lerpedX, y: lerpedY });
+        });
+
+        // Remove completed animations
+        animationsToRemove.forEach(id => {
+            this.characterAnimations.delete(id);
+            if (this.characterOffsets) {
+                this.characterOffsets.delete(id);
+            }
+        });
+    }
+
     //
     // #endregion
 
@@ -2590,11 +2910,108 @@ class GameClient {
         this.decalCtx.restore();
         this.decals.set(stampId, { x, y, params: null });
     }
+
+    private createEmitter(playerId: string, hitX: number, hitY: number): void {
+        const player = playerId === this.userId ? this.myPlayer : this.players.get(playerId);
+        if (!player) return;
+
+        // Calculate offset from player center
+        const offsetX = hitX - player.x;
+        const offsetY = hitY - player.y;
+
+        // Calculate spray direction (away from player center towards hit point)
+        const sprayAngle = Math.atan2(offsetY, offsetX);
+
+        const emitterId = `particle_emitter_${playerId}_${Date.now()}`;
+        const emitterLifetime = 1000 + Math.random() * 2000;
+
+        this.emitters.set(emitterId, {
+            playerId: playerId,
+            offsetX: offsetX,
+            offsetY: offsetY,
+            direction: sprayAngle, // Add spray direction
+            lifetime: emitterLifetime,
+            age: 0,
+            lastEmission: 0,
+            emissionInterval: 200 + Math.random() * 300
+        });
+
+        // Broadcast to other clients with spray direction
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'particle-emitter',
+            emitterId: emitterId,
+            playerId: playerId,
+            offsetX: offsetX,
+            offsetY: offsetY,
+            sprayDirection: sprayAngle, // Include spray direction
+            lifetime: emitterLifetime
+        }));
+
+        console.log(`Emitter created on ${playerId} for ${emitterLifetime}ms`);
+    }
+
+    // Update the updateEmitters method (around line 2946)
+    private updateEmitters(): void {
+        const emittersToRemove: string[] = [];
+
+        this.emitters.forEach((emitter, emitterId) => {
+            emitter.age += 16; // 60fps frame time
+
+            const player = emitter.playerId === this.userId ? this.myPlayer : this.players.get(emitter.playerId);
+            if (!player || player.health <= 0) {
+                emittersToRemove.push(emitterId);
+                return;
+            }
+
+            // Calculate current world position
+            const worldX = player.x + emitter.offsetX;
+            const worldY = player.y + emitter.offsetY;
+
+            // Emit directional blood splatters
+            if (emitter.age >= emitter.lastEmission + emitter.emissionInterval) {
+                // Create directional spray with cone spread
+                const coneSpread = Math.PI * 0.6; // 108 degree cone
+                const randomSpread = (Math.random() - 0.5) * coneSpread;
+                const splatAngle = emitter.direction + randomSpread;
+
+                // Variable speed for more natural spray
+                const baseSpeed = 3;
+                const speedVariation = (Math.random() - 0.5) * 4; // -2 to +2
+                const splatSpeed = Math.max(0.5, baseSpeed + speedVariation);
+
+                this.createParticles(
+                    worldX + (Math.random() - 0.5) * 8, // Small random spawn offset
+                    worldY + (Math.random() - 0.5) * 8,
+                    `blood_splatter_${emitterId}_${emitter.age}`,
+                    PARTICLES.BLOOD_DRIP,
+                    {
+                        x: Math.cos(splatAngle) * splatSpeed,
+                        y: Math.sin(splatAngle) * splatSpeed
+                    }
+                );
+
+                emitter.lastEmission = emitter.age;
+                emitter.emissionInterval = 120 + Math.random() * 180; // More consistent timing
+            }
+
+            // Remove expired emitters
+            if (emitter.age >= emitter.lifetime) {
+                // Create permanent blood pool on ground
+                this.createDecal(worldX, worldY, `blood_pool_${emitterId}`, DECALS.BLOOD);
+                emittersToRemove.push(emitterId);
+            }
+        });
+
+        emittersToRemove.forEach(id => this.emitters.delete(id));
+    }
     //
     // #endregion
 
     // #region [ UI ]
     //
+    /**
+     * Updates the display based on the current state.
+     */
     private updateDisplay(target: "lobby" | "room" | "game", roomId?: string): void {
         if (!this.roomControls || !this.lobbyContainer || !this.gameContainer ||
             !this.chatContainer || !this.leaderboardContainer) return;
@@ -2634,15 +3051,16 @@ class GameClient {
         }
     }
 
+    /**
+     * Shows host controls when called.
+     */
     private updateHostDisplay(): void {
-        if (!this.startGameBtn) return;
+        if (!this.startGameBtn || !this.gameOptionsContainer) return;
 
         this.startGameBtn.style.display = this.isHost ? 'block' : 'none';
         this.startGameBtn.disabled = this.lobbyPlayers.size < 1;
 
-        if (this.gameOptionsContainer) {
-            this.gameOptionsContainer.style.display = this.isHost ? 'flex' : 'none';
-        }
+        this.gameOptionsContainer.style.display = this.isHost ? 'flex' : 'none';
     }
     //
     // #endregion

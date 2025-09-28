@@ -17,6 +17,12 @@ export const PLAYER = {
         MULTIPLIER: 3,
         DRAIN: 40 // per dash
     },
+    DATA: {
+        ID_LENGTH: 12
+    },
+    EQUIPMENT: {
+        CROSSHAIR: false,
+    },
     INVENTORY: {
         AMMO: 0,
         MAX_AMMO: 50
@@ -52,7 +58,7 @@ export const PLAYER = {
     VISUAL: {
         BORDER_MARGIN: 15,
         ID_DISPLAY_OFFSET: 25,
-        SIZE: 15,
+        SIZE: 50,
         STROKE_WIDTH: 3
     }
 };
@@ -109,6 +115,70 @@ export const DECALS = {
 };
 
 export const PARTICLES = {
+    BLOOD_DRIP: {
+        COUNT: {
+            MIN: 1,
+            MAX: 4
+        },
+        LIFETIME: {
+            MIN: 800,
+            MAX: 1000
+        },
+        OPACITY: {
+            MIN: 0.25,
+            MAX: 0.75
+        },
+        SPEED: {
+            MIN: 0.25,
+            MAX: 0.75
+        },
+        SIZE: {
+            MIN: 0.125,
+            MAX: 2.275
+        },
+        TORQUE: {
+            MIN: -720,
+            MAX: 720
+        },
+        COLLIDE: true,
+        FADE: true,
+        PAINT: false,
+        SPREAD: 0.25,
+        STAIN: true,
+        COLOR: "#8b1a1a"
+    },
+    BLOOD_SPRAY: {
+        COUNT: {
+            MIN: 4,
+            MAX: 12
+        },
+        LIFETIME: {
+            MIN: 150,
+            MAX: 1200
+        },
+        OPACITY: {
+            MIN: 0.425,
+            MAX: 0.775
+        },
+        SPEED: {
+            MIN: 1.5,
+            MAX: 4.75
+        },
+        SIZE: {
+            MIN: 0.75,
+            MAX: 3.5
+        },
+        TORQUE: {
+            MIN: -720,
+            MAX: 720
+        },
+        COLLIDE: true,
+        FADE: false,
+        PAINT: true,
+        SPREAD: 0.425,
+        STAIN: true,
+        COLOR: "#8b1a1a"
+    },
     MUZZLE_FLASH: {
         COUNT: {
             MIN: 8,
@@ -140,38 +210,6 @@ export const PARTICLES = {
         SPREAD: 0.6,
         STAIN: false,
         COLOR: "#ffaa00"
-    },
-    BLOOD_SPRAY: {
-        COUNT: {
-            MIN: 4,
-            MAX: 12
-        },
-        LIFETIME: {
-            MIN: 150,
-            MAX: 500
-        },
-        OPACITY: {
-            MIN: 0.225,
-            MAX: 0.775
-        },
-        SPEED: {
-            MIN: 3,
-            MAX: 7
-        },
-        SIZE: {
-            MIN: 0.75,
-            MAX: 3
-        },
-        TORQUE: {
-            MIN: -720,
-            MAX: 720
-        },
-        COLLIDE: true,
-        FADE: false,
-        PAINT: true,
-        SPREAD: 0.425,
-        STAIN: true,
-        COLOR: "#8b1a1a"
     },
     SHELL_CASING: {
         COUNT: {
@@ -219,7 +257,7 @@ export const GAME = {
     CONNECTION_TIMEOUT: 1000,
     KEYBINDS: {
         MOVE_UP: 'w',
-        MOVE_LEFT: 'a', 
+        MOVE_LEFT: 'a',
         MOVE_DOWN: 's',
         MOVE_RIGHT: 'd',
         RELOAD: 'r',
@@ -227,6 +265,7 @@ export const GAME = {
         ATTACK: 'mouse1',
         DASH: ' '
     },
+    MAX_PLAYERS: 4,
     MAX_WINS: 5,
     ROUND_END_DELAY: 3000,
     GAME_END_DELAY: 5000
@@ -240,13 +279,7 @@ export const UI = {
 
 export const ROOM = {
     ID_PREFIX: 'room_',
-    ID_LENGTH: 10,
-    USER_ID_LENGTH: 12
-};
-
-export const LOBBY = {
-    MAX_PLAYERS: 8,
-    HOST_CONTROLS: true
+    ID_LENGTH: 10
 };
 
 export const CHAT = {
