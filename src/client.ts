@@ -1,9 +1,9 @@
 import { generateUID, getRoomIdFromURL, getRandomColor, hexToRgb, setSlider, updateToggle, updateInput } from './utils';
 import { RoomManager } from './roomManager';
-import { Player, RoomMessage, Projectile, LobbyPlayer, Leaderboard, LeaderboardEntry } from './defs';
+import { Player, RoomMessage, Projectile, LobbyPlayer, Leaderboard, LeaderboardEntry, AmmoBox } from './defs';
 import { PLAYER, CANVAS, GAME, UI, CHAT, DECALS, PARTICLES } from './config';
 import { applyUpgrade, getUpgrades, removeUpgradeFromPool, resetUpgrades, UPGRADES } from './upgrades';
-import { CHARACTER, CharacterLayer, getCharacterAsset } from './char';
+import { CHARACTER, CHARACTER_DECALS, CharacterLayer, getCharacterAsset } from './char';
 
 class GameClient {
     private ws: WebSocket | null = null;
@@ -29,13 +29,17 @@ class GameClient {
     private chatInput: HTMLInputElement | null = null;
     private chatSendBtn: HTMLButtonElement | null = null;
     private privateToggle: HTMLElement | null = null;
+    private upgradesToggle: HTMLElement | null = null;
     private winsInput: HTMLInputElement | null = null;
     private playersInput: HTMLInputElement | null = null;
     private upgradeContainer: HTMLElement | null = null;
 
     private crosshair: HTMLElement | null = null;
 
-    private myPlayer: Player;
+    private myPlayer: Player; // My player object
+    private players: Map<string, Player> = new Map(); // Other player objects
+    private lobbyPlayers: Map<string, LobbyPlayer> = new Map();
+
     private playerVelocityX = 0;
     private playerVelocityY = 0;
     private lastSentX = 0;
@@ -56,9 +60,6 @@ class GameClient {
         originalOffset: { x: number, y: number };
     }> = new Map();
 
-    private players: Map<string, Player> = new Map();
-    private lobbyPlayers: Map<string, LobbyPlayer> = new Map();
-    private projectiles: Map<string, Projectile> = new Map();
     private decals: Map<string, {
         params: typeof DECALS[keyof typeof DECALS] | null,
         x: number,
@@ -95,6 +96,9 @@ class GameClient {
         emissionInterval: number;
     }> = new Map();
 
+    private projectiles: Map<string, Projectile> = new Map();
+    private ammoBoxes: Map<string, AmmoBox> = new Map();
+
     private keys: Set<string> = new Set();
 
     private gamePaused = false; // Tracks paused state of game
@@ -104,6 +108,7 @@ class GameClient {
     private isHost = false;
     private inLobby = false;
     private isPrivateRoom = false;
+    private isUpgradesEnabled = true;
     private gameMaxWins = GAME.MAX_WINS;
     private gameMaxPlayers = GAME.MAX_PLAYERS;
 
@@ -190,6 +195,7 @@ class GameClient {
         this.chatSendBtn = document.getElementById("chatSendBtn") as HTMLButtonElement;
 
         this.privateToggle = document.getElementById('privateToggle') as HTMLElement;
+        this.upgradesToggle = document.getElementById('upgradesToggle') as HTMLElement;
         this.winsInput = document.getElementById('winsInput') as HTMLInputElement;
         this.playersInput = document.getElementById('playersInput') as HTMLInputElement;
 
@@ -200,8 +206,8 @@ class GameClient {
         this.leaderboardContainer = document.getElementById("leaderboardContainer") as HTMLDivElement;
         this.leaderboardBody = document.getElementById("leaderboardBody") as HTMLTableSectionElement;
 
-        if (!this.canvas || !this.decalCanvas || !this.roomControls || !this.gameContainer || !this.lobbyContainer ||
-            !this.userIdDisplay || !this.roomIdDisplay || !this.lobbyPlayersList || !this.startGameBtn ||
+        if (!this.canvas || !this.decalCanvas || !this.roomControls || !this.gameContainer ||
+            !this.lobbyContainer || !this.userIdDisplay || !this.roomIdDisplay || !this.lobbyPlayersList || !this.startGameBtn ||
             !this.gameOptionsContainer || !this.chatContainer || !this.chatMessages || !this.chatInput ||
             !this.chatSendBtn || !this.leaderboardContainer || !this.leaderboardBody) {
             console.error('Some required DOM elements are missing');
@@ -489,6 +495,26 @@ class GameClient {
                     break;
                 case 'player-death':
                     // TODO Death processing
+                    if (message.userId !== this.userId && gameData.ammoBox) {
+                        this.ammoBoxes.set(gameData.ammoBox.id, gameData.ammoBox);
+                        console.log(`Ammo box spawned at death of ${message.userId}`);
+                    }
+
+                    if (gameData.gore && Array.isArray(gameData.gore)) {
+                        gameData.gore.forEach((goreDecal: any, index: number) => {
+                            const decalId = `death_gore_${message.userId}_${Date.now()}_${index}`;
+
+                            this.stampGore(goreDecal);
+
+                            this.decals.set(decalId, {
+                                x: goreDecal.x,
+                                y: goreDecal.y,
+                                params: null
+                            });
+                        });
+
+                        console.log(`Stamped ${gameData.gore.length} gore decals for ${message.userId}`);
+                    }
                     break;
                 case 'player-respawn':
                     if (this.players.has(message.userId)) {
@@ -509,6 +535,13 @@ class GameClient {
                     this.pausedPlayers.delete(gameData.userId);
                     this.updatePauseState();
                     console.log(`${gameData.userId} unpaused`);
+                    break;
+                case 'ammo-pickup':
+                    // Remove ammo box from all clients when someone picks it up
+                    if (this.ammoBoxes.has(gameData.ammoBoxId)) {
+                        this.ammoBoxes.delete(gameData.ammoBoxId);
+                        console.log(`Ammo box picked up by ${gameData.playerId}`);
+                    }
                     break;
                 //
                 // #endregion
@@ -553,6 +586,10 @@ class GameClient {
                     console.log('New round started! Everyone respawning...');
                     this.roundInProgress = true;
                     this.roundWinner = null;
+
+                    this.myPlayer.health = PLAYER.STATS.MAX_HEALTH;
+                    setSlider('healthBar', this.myPlayer.health, PLAYER.STATS.MAX_HEALTH);
+                    setSlider('staminaBar', this.currentStamina, PLAYER.STATS.MAX_STAMINA);
 
                     if (this.players.has(message.userId)) { // Respawn other players
                         const player = this.players.get(message.userId)!;
@@ -747,6 +784,7 @@ class GameClient {
 
         this.players.clear();
         this.projectiles.clear();
+        this.ammoBoxes.clear();
         this.lobbyPlayers.clear();
 
         this.clearChat();
@@ -806,7 +844,9 @@ class GameClient {
         });
 
         this.setupLobbyOptions();
+
         updateToggle('privateToggle', this.isPrivateRoom);
+        updateToggle('upgradesToggle', this.isUpgradesEnabled)
         updateInput('winsInput', this.gameMaxWins);
 
         this.updateLobbyPlayersList();
@@ -827,6 +867,20 @@ class GameClient {
                 }));
 
                 console.log(`Room privacy changed to: ${this.isPrivateRoom ? 'Private' : 'Public'}`);
+            });
+        }
+
+        if (this.upgradesToggle) {
+            this.upgradesToggle.addEventListener('click', () => {
+                if (!this.isHost) return;
+
+                this.isUpgradesEnabled = !this.isUpgradesEnabled;
+                updateToggle('upgradesToggle', this.isUpgradesEnabled);
+
+                this.roomManager.sendMessage(JSON.stringify({
+                    type: 'lobby-options',
+                    upgradesEnabled: this.isUpgradesEnabled
+                }));
             });
         }
 
@@ -884,7 +938,6 @@ class GameClient {
             console.log(`Lobby privacy synced to: ${this.isPrivateRoom ? 'Private' : 'Public'}`);
         }
 
-        // TODO: Add more option syncing here
         if (options.maxWins !== undefined) {
             this.gameMaxWins = options.maxWins;
             updateInput('winsInput', this.gameMaxWins);
@@ -897,7 +950,11 @@ class GameClient {
             console.log(`Game max players synced to: ${this.gameMaxPlayers}`);
         }
 
-        // if (options.upgradesEnabled !== undefined) { ... }
+        if (options.upgradesEnabled !== undefined) {
+            this.isUpgradesEnabled = options.upgradesEnabled;
+            updateToggle('upgradesToggle', this.isUpgradesEnabled);
+            console.log(`Game upgrades toggled: ${this.isUpgradesEnabled}`)
+        }
     }
 
     private updateLobbyPlayersList(): void {
@@ -969,11 +1026,14 @@ class GameClient {
     private returnToLobby(): void {
         this.gameRunning = false;
         this.roundInProgress = false;
-        this.leaderboard.clear();
+
         this.gameWinner = null;
         this.roundWinner = null;
+
         this.players.clear();
         this.projectiles.clear();
+        this.ammoBoxes.clear();
+        this.leaderboard.clear();
 
         // Clear decals
         this.decals.clear();
@@ -1085,6 +1145,9 @@ class GameClient {
         this.burstInProgress = false;
         this.currentBurstShot = 0;
 
+        setSlider('healthBar', this.myPlayer.health, PLAYER.STATS.MAX_HEALTH);
+        setSlider('staminaBar', this.currentStamina, PLAYER.STATS.MAX_STAMINA);
+
         // Reset all other players
         this.players.forEach(player => {
             player.health = PLAYER.STATS.MAX_HEALTH;
@@ -1102,9 +1165,6 @@ class GameClient {
             y: this.myPlayer.y,
             health: this.myPlayer.health
         }));
-
-        setSlider('healthBar', this.myPlayer.health, PLAYER.STATS.MAX_HEALTH);
-        setSlider('staminaBar', this.currentStamina, PLAYER.STATS.MAX_STAMINA);
     }
     //
     // #endregion
@@ -1653,11 +1713,9 @@ class GameClient {
     private updatePlayerPosition(): void {
         if (!this.gameRunning || this.myPlayer.health <= 0) return;
 
-        // Update stamina system
         this.updateStamina();
-
-        // Update dash state
         this.updateDash();
+        this.checkCollisions();
 
         // If dashing, skip normal movement logic
         if (this.isDashing) {
@@ -1797,9 +1855,25 @@ class GameClient {
     private recordDeath(): void {
         console.log('I died! Waiting for round to end...');
 
+        const ammoBox = this.spawnAmmoBox(10);
+        this.ammoBoxes.set(ammoBox.id, ammoBox);
+
+        const gore = this.spawnGore(this.myPlayer.x, this.myPlayer.y);
+        gore.forEach((goreDecal: any, index: number) => {
+            const decalId = `death_gore_${this.userId}_${Date.now()}_${index}`;
+            this.stampGore(goreDecal);
+            this.decals.set(decalId, {
+                x: goreDecal.x,
+                y: goreDecal.y,
+                params: null
+            });
+        });
+
         this.roomManager.sendMessage(JSON.stringify({
             type: 'player-death',
-            playerId: this.userId
+            playerId: this.userId,
+            ammoBox: ammoBox,
+            gore: gore
         }));
     }
 
@@ -1853,6 +1927,115 @@ class GameClient {
                 this.currentStamina = Math.min(PLAYER.STATS.MAX_STAMINA, this.currentStamina + staminaRecoveryPerFrame);
             }
         }
+    }
+
+    private checkCollisions(): void {
+        const collisionRadius = (PLAYER.VISUAL.SIZE / 2) + 15; // Player radius + ammo box radius
+
+        this.ammoBoxes.forEach((ammoBox, boxId) => {
+            const dx = this.myPlayer.x - ammoBox.x;
+            const dy = this.myPlayer.y - ammoBox.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance <= collisionRadius) {
+                // Pick up ammo box
+                this.inventoryAmmo = Math.min(PLAYER.INVENTORY.MAX_AMMO, this.inventoryAmmo + ammoBox.ammoAmount);
+
+                console.log(`Picked up ammo box! +${ammoBox.ammoAmount} bullets. Inventory: ${this.inventoryAmmo}/${PLAYER.INVENTORY.MAX_AMMO}`);
+
+                // Remove from local map
+                this.ammoBoxes.delete(boxId);
+
+                // Broadcast pickup to other players
+                this.roomManager.sendMessage(JSON.stringify({
+                    type: 'ammo-pickup',
+                    ammoBoxId: boxId,
+                    playerId: this.userId
+                }));
+            }
+        });
+    }
+
+    private spawnGore(centerX: number, centerY: number): any[] {
+        const goreDecals = [];
+        const maxRadius = PLAYER.VISUAL.SIZE;
+
+        // Create 2-5 gore pieces
+        const goreCount = 2 + Math.floor(Math.random() * 4); // 2-5 pieces
+        for (let i = 0; i < goreCount; i++) {
+            const goreAsset = CHARACTER_DECALS.GORE[Math.floor(Math.random() * CHARACTER_DECALS.GORE.length)];
+            const angle = Math.random() * Math.PI * 2;
+            const distance = Math.random() * maxRadius;
+
+            goreDecals.push({
+                type: 'gore',
+                assetPath: goreAsset,
+                x: centerX + Math.cos(angle) * distance,
+                y: centerY + Math.sin(angle) * distance,
+                rotation: Math.random() * Math.PI * 2,
+                scale: 0.65 + Math.random() * 0.4 // 0.8 to 1.2 scale
+            });
+        }
+
+        // Create 1-2 blood pieces
+        const bloodCount = 1 + Math.floor(Math.random() * 2); // 1-2 pieces
+        for (let i = 0; i < bloodCount; i++) {
+            const bloodAsset = CHARACTER_DECALS.BLOOD[Math.floor(Math.random() * CHARACTER_DECALS.BLOOD.length)];
+            const angle = Math.random() * Math.PI * 2;
+            const distance = Math.random() * (maxRadius * 0.7); // Blood closer to center
+
+            goreDecals.push({
+                type: 'blood',
+                assetPath: bloodAsset,
+                x: centerX + Math.cos(angle) * distance,
+                y: centerY + Math.sin(angle) * distance,
+                rotation: Math.random() * Math.PI * 2,
+                scale: 1.25 + Math.random() * 0.2 // 1.2 to 1.45 scale
+            });
+        }
+
+        return goreDecals;
+    }
+
+    private stampGore(decalData: any): void { // TODO: Type protect
+        if (!this.decalCtx) return;
+
+        // Load and cache the image
+        let image = this.characterImages.get(decalData.assetPath);
+
+        if (!image) {
+            image = new Image();
+            image.src = decalData.assetPath;
+            this.characterImages.set(decalData.assetPath, image);
+
+            // If image isn't loaded yet, try again later
+            if (!image.complete) {
+                image.onload = () => {
+                    this.stampGore(decalData);
+                };
+                return;
+            }
+        }
+
+        if (!image.complete || image.naturalWidth === 0) return;
+
+        this.decalCtx.save();
+
+        // Apply position and rotation
+        this.decalCtx.translate(decalData.x, decalData.y);
+        this.decalCtx.rotate(decalData.rotation);
+
+        // Apply scale and draw
+        const drawSize = 32 * decalData.scale; // Base size 32px
+        this.decalCtx.drawImage(
+            image,
+            -drawSize / 2,
+            -drawSize / 2,
+            drawSize,
+            drawSize
+        );
+
+        this.decalCtx.restore();
     }
     //
     // #endregion
@@ -1999,6 +2182,8 @@ class GameClient {
         this.ctx.strokeStyle = CANVAS.BORDER_COLOR;
         this.ctx.lineWidth = CANVAS.BORDER_WIDTH;
         this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+
+        this.drawAmmoBoxes();
 
         // Draw projectiles
         this.projectiles.forEach(projectile => {
@@ -2216,6 +2401,17 @@ class GameClient {
             this.crosshair.style.display = 'none';
             console.log('Crosshair disabled');
         }
+    }
+
+    private spawnAmmoBox(amount: number): AmmoBox {
+        const ammoBox: AmmoBox = {
+            id: generateUID(),
+            x: this.myPlayer.x,
+            y: this.myPlayer.y,
+            ammoAmount: amount,
+            timestamp: Date.now()
+        };
+        return ammoBox;
     }
     //
     // #endregion
@@ -2470,6 +2666,34 @@ class GameClient {
                 this.ctx.fillStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
                 this.ctx.fillRect(Math.floor(particle.x), Math.floor(particle.y), particle.size, particle.size);
             }
+
+            this.ctx.restore();
+        });
+    }
+
+    private drawAmmoBoxes(): void {
+        if (!this.ctx) return;
+
+        this.ammoBoxes.forEach(ammoBox => {
+            if (!this.ctx) return;
+
+            // TODO: Update ammo box with foster drawing
+            this.ctx.save();
+
+            // Main ammo box circle
+            this.ctx.beginPath();
+            this.ctx.arc(ammoBox.x, ammoBox.y, 15, 0, 2 * Math.PI);
+            this.ctx.fillStyle = '#FFD700'; // Gold color
+            this.ctx.fill();
+            this.ctx.strokeStyle = '#FFA500'; // Orange border
+            this.ctx.lineWidth = 2;
+            this.ctx.stroke();
+
+            // Ammo text
+            this.ctx.fillStyle = '#000000';
+            this.ctx.font = 'bold 10px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(ammoBox.ammoAmount.toString(), ammoBox.x, ammoBox.y + 3);
 
             this.ctx.restore();
         });

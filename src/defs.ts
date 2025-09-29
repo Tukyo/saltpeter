@@ -19,6 +19,14 @@ export interface Projectile {
   timestamp: number;
 }
 
+export interface AmmoBox {
+  id: string;
+  x: number;
+  y: number;
+  ammoAmount: number;
+  timestamp: number;
+}
+
 export interface RoomMessage {
   type: 'join-room' | 'create-room' | 'leave-room' | 'room-message' | 'room-created' | 'room-joined' | 'room-joined-game' | 'room-error' | 'user-joined' | 'user-left';
   roomId?: string;
@@ -35,10 +43,10 @@ export interface LobbyPlayer {
 }
 
 export interface LeaderboardEntry {
-    playerId: string;
-    kills: number;
-    deaths: number;
-    wins: number;
+  playerId: string;
+  kills: number;
+  deaths: number;
+  wins: number;
 }
 
 export type Leaderboard = Map<string, LeaderboardEntry>;

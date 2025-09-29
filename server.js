@@ -137,6 +137,11 @@ function handleRoomMessage(ws, message) {
                   room.maxPlayers = gameData.maxPlayers;
                   console.log(`Room ${message.roomId} max players changed to: ${room.maxPlayers}`);
                 }
+
+                if (gameData.upgradesEnabled !== undefined) {
+                  room.upgradesEnabled = gameData.upgradesEnabled;
+                  console.log(`Room ${message.roomId} upgrades toggled: ${room.upgradesEnabled}`);
+                }
               }
             }
 
@@ -180,6 +185,7 @@ function createRoom(ws, roomId, userId) {
     participants: new Set([ws]),
     gameActive: false,
     isPrivate: false,
+    upgradesEnabled: true,
     maxWins: 5,
     maxPlayers: 4
   });

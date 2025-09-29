@@ -26,6 +26,29 @@ export const HEADWEAR = {
     DEFAULT: '/assets/img/char/default_headwear.png'
 };
 
+export const CHARACTER_DECALS = {
+    BLOOD: [
+        '/assets/img/effects/blood/blood_00.png',
+        '/assets/img/effects/blood/blood_01.png',
+        '/assets/img/effects/blood/blood_02.png',
+        '/assets/img/effects/blood/blood_03.png',
+        '/assets/img/effects/blood/blood_04.png'
+    ],
+    GORE: [
+        '/assets/img/effects/gore/gore_00.png',
+        '/assets/img/effects/gore/gore_01.png',
+        '/assets/img/effects/gore/gore_02.png',
+        '/assets/img/effects/gore/gore_03.png',
+        '/assets/img/effects/gore/gore_04.png',
+        '/assets/img/effects/gore/gore_05.png',
+        '/assets/img/effects/gore/gore_06.png',
+        '/assets/img/effects/gore/gore_07.png',
+        '/assets/img/effects/gore/gore_08.png',
+        '/assets/img/effects/gore/gore_09.png',
+        '/assets/img/effects/gore/gore_10.png'
+    ]
+}
+
 export const CHARACTER: CharacterConfig = {
     body: 'DEFAULT',
     weapon: 'GLOCK', 
