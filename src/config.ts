@@ -1,21 +1,31 @@
-export const PLAYER = {
-    ATTACK: {
-        BURST: {
-            AMOUNT: 1,
-            DELAY: 75 // ms
+export const PLAYER_DEFAULTS = {
+    ACTIONS: {
+        DASH: {
+            COOLDOWN: 1000, // ms
+            DRAIN: 40, // per dash
+            MULTIPLIER: 3,
+            TIME: 150 // ms
         },
-        MAGAZINE: {
-            SIZE: 10
+        PRIMARY: {
+            BUFFER: 100, // ms
+            BURST: {
+                AMOUNT: 1,
+                DELAY: 75 // ms
+            },
+            MAGAZINE: {
+                SIZE: 10,
+                STARTING_RESERVE: 20,
+                MAX_RESERVE: 50
+            },
+            OFFSET: 10, // px
+            RELOAD: {
+                TIME: 750 // ms
+            }
         },
-        RELOAD: {
-            TIME: 750 // ms
-        }
-    },
-    DASH: {
-        TIME: 150, // ms
-        COOLDOWN: 1000, // ms
-        MULTIPLIER: 3,
-        DRAIN: 40 // per dash
+        SPRINT: {
+            DRAIN: 5, // per ms
+            MULTIPLIER: 1.75
+        },
     },
     DATA: {
         ID_LENGTH: 12
@@ -23,13 +33,9 @@ export const PLAYER = {
     EQUIPMENT: {
         CROSSHAIR: false,
     },
-    INVENTORY: {
-        AMMO: 0,
-        MAX_AMMO: 50
-    },
     PHYSICS: {
-        FRICTION: 0.85,
-        ACCELERATION: 0.55
+        ACCELERATION: 0.55,
+        FRICTION: 0.85
     },
     PROJECTILE: {
         AMOUNT: 1,
@@ -45,21 +51,15 @@ export const PLAYER = {
         LUCK: 1,
         MAX_HEALTH: 100,
         MAX_STAMINA: 100,
+        SIZE: 100, // px^2
         SPEED: 6,
-    },
-    SPRINT: {
-        MULTIPLIER: 1.75,
-        DRAIN: 5, // per milisecond
     },
     STAMINA: {
         RECOVER_DELAY: 1000, // ms
         RECOVER_RATE: 25 // per second
     },
     VISUAL: {
-        BORDER_MARGIN: 15,
-        ID_DISPLAY_OFFSET: 25,
-        SIZE: 50,
-        STROKE_WIDTH: 3
+        ID_DISPLAY_OFFSET: 25
     }
 };
 
@@ -249,7 +249,8 @@ export const CANVAS = {
     WIDTH: 800,
     HEIGHT: 600,
     BORDER_COLOR: '#333',
-    BORDER_WIDTH: 2
+    BORDER_WIDTH: 2,
+    BORDER_MARGIN: 15,
 };
 
 export const GAME = {
@@ -268,13 +269,14 @@ export const GAME = {
     MAX_PLAYERS: 4,
     MAX_WINS: 5,
     ROUND_END_DELAY: 3000,
-    GAME_END_DELAY: 5000
+    GAME_END_DELAY: 5000,
+    CHARACTER_SIZE: 650
 };
 
 export const UI = {
     PLAYER_ID_LENGTH: 6,
     FONT: '12px Arial',
-    TEXT_COLOR: '#000'
+    TEXT_COLOR: '#fff'
 };
 
 export const ROOM = {

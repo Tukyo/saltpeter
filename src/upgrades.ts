@@ -1,4 +1,4 @@
-import { PLAYER } from './config';
+import { PLAYER_DEFAULTS } from './config';
 
 const takenUniques = new Set<string>();
 const myEquipment = new Set<string>();
@@ -49,7 +49,7 @@ const RARITY_CONFIG = {
     }
 };
 
-export const UPGRADES: Upgrade[] = [
+export const UPGRADES: Upgrade[] = [ // TODO: Update all upgrades to use the player object instead of the olayer defaults
     // #region [ STATS ]
     //
     {
@@ -60,11 +60,11 @@ export const UPGRADES: Upgrade[] = [
         rarity: UpgradeRarity.COMMON,
         unique: false,
         func: () => {
-            PLAYER.PROJECTILE.SIZE *= 1.1;
-            PLAYER.PROJECTILE.DAMAGE *= 1.05;
-            PLAYER.PROJECTILE.SPREAD *= 1.025;
+            PLAYER_DEFAULTS.PROJECTILE.SIZE *= 1.1;
+            PLAYER_DEFAULTS.PROJECTILE.DAMAGE *= 1.05;
+            PLAYER_DEFAULTS.PROJECTILE.SPREAD *= 1.025;
 
-            console.log("[Bigger is Better] - Projectile Changes: ", "Size: ", PLAYER.PROJECTILE.SIZE, "Dmg: ", PLAYER.PROJECTILE.DAMAGE, "Spread: ", PLAYER.PROJECTILE.SPREAD);
+            console.log("[Bigger is Better] - Projectile Changes: ", "Size: ", PLAYER_DEFAULTS.PROJECTILE.SIZE, "Dmg: ", PLAYER_DEFAULTS.PROJECTILE.DAMAGE, "Spread: ", PLAYER_DEFAULTS.PROJECTILE.SPREAD);
         }
     },
     //
@@ -80,10 +80,10 @@ export const UPGRADES: Upgrade[] = [
         rarity: UpgradeRarity.UNCOMMON,
         unique: false,
         func: () => {
-            PLAYER.EQUIPMENT.CROSSHAIR = true;
-            PLAYER.PROJECTILE.SPREAD *= 0.95;
+            PLAYER_DEFAULTS.EQUIPMENT.CROSSHAIR = true;
+            PLAYER_DEFAULTS.PROJECTILE.SPREAD *= 0.95;
 
-            console.log("[Neural Target Interface] - Crosshair enabled.", "Spread: ", PLAYER.PROJECTILE.SPREAD);
+            console.log("[Neural Target Interface] - Crosshair enabled.", "Spread: ", PLAYER_DEFAULTS.PROJECTILE.SPREAD);
         }
     },
     //

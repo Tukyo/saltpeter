@@ -1,9 +1,9 @@
-import { PLAYER, ROOM } from './config';
+import { PLAYER_DEFAULTS, ROOM } from './config';
 
 export function generateUID(): string {
     const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
     let result = '';
-    for (let i = 0; i < PLAYER.DATA.ID_LENGTH; i++) {
+    for (let i = 0; i < PLAYER_DEFAULTS.DATA.ID_LENGTH; i++) {
         result += chars[Math.floor(Math.random() * chars.length)];
     }
     return result;

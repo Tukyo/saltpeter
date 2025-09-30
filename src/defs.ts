@@ -1,10 +1,58 @@
 export interface Player {
   id: string;
-  x: number;
-  y: number;
+  transform: Transform;
   color: string;
-  health: number;
-  rotation?: number;
+  actions: {
+    dash: {
+      drain: number;
+      cooldown: number;
+      multiplier: number;
+      time: number;
+    }
+    primary: {
+      buffer: number;
+      burst: {
+        amount: number;
+        delay: number;
+      }
+      magazine: {
+        currentAmmo: number;
+        currentReserve: number;
+        maxReserve: number;
+        size: number;
+      }
+      offset: number;
+      reload: { time: number; }
+    }
+    sprint: {
+      drain: number;
+      multiplier: number;
+    }
+  }
+  equipment: {
+    crosshair: boolean;
+  }
+  physics: {
+    acceleration: number;
+    friction: number;
+  }
+  stats: {
+    health: {
+      max: number;
+      value: number;
+    }
+    stamina: {
+      max: number;
+      recovery: {
+        delay: number;
+        rate: number;
+      }
+      value: number;
+    }
+    luck: number;
+    size: number;
+    speed: number;
+  }
 }
 
 export interface Projectile {
@@ -50,3 +98,10 @@ export interface LeaderboardEntry {
 }
 
 export type Leaderboard = Map<string, LeaderboardEntry>;
+
+export type Transform = {
+  pos: Vec2;
+  rot: number;
+}
+
+export type Vec2 = { x: number, y: number }

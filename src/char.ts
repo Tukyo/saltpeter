@@ -7,23 +7,26 @@ export interface CharacterConfig {
 
 export type CharacterLayer = 'BODY' | 'WEAPON' | 'HEAD' | 'HEADWEAR';
 
-export const BODY = {
-    DEFAULT: '/assets/img/char/default_body.png'
-};
-
 export const WEAPON = {
     GLOCK: [
-        '/assets/img/weapon/glock_body.png',
-        '/assets/img/weapon/glock_slide.png',
+        '/assets/img/weapon/glock/body.png',
+        '/assets/img/weapon/glock/slide.png',
+    ],
+    KNIFE: [
+        '/assets/img/weapon/melee/knife_00.png'
     ]
 };
 
+export const BODY = {
+    DEFAULT: '/assets/img/char/default/body.png'
+};
+
 export const HEAD = {
-    DEFAULT: '/assets/img/char/default_head.png'
+    DEFAULT: '/assets/img/char/default/head.png'
 };
 
 export const HEADWEAR = {
-    DEFAULT: '/assets/img/char/default_headwear.png'
+    DEFAULT: '/assets/img/char/default/headwear.png'
 };
 
 export const CHARACTER_DECALS = {
@@ -45,7 +48,10 @@ export const CHARACTER_DECALS = {
         '/assets/img/effects/gore/gore_07.png',
         '/assets/img/effects/gore/gore_08.png',
         '/assets/img/effects/gore/gore_09.png',
-        '/assets/img/effects/gore/gore_10.png'
+        '/assets/img/effects/gore/gore_10.png',
+        '/assets/img/effects/gore/gore_11.png',
+        '/assets/img/effects/gore/gore_12.png',
+        '/assets/img/effects/gore/gore_13.png'
     ]
 }
 
