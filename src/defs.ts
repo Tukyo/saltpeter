@@ -1,6 +1,17 @@
-export interface Player {
+export type Vec2 = { x: number, y: number }
+
+export type Transform = {
+  pos: Vec2;
+  rot: number;
+}
+
+export interface GameObject {
   id: string;
   transform: Transform;
+  timestamp: number;
+}
+
+export interface Player extends GameObject {
   color: string;
   actions: {
     dash: {
@@ -22,6 +33,17 @@ export interface Player {
         size: number;
       }
       offset: number;
+      projectile: {
+        amount: number;
+        color: string;
+        damage: number;
+        length: number;
+        range: number;
+        size: number;
+        speed: number;
+        spread: number;
+        unique: string[];
+      }
       reload: { time: number; }
     }
     sprint: {
@@ -41,6 +63,9 @@ export interface Player {
       max: number;
       value: number;
     }
+    luck: number;
+    size: number;
+    speed: number;
     stamina: {
       max: number;
       recovery: {
@@ -49,30 +74,29 @@ export interface Player {
       }
       value: number;
     }
-    luck: number;
-    size: number;
-    speed: number;
   }
 }
 
-export interface Projectile {
-  id: string;
-  x: number;
-  y: number;
-  velocityX: number;
-  velocityY: number;
-  range: number;
+export interface Projectile extends GameObject {
+  color: string;
+  damage: number;
   distanceTraveled: number;
+  length: number;
   ownerId: string;
-  timestamp: number;
+  range: number;
+  size: number;
+  velocity: Vec2;
 }
 
-export interface AmmoBox {
-  id: string;
-  x: number;
-  y: number;
+export interface AmmoBox extends GameObject {
   ammoAmount: number;
-  timestamp: number;
+  isOpen: boolean;
+  lid: {
+    pos: Vec2;
+    rot: number;
+    velocity: Vec2;
+    torque: number;
+  };
 }
 
 export interface RoomMessage {
@@ -84,7 +108,7 @@ export interface RoomMessage {
   gameActive?: boolean;
 }
 
-export interface LobbyPlayer {
+export interface LobbyPlayer { // TODO: Consider just merging this into the standard player
   id: string;
   color: string;
   isHost: boolean;
@@ -99,9 +123,4 @@ export interface LeaderboardEntry {
 
 export type Leaderboard = Map<string, LeaderboardEntry>;
 
-export type Transform = {
-  pos: Vec2;
-  rot: number;
-}
-
-export type Vec2 = { x: number, y: number }
+export type ResetType = 'Room' | 'Lobby'

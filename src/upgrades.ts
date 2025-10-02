@@ -60,11 +60,11 @@ export const UPGRADES: Upgrade[] = [ // TODO: Update all upgrades to use the pla
         rarity: UpgradeRarity.COMMON,
         unique: false,
         func: () => {
-            PLAYER_DEFAULTS.PROJECTILE.SIZE *= 1.1;
-            PLAYER_DEFAULTS.PROJECTILE.DAMAGE *= 1.05;
-            PLAYER_DEFAULTS.PROJECTILE.SPREAD *= 1.025;
+            PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SIZE *= 1.1;
+            PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.DAMAGE *= 1.05;
+            PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD *= 1.025;
 
-            console.log("[Bigger is Better] - Projectile Changes: ", "Size: ", PLAYER_DEFAULTS.PROJECTILE.SIZE, "Dmg: ", PLAYER_DEFAULTS.PROJECTILE.DAMAGE, "Spread: ", PLAYER_DEFAULTS.PROJECTILE.SPREAD);
+            console.log("[Bigger is Better] - Projectile Changes: ", "Size: ", PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SIZE, "Dmg: ", PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.DAMAGE, "Spread: ", PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD);
         }
     },
     //
@@ -81,9 +81,9 @@ export const UPGRADES: Upgrade[] = [ // TODO: Update all upgrades to use the pla
         unique: false,
         func: () => {
             PLAYER_DEFAULTS.EQUIPMENT.CROSSHAIR = true;
-            PLAYER_DEFAULTS.PROJECTILE.SPREAD *= 0.95;
+            PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD *= 0.95;
 
-            console.log("[Neural Target Interface] - Crosshair enabled.", "Spread: ", PLAYER_DEFAULTS.PROJECTILE.SPREAD);
+            console.log("[Neural Target Interface] - Crosshair enabled.", "Spread: ", PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD);
         }
     },
     //

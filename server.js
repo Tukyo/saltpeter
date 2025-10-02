@@ -8,6 +8,24 @@ const rooms = new Map(); // roomId -> { hostUserId, participants: Set<ws>, gameA
 
 // Create HTTP server to serve files
 const server = http.createServer((req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+
+  // Check if there's a room query parameter - serve index.html
+  if (url.pathname === '/' && url.searchParams.has('room')) {
+    let filePath = path.join(__dirname, "public", "index.html");
+
+    fs.readFile(filePath, (err, data) => {
+      if (err) {
+        res.writeHead(404);
+        return res.end("File not found");
+      }
+
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(data);
+    });
+    return;
+  }
+
   // Handle quickplay endpoint
   if (req.url === "/quickplay") {
     const availableRooms = [];
@@ -305,6 +323,7 @@ function leaveRoom(ws, roomId) {
   if (room.participants.size === 0) {
     rooms.delete(roomId);
     console.log(`Room ${roomId} deleted (empty)`);
+    console.log(`Rooms remaining: ${rooms.size}`);
   }
 
   ws.currentRoom = null;

@@ -18,6 +18,17 @@ export const PLAYER_DEFAULTS = {
                 MAX_RESERVE: 50
             },
             OFFSET: 10, // px
+            PROJECTILE: {
+                AMOUNT: 1,
+                COLOR: '#fff5beff',
+                DAMAGE: 25,
+                LENGTH: 15,
+                RANGE: 5,
+                SIZE: 1,
+                SPEED: 35,
+                SPREAD: 10,
+                UNIQUE: []
+            },
             RELOAD: {
                 TIME: 750 // ms
             }
@@ -37,26 +48,20 @@ export const PLAYER_DEFAULTS = {
         ACCELERATION: 0.55,
         FRICTION: 0.85
     },
-    PROJECTILE: {
-        AMOUNT: 1,
-        COLOR: '#fff5beff',
-        DAMAGE: 25,
-        LENGTH: 15,
-        RANGE: 5,
-        SIZE: 1,
-        SPEED: 30,
-        SPREAD: 0.1
-    },
     STATS: {
+        HEALTH: {
+            MAX: 100
+        },
         LUCK: 1,
-        MAX_HEALTH: 100,
-        MAX_STAMINA: 100,
         SIZE: 100, // px^2
         SPEED: 6,
-    },
-    STAMINA: {
-        RECOVER_DELAY: 1000, // ms
-        RECOVER_RATE: 25 // per second
+        STAMINA: {
+            MAX: 100,
+            RECOVERY: {
+                DELAY: 1000,
+                RATE: 25
+            }
+        }
     },
     VISUAL: {
         ID_DISPLAY_OFFSET: 25
@@ -244,6 +249,12 @@ export const PARTICLES = {
         COLOR: "#d4af37"
     }
 };
+
+export const AMMO_BOX = {
+    LID: '/assets/img/object/ammobox/lid.png',
+    BULLETS: '/assets/img/object/ammobox/bullets.png',
+    BODY: '/assets/img/object/ammobox/body.png'
+}
 
 export const CANVAS = {
     WIDTH: 800,

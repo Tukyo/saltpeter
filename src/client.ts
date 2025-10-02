@@ -1,7 +1,7 @@
-import { generateUID, getRoomIdFromURL, getRandomColor, hexToRgb, setSlider, updateToggle, updateInput } from './utils';
+import { generateUID, getRandomColor, hexToRgb, setSlider, updateToggle, updateInput, forward } from './utils';
 import { RoomManager } from './roomManager';
-import { Player, RoomMessage, Projectile, LobbyPlayer, Leaderboard, LeaderboardEntry, AmmoBox } from './defs';
-import { PLAYER_DEFAULTS, CANVAS, GAME, UI, CHAT, DECALS, PARTICLES } from './config';
+import { Player, RoomMessage, Projectile, LobbyPlayer, Leaderboard, LeaderboardEntry, AmmoBox, ResetType } from './defs';
+import { PLAYER_DEFAULTS, CANVAS, GAME, UI, CHAT, DECALS, PARTICLES, AMMO_BOX } from './config';
 import { applyUpgrade, getUpgrades, removeUpgradeFromPool, resetUpgrades, UPGRADES } from './upgrades';
 import { CHARACTER, CHARACTER_DECALS, CharacterLayer, getCharacterAsset } from './char';
 
@@ -35,13 +35,33 @@ class GameClient {
     private upgradeContainer: HTMLElement | null = null;
     private leaderboardContainer: HTMLDivElement | null = null;
     private leaderboardBody: HTMLTableSectionElement | null = null;
+
     private crosshair: HTMLElement | null = null;
+
+    private modal: HTMLElement | null = null;
+    private modalInput: HTMLInputElement | null = null;
+    private modalButtons: HTMLDivElement | null = null;
+    private modalConfirmButton: HTMLButtonElement | null = null;
+    private modalCancelButton: HTMLButtonElement | null = null;
+    private modalErrorDiv: HTMLElement | null = null;
+    private modalContent: HTMLElement | null = null;
+    private modalText: HTMLSpanElement | null = null;
+
+    private hostButton: HTMLButtonElement | null = null;
+    private joinButton: HTMLButtonElement | null = null;
+    private quickplayButton: HTMLButtonElement | null = null;
+    private lobbyLeaveButton: HTMLButtonElement | null = null;
+    private lobbyCodeButton: HTMLButtonElement | null = null;
+    private gameLeaveButton: HTMLButtonElement | null = null;
+    private gameCodeButton: HTMLButtonElement | null = null;
 
     private myPlayer: Player; // My player object
     private players: Map<string, Player> = new Map(); // Other player objects
     private lobbyPlayers: Map<string, LobbyPlayer> = new Map(); // Temporary partial player object used for lobby only information
 
     private characterImages: Map<string, HTMLImageElement> = new Map();
+    private ammoBoxImages: { [layer: string]: HTMLImageElement } = {};
+
     private characterOffsets: Map<string, { x: number, y: number }> = new Map();
     private characterAnimations: Map<string, {
         playerId: string;
@@ -143,79 +163,13 @@ class GameClient {
     private lastStaminaDrainTime = 0;
     private staminaRecoveryBlockedUntil = 0;
 
-    private defaultPlayerConfig = JSON.parse(JSON.stringify(PLAYER_DEFAULTS));
-
     // #region [ Initialization ]
     //
     constructor() {
         this.userId = generateUID();
         this.roomManager = new RoomManager(this.userId);
 
-        // TODO: Keep full track of Player object here
-        this.myPlayer = { // 'player-state'
-            id: this.userId,
-            transform: {
-                pos: {
-                    x: Math.random() * (CANVAS.WIDTH - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN,
-                    y: Math.random() * (CANVAS.HEIGHT - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN
-                },
-                rot: 0
-            },
-            color: getRandomColor(),
-            actions: {
-                dash: {
-                    cooldown: PLAYER_DEFAULTS.ACTIONS.DASH.COOLDOWN,
-                    drain: PLAYER_DEFAULTS.ACTIONS.DASH.DRAIN,
-                    multiplier: PLAYER_DEFAULTS.ACTIONS.DASH.MULTIPLIER,
-                    time: PLAYER_DEFAULTS.ACTIONS.DASH.TIME
-                },
-                primary: {
-                    buffer: PLAYER_DEFAULTS.ACTIONS.PRIMARY.BUFFER,
-                    burst: {
-                        amount: PLAYER_DEFAULTS.ACTIONS.PRIMARY.BURST.AMOUNT,
-                        delay: PLAYER_DEFAULTS.ACTIONS.PRIMARY.BURST.DELAY
-                    },
-                    magazine: {
-                        currentAmmo: PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.SIZE,
-                        currentReserve: PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.STARTING_RESERVE,
-                        maxReserve: PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.MAX_RESERVE,
-                        size: PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.SIZE
-                    },
-                    offset: PLAYER_DEFAULTS.ACTIONS.PRIMARY.OFFSET,
-                    reload: {
-                        time: PLAYER_DEFAULTS.ACTIONS.PRIMARY.RELOAD.TIME
-                    }
-                },
-                sprint: {
-                    drain: PLAYER_DEFAULTS.ACTIONS.SPRINT.DRAIN,
-                    multiplier: PLAYER_DEFAULTS.ACTIONS.SPRINT.MULTIPLIER
-                }
-            },
-            equipment: {
-                crosshair: PLAYER_DEFAULTS.EQUIPMENT.CROSSHAIR
-            },
-            physics: {
-                acceleration: PLAYER_DEFAULTS.PHYSICS.ACCELERATION,
-                friction: PLAYER_DEFAULTS.PHYSICS.FRICTION
-            },
-            stats: {
-                health: {
-                    max: PLAYER_DEFAULTS.STATS.MAX_HEALTH,
-                    value: PLAYER_DEFAULTS.STATS.MAX_HEALTH,
-                },
-                stamina: {
-                    max: PLAYER_DEFAULTS.STATS.MAX_HEALTH,
-                    recovery: {
-                        delay: PLAYER_DEFAULTS.STAMINA.RECOVER_DELAY,
-                        rate: PLAYER_DEFAULTS.STAMINA.RECOVER_RATE
-                    },
-                    value: PLAYER_DEFAULTS.STATS.MAX_HEALTH,
-                },
-                luck: PLAYER_DEFAULTS.STATS.LUCK,
-                size: PLAYER_DEFAULTS.STATS.SIZE,
-                speed: PLAYER_DEFAULTS.STATS.SPEED
-            }
-        };
+        this.myPlayer = this.initializePlayer();
 
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
@@ -230,6 +184,11 @@ class GameClient {
         }
     }
 
+    /**
+     * Responsible for initializing all elements defined in the class structure.
+     * 
+     * Do not use "getElement" type lookups on runtime. Cache them all on start.
+     */
     private initializeElements(): void {
         this.canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
         this.decalCanvas = document.createElement('canvas') as HTMLCanvasElement;
@@ -262,12 +221,36 @@ class GameClient {
         this.leaderboardContainer = document.getElementById("leaderboardContainer") as HTMLDivElement;
         this.leaderboardBody = document.getElementById("leaderboardBody") as HTMLTableSectionElement;
 
+        this.hostButton = document.getElementById("hostBtn") as HTMLButtonElement;
+        this.joinButton = document.getElementById("joinBtn") as HTMLButtonElement;
+        this.quickplayButton = document.getElementById("quickBtn") as HTMLButtonElement;
+
+        this.lobbyLeaveButton = document.getElementById("lobbyLeaveBtn") as HTMLButtonElement;
+        this.lobbyCodeButton = document.getElementById("lobbyCodeBtn") as HTMLButtonElement;
+
+        this.gameLeaveButton = document.getElementById("gameLeaveBtn") as HTMLButtonElement;
+        this.gameCodeButton = document.getElementById("gameCodeBtn") as HTMLButtonElement;
+
+        this.modal = document.getElementById('modal') as HTMLDivElement;
+        this.modalInput = document.getElementById('joinRoomInput') as HTMLInputElement;
+        this.modalButtons = document.getElementById('modalButtons') as HTMLDivElement;
+        this.modalConfirmButton = document.getElementById('joinRoomConfirmBtn') as HTMLButtonElement;
+        this.modalCancelButton = document.getElementById('joinRoomCancelBtn') as HTMLButtonElement;
+        this.modalErrorDiv = document.getElementById('joinRoomError') as HTMLDivElement;
+        this.modalContent = document.getElementById('modalContent') as HTMLDivElement;
+        this.modalText = document.getElementById('modalText') as HTMLSpanElement;
+
         if (!this.canvas || !this.decalCanvas || !this.roomControls || !this.gameContainer ||
-            !this.lobbyContainer || !this.userIdDisplay || !this.roomIdDisplay || !this.lobbyPlayersList || !this.startGameBtn ||
-            !this.gameOptionsContainer || !this.chatContainer || !this.chatMessages || !this.chatInput ||
-            !this.chatSendBtn || !this.leaderboardContainer || !this.leaderboardBody) {
-            console.error('Some required DOM elements are missing');
-            return;
+            !this.lobbyContainer || !this.userIdDisplay || !this.roomIdDisplay || !this.gameRoomIdDisplay ||
+            !this.lobbyPlayersList || !this.startGameBtn || !this.gameOptionsContainer ||
+            !this.chatContainer || !this.chatMessages || !this.chatInput || !this.chatSendBtn ||
+            !this.privateToggle || !this.upgradesToggle || !this.winsInput || !this.playersInput ||
+            !this.upgradeContainer || !this.crosshair || !this.leaderboardContainer ||
+            !this.leaderboardBody || !this.hostButton || !this.joinButton || !this.quickplayButton ||
+            !this.lobbyLeaveButton || !this.lobbyCodeButton || !this.gameLeaveButton ||
+            !this.gameCodeButton) {
+            alert('Failed to load game. Please refresh the page.');
+            throw new Error('Critical error: Required DOM elements are missing.');
         }
 
         this.canvas.width = CANVAS.WIDTH;
@@ -279,14 +262,19 @@ class GameClient {
         this.decalCtx = this.decalCanvas.getContext('2d');
 
         if (!this.ctx || !this.decalCtx) {
-            console.error('Could not get canvas context');
-            return;
+            alert('Failed to load game. Please refresh the page.');
+            throw new Error('Could not get canvas context');
         }
 
         this.userIdDisplay.textContent = this.userId;
         this.showRoomControls();
     }
 
+    /**
+     * Used for creating the websocket connection between clients.
+     * 
+     * Called when joining or creating a room.
+     */
     private connectWebSocket(): void {
         const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
         this.ws = new WebSocket(`${wsProtocol}//${location.host}`);
@@ -305,6 +293,203 @@ class GameClient {
         this.ws.onerror = (error) => {
             console.error("WebSocket error:", error);
         };
+    }
+    //
+    // #endregion
+
+    // #region [ Events ]
+    //
+    /**
+     * Initializes all event listeners to the required DOM elements.
+     */
+    private setupEventListeners(): void {
+        if (!this.canvas || !this.hostButton || !this.joinButton || !this.quickplayButton ||
+            !this.lobbyLeaveButton || !this.lobbyCodeButton || !this.gameLeaveButton ||
+            !this.gameCodeButton || !this.startGameBtn || !this.chatSendBtn || !this.chatInput) return;
+
+        this.hostButton.addEventListener("click", () => this.hostRoom());
+        this.joinButton.addEventListener("click", () => this.joinRoom());
+        this.quickplayButton.addEventListener("click", () => this.quickPlay());
+        this.lobbyLeaveButton.addEventListener("click", () => this.leaveRoom());
+        this.lobbyCodeButton.addEventListener("click", () => this.copyRoomCode());
+        this.gameLeaveButton.addEventListener("click", () => this.leaveRoom());
+        this.gameCodeButton.addEventListener("click", () => this.copyRoomCode());
+        this.startGameBtn.addEventListener("click", () => this.startGame());
+
+        // Chat event listeners
+        this.chatSendBtn.addEventListener("click", () => this.sendChatMessage());
+        this.chatInput.addEventListener("keypress", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                this.sendChatMessage();
+            }
+        });
+
+        // Add focus/blur listeners to chat input
+        this.chatInput.addEventListener("focus", () => {
+            this.keys.clear();
+            this.canShoot = false;
+            this.isSprinting = false;
+            this.isDashing = false;
+            this.isBurstActive = false;
+            this.currentBurstShot = 0;
+        });
+
+        this.chatInput.addEventListener("blur", () => {
+            this.keys.clear();
+            this.canShoot = true;
+            this.isSprinting = false;
+            this.isDashing = false;
+        });
+
+        // Listen on document for events, not canvas.
+        // If this presents issues, swap "document." with "this.canvas"
+        document.addEventListener('keydown', (e) => this.onKeyDown(e));
+        document.addEventListener('keyup', (e) => this.onKeyUp(e));
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.gameRunning && !this.inLobby) {
+                e.preventDefault();
+                // TODO: Test stuff here!
+            }
+        });
+
+        document.addEventListener('mouseup', (e) => this.onMouseUp(e));
+        document.addEventListener('mousemove', (e) => this.onMouseMove(e));
+
+        this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e)); // Canvas only listening for mouse (shooting mainly)
+
+        // Room manager message handler
+        this.roomManager.onMessage((message) => this.handleRoomMessage(message));
+    }
+
+    /**
+     * Handles all key press events.
+     */
+    private onKeyDown(e: KeyboardEvent): void {
+        if (this.chatInput === document.activeElement) return;
+        if (!this.gameRunning || this.gamePaused) return;
+
+        const key = e.key.toLowerCase();
+        const keybinds = GAME.KEYBINDS;
+        const isGameKey = Object.values(keybinds).includes(key);
+
+        if (isGameKey) {
+            e.preventDefault();
+            this.keys.add(key);
+
+            if (key === keybinds.RELOAD) {
+                this.startReload();
+            }
+
+            if (key === keybinds.SPRINT && this.isMoving()) {
+                this.isSprinting = true;
+            }
+
+            if (key === keybinds.DASH) {
+                this.startDash();
+            }
+        }
+    }
+
+    /**
+     * Handles all key release events.
+     */
+    private onKeyUp(e: KeyboardEvent): void {
+        if (this.chatInput === document.activeElement) return;
+        if (!this.gameRunning) return;
+
+        const key = e.key.toLowerCase();
+        const keybinds = GAME.KEYBINDS;
+
+        if (Object.values(keybinds).includes(key)) {
+            e.preventDefault();
+            this.keys.delete(key);
+
+            if (key === keybinds.SPRINT) {
+                this.isSprinting = false;
+            }
+        }
+    }
+
+    /**
+     * Handles all mouse click events.
+     */
+    private onMouseDown(e: MouseEvent): void {
+        if (this.chatInput === document.activeElement) return;
+        if (!this.gameRunning || this.gamePaused || !this.canvas) return;
+
+        if (e.button === 0 && this.canShoot && !this.isBurstActive) { // Left mouse button
+            this.updateMouse(e);
+            this.startBurst(); // Trigger burst on click
+            this.canShoot = false; // Prevent shooting until mouse up
+        }
+    }
+
+    /**
+     * Handles all mouse release events.
+     */
+    private onMouseUp(e: MouseEvent): void {
+        if (this.chatInput === document.activeElement) return;
+        if (!this.gameRunning) return;
+
+        if (e.button === 0) { // Left mouse button
+            this.canShoot = true; // Allow shooting again
+        }
+    }
+
+    /**
+     * Handles all mouse movement events.
+     */
+    private onMouseMove(e: MouseEvent): void {
+        if (this.chatInput === document.activeElement) return;
+        if (!this.gameRunning || this.gamePaused) return;
+
+        this.updateMouse(e);
+
+        // Calculate rotation based on mouse position
+        const dx = this.mouseX - this.myPlayer.transform.pos.x;
+        const dy = this.mouseY - this.myPlayer.transform.pos.y;
+        const rotation = Math.atan2(dy, dx) + Math.PI / 2;
+
+        // Rotate my character
+        this.rotateCharacterPart(this.userId, rotation);
+
+        // Send rotation update if it changed significantly (avoid spamming)
+        // TODO: Throttle the network updates for rotations
+        const rotationDiff = Math.abs(rotation - this.lastSentRotation);
+        if (rotationDiff > 0.1) {
+            this.roomManager.sendMessage(JSON.stringify({
+                type: 'player-move',
+                transform: {
+                    pos: {
+                        x: this.myPlayer.transform.pos.x,
+                        y: this.myPlayer.transform.pos.y
+                    },
+                    rot: this.myPlayer.transform.rot
+                }
+            }));
+
+            this.lastSentRotation = rotation;
+        }
+
+        // TODO: Create a global equipment function that can be called when you need to check for specific upgrades
+        if (this.crosshair && this.myPlayer.equipment.crosshair) {
+            this.crosshair.style.left = `${e.clientX}px`;
+            this.crosshair.style.top = `${e.clientY}px`;
+        }
+    }
+
+    /**
+     * Processes mouse position and updates.
+     */
+    private updateMouse(e: MouseEvent): void {
+        if (this.chatInput === document.activeElement) return;
+        if (!this.canvas) return;
+
+        const rect = this.canvas.getBoundingClientRect();
+        this.mouseX = e.clientX - rect.left;
+        this.mouseY = e.clientY - rect.top;
     }
     //
     // #endregion
@@ -335,6 +520,13 @@ class GameClient {
                 });
                 this.updateLobbyPlayersList();
                 this.updateHostDisplay();
+
+                if (this.lobbyPlayers.size === 1) {
+                    this.isHost = true;
+                    this.lobbyPlayers.get(this.userId)!.isHost = true;
+                    this.updateHostDisplay();
+                    console.log('I am the only player in the room...');
+                }
                 break;
             case 'user-joined':
                 console.log(`User ${message.userId} joined`);
@@ -352,6 +544,7 @@ class GameClient {
                             },
                             rot: this.myPlayer.transform.rot
                         },
+                        timestamp: this.myPlayer.timestamp,
                         color: this.myPlayer.color,
                         actions: {
                             dash: {
@@ -373,6 +566,17 @@ class GameClient {
                                     size: this.myPlayer.actions.primary.magazine.size
                                 },
                                 offset: this.myPlayer.actions.primary.offset,
+                                projectile: {
+                                    amount: this.myPlayer.actions.primary.projectile.amount,
+                                    color: this.myPlayer.actions.primary.projectile.color,
+                                    damage: this.myPlayer.actions.primary.projectile.damage,
+                                    length: this.myPlayer.actions.primary.projectile.length,
+                                    range: this.myPlayer.actions.primary.projectile.range,
+                                    size: this.myPlayer.actions.primary.projectile.size,
+                                    speed: this.myPlayer.actions.primary.projectile.speed,
+                                    spread: this.myPlayer.actions.primary.projectile.spread,
+                                    unique: this.myPlayer.actions.primary.projectile.unique
+                                },
                                 reload: {
                                     time: this.myPlayer.actions.primary.reload.time
                                 }
@@ -394,6 +598,9 @@ class GameClient {
                                 max: this.myPlayer.stats.health.max,
                                 value: this.myPlayer.stats.health.value,
                             },
+                            luck: this.myPlayer.stats.luck,
+                            size: this.myPlayer.stats.size,
+                            speed: this.myPlayer.stats.speed,
                             stamina: {
                                 max: this.myPlayer.stats.stamina.max,
                                 recovery: {
@@ -402,9 +609,6 @@ class GameClient {
                                 },
                                 value: this.myPlayer.stats.stamina.value
                             },
-                            luck: this.myPlayer.stats.luck,
-                            size: this.myPlayer.stats.size,
-                            speed: this.myPlayer.stats.speed
                         },
                         leaderboard: Array.from(this.leaderboard.entries())
                     }));
@@ -512,7 +716,6 @@ class GameClient {
                     break;
                 case 'return-to-lobby': // New message type
                     console.log('Returning to lobby - last player or game ended');
-                    this.gameRunning = false;
 
                     // Update host status if I'm the new host
                     if (gameData.newHostId === this.userId) {
@@ -520,9 +723,7 @@ class GameClient {
                         console.log('I am now the host as the last remaining player');
                     }
 
-                    // Clear game state
-                    this.players.clear();
-                    this.projectiles.clear();
+                    this.resetGameState('Lobby');
 
                     // Show lobby
                     this.showLobbyControls(this.roomManager.getCurrentRoom() || '');
@@ -560,6 +761,7 @@ class GameClient {
                                 },
                                 rot: gameData.transform?.rot
                             },
+                            timestamp: gameData.timestamp,
                             color: gameData.color,
                             actions: {
                                 dash: {
@@ -581,6 +783,17 @@ class GameClient {
                                         size: gameData.actions?.primary.magazine.size || PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.SIZE
                                     },
                                     offset: gameData.actions?.primary.offset || PLAYER_DEFAULTS.ACTIONS.PRIMARY.OFFSET,
+                                    projectile: {
+                                        amount: gameData.actions?.primary.projectile.amount || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.AMOUNT,
+                                        color: gameData.actions?.primary.projectile.color || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.COLOR,
+                                        damage: gameData.actions?.primary.projectile.damage || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.DAMAGE,
+                                        length: gameData.actions?.primary.projectile.length || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.LENGTH,
+                                        range: gameData.actions?.primary.projectile.range || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.RANGE,
+                                        size: gameData.actions?.primary.projectile.size || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SIZE,
+                                        speed: gameData.actions?.primary.projectile.speed || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPEED,
+                                        spread: gameData.actions?.primary.projectile.spread || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD,
+                                        unique: gameData.actions?.primary.projectile.unique || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.UNIQUE
+                                    },
                                     reload: {
                                         time: gameData.actions?.primary.reload.time || PLAYER_DEFAULTS.ACTIONS.PRIMARY.RELOAD.TIME
                                     }
@@ -599,20 +812,20 @@ class GameClient {
                             },
                             stats: {
                                 health: {
-                                    max: gameData.stats?.health.max || PLAYER_DEFAULTS.STATS.MAX_HEALTH,
-                                    value: gameData.stats?.health.value || PLAYER_DEFAULTS.STATS.MAX_HEALTH
-                                },
-                                stamina: { 
-                                    max: gameData.stats?.stamina.max || PLAYER_DEFAULTS.STATS.MAX_STAMINA,
-                                    recovery: {
-                                        delay: gameData.stats?.stamina.recovery.delay || PLAYER_DEFAULTS.STAMINA.RECOVER_DELAY,
-                                        rate: gameData.stats?.stamina.recovery.rate || PLAYER_DEFAULTS.STAMINA.RECOVER_RATE
-                                    },
-                                    value: gameData.stats?.stamina.value || PLAYER_DEFAULTS.STATS.MAX_STAMINA,
+                                    max: gameData.stats?.health.max || PLAYER_DEFAULTS.STATS.HEALTH.MAX,
+                                    value: gameData.stats?.health.value || PLAYER_DEFAULTS.STATS.HEALTH.MAX
                                 },
                                 luck: gameData.stats?.luck || PLAYER_DEFAULTS.STATS.LUCK,
                                 size: gameData.stats?.size || PLAYER_DEFAULTS.STATS.SIZE,
-                                speed: gameData.stats?.speed || PLAYER_DEFAULTS.STATS.SPEED
+                                speed: gameData.stats?.speed || PLAYER_DEFAULTS.STATS.SPEED,
+                                stamina: {
+                                    max: gameData.stats?.stamina.max || PLAYER_DEFAULTS.STATS.STAMINA.MAX,
+                                    recovery: {
+                                        delay: gameData.stats?.stamina.recovery.delay || PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.DELAY,
+                                        rate: gameData.stats?.stamina.recovery.rate || PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.RATE
+                                    },
+                                    value: gameData.stats?.stamina.value || PLAYER_DEFAULTS.STATS.STAMINA.MAX,
+                                },
                             }
                         });
                     }
@@ -657,12 +870,16 @@ class GameClient {
                     }
 
                     if (gameData.wasKill) {
-                        if (this.leaderboard.has(gameData.shooterId)) { // Increment kills for shooter
-                            this.leaderboard.get(gameData.shooterId)!.kills++;
+                        const shooter = this.leaderboard.get(gameData.shooterId);
+                        if (shooter) {
+                            shooter.kills++;
                         }
-                        if (this.leaderboard.has(gameData.targetId)) { // Increment deaths for victim
-                            this.leaderboard.get(gameData.targetId)!.deaths++;
+
+                        const target = this.leaderboard.get(gameData.targetId);
+                        if (target) {
+                            target.deaths++;
                         }
+
                         this.updateLeaderboardDisplay();
                     }
                     break;
@@ -694,17 +911,22 @@ class GameClient {
                     this.updatePauseState();
                     console.log(`${gameData.userId} paused the game`);
                     break;
-
                 case 'player-unpause':
                     this.pausedPlayers.delete(gameData.userId);
                     this.updatePauseState();
                     console.log(`${gameData.userId} unpaused`);
                     break;
                 case 'ammo-pickup':
-                    // Remove ammo box from all clients when someone picks it up
+                    if (gameData.playerId === this.userId) break;
+
                     if (this.ammoBoxes.has(gameData.ammoBoxId)) {
-                        this.ammoBoxes.delete(gameData.ammoBoxId);
-                        console.log(`Ammo box picked up by ${gameData.playerId}`);
+                        const box = this.ammoBoxes.get(gameData.ammoBoxId)!;
+
+                        // Update box state
+                        box.isOpen = gameData.boxState.isOpen;
+                        box.lid = gameData.boxState.lid;
+
+                        console.log(`Ammo box opened by ${gameData.playerId}`);
                     }
                     break;
                 //
@@ -758,9 +980,11 @@ class GameClient {
                     // TODO: Keep full track of Player object here
                     if (this.players.has(message.userId)) { // Respawn other players
                         const player = this.players.get(message.userId)!;
+
                         player.transform.pos.x = gameData.transform.pos.x;
                         player.transform.pos.y = gameData.transform.pos.y;
                         player.transform.rot = gameData.transform.rot;
+                        player.timestamp = gameData.timestamp;
                         player.actions.dash.cooldown = gameData.actions.dash.cooldown;
                         player.actions.dash.drain = gameData.actions.dash.drain;
                         player.actions.dash.multiplier = gameData.actions.dash.multiplier;
@@ -773,6 +997,15 @@ class GameClient {
                         player.actions.primary.magazine.maxReserve = gameData.actions.primary.magazine.maxReserve;
                         player.actions.primary.magazine.size = gameData.actions.primary.magazine.size;
                         player.actions.primary.offset = gameData.actions.primary.offset;
+                        player.actions.primary.projectile.amount = gameData.actions.primary.projectile.amount;
+                        player.actions.primary.projectile.color = gameData.actions.primary.projectile.color;
+                        player.actions.primary.projectile.damage = gameData.actions.primary.projectile.damage;
+                        player.actions.primary.projectile.length = gameData.actions.primary.projectile.length;
+                        player.actions.primary.projectile.range = gameData.actions.primary.projectile.range;
+                        player.actions.primary.projectile.size = gameData.actions.primary.projectile.size;
+                        player.actions.primary.projectile.speed = gameData.actions.primary.projectile.speed;
+                        player.actions.primary.projectile.spread = gameData.actions.primary.projectile.spread;
+                        player.actions.primary.projectile.unique = gameData.actions.primary.projectile.unique;
                         player.actions.primary.reload.time = gameData.actions.primary.reload.time;
                         player.actions.sprint.drain = gameData.actions.sprint.drain;
                         player.actions.sprint.multiplier = gameData.actions.sprint.multiplier;
@@ -781,13 +1014,13 @@ class GameClient {
                         player.physics.friction = gameData.physics.friction;
                         player.stats.health.max = gameData.stats.health.max;
                         player.stats.health.value = gameData.stats.health.max;
+                        player.stats.luck = gameData.stats.luck;
+                        player.stats.size = gameData.stats.size;
+                        player.stats.speed = gameData.stats.speed;
                         player.stats.stamina.max = gameData.stats.stamina.max;
                         player.stats.stamina.recovery.delay = gameData.stats.stamina.recovery.delay;
                         player.stats.stamina.recovery.rate = gameData.stats.stamina.recovery.rate;
                         player.stats.stamina.value = gameData.stats.stamina.value;
-                        player.stats.luck = gameData.stats.luck;
-                        player.stats.size = gameData.stats.size;
-                        player.stats.speed = gameData.stats.speed;
                     }
                     break;
                 case 'upgrade-taken':
@@ -891,10 +1124,16 @@ class GameClient {
 
     // #region [ Room Management ]
     //
+    /**
+     * Calls updateDisplay to show the room specific controls.
+     */
     private showRoomControls(): void {
         this.updateDisplay("room");
     }
 
+    /**
+     * Creates a websocket connection on the server, and a room with the roomManager.
+     */
     private hostRoom(): void {
         if (!this.ws) {
             this.connectWebSocket();
@@ -910,30 +1149,20 @@ class GameClient {
         }
     }
 
+    /**
+     * Displays the room joining modal, and allows pasting of room code.
+     */
     private joinRoom(): void {
-        const input = prompt("Enter room code or link:");
-        if (!input) return;
+        this.showJoinRoomModal();
+    }
 
-        let roomId: string | null = null;
-
-        try {
-            const url = new URL(input, window.location.origin);
-            if (url.pathname.startsWith("/room_")) {
-                roomId = url.pathname.replace("/", "").replace("/", "");
-            } else {
-                roomId = new URLSearchParams(url.search).get("room");
-            }
-        } catch {
-            if (input.startsWith("room_")) {
-                roomId = input;
-            }
-        }
-
-        if (!roomId) {
-            alert("Invalid room code or link");
-            return;
-        }
-
+    /**
+     * Directly connect to a game with it's room id.
+     * 
+     * Called by the room join modal.
+     */
+    private joinRoomById(roomId: string): void {
+        if (!roomId) return;
         if (!this.ws) {
             this.connectWebSocket();
             setTimeout(() => {
@@ -944,6 +1173,9 @@ class GameClient {
         }
     }
 
+    /**
+     * Calls quickplay endpoint on server to find a random open public room.
+     */
     private quickPlay(): void {
         fetch('/quickplay')
             .then(response => {
@@ -963,41 +1195,47 @@ class GameClient {
                 }
             })
             .catch(error => {
-                alert('No available games found. Try hosting a new session!');
-                console.log('Quickplay error:', error);
+                if (!this.modal || !this.modalConfirmButton || !this.modalCancelButton ||
+                    !this.modalContent || !this.modalText || !this.modalInput ||
+                    !this.modalErrorDiv || !this.modalButtons) return;
+
+                this.modal.classList.remove('hidden');
+                this.modalInput.style.display = 'none';
+                this.modalErrorDiv.textContent = ' ';
+                this.modalButtons.style.display = 'flex';
+                this.modalCancelButton.style.display = 'none';
+
+                this.modalText.textContent = 'No available games found.';
+
+                this.modalConfirmButton.textContent = 'Confirm';
+                this.modalConfirmButton.onclick = () => {
+                    if (!this.modal || !this.modalInput || !this.modalCancelButton ||
+                        !this.modalText || !this.modalConfirmButton) return;
+
+                    this.modal.classList.add('hidden');
+                    this.modalInput.style.display = 'flex';
+                    this.modalText.textContent = 'Join Room';
+                    this.modalCancelButton.style.display = 'flex';
+                    this.modalConfirmButton.onclick = null;
+                };
             });
     }
 
+    /**
+     * Called when leaving the current room - resets game state.
+     */
     private leaveRoom(): void {
         this.roomManager.leaveRoom();
-        this.gameRunning = false;
-        this.inLobby = false;
-        this.isHost = false;
 
-        this.players.clear();
-        this.projectiles.clear();
-        this.ammoBoxes.clear();
-        this.lobbyPlayers.clear();
-
-        this.clearChat();
-        this.clearLeaderboard();
+        this.resetGameState('Room');
         this.showRoomControls();
-        this.resetPlayerConfig();
-
-        // Clear decals
-        this.decals.clear();
-        if (this.decalCtx) {
-            this.decalCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
-        }
-
-        // Clear main
-        if (this.ctx) {
-            this.ctx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
-        }
     }
 
+    /**
+     * Used to check for a room link in the URL when loading the page.
+     */
     private checkForRoomInURL(): void {
-        const roomId = getRoomIdFromURL();
+        const roomId = this.getRoomIdFromURL();
         if (roomId) {
             this.connectWebSocket();
             setTimeout(() => {
@@ -1006,6 +1244,17 @@ class GameClient {
         }
     }
 
+    /**
+     * [DO NOT CALL - Call checkForRoomInURL] Directly parses the room ID from the URL if one is found. 
+     */
+    private getRoomIdFromURL(): string | null {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('room');
+    }
+
+    /**
+     * Gets the room ID contextually, and copies it to clipboard.
+     */
     private copyRoomCode(): void {
         // Get room ID from either lobby or game container
         const roomId = this.inLobby
@@ -1015,7 +1264,39 @@ class GameClient {
         if (!roomId) return;
 
         navigator.clipboard.writeText(roomId).then(() => {
-            alert("Room code copied!");
+            if (!this.modal || !this.modalConfirmButton || !this.modalCancelButton ||
+                !this.modalContent || !this.modalText || !this.modalInput ||
+                !this.modalErrorDiv || !this.modalButtons) return;
+
+            this.modal.classList.remove('hidden');
+            this.modalInput.style.display = 'none';
+            this.modalErrorDiv.textContent = ' ';
+            this.modalButtons.style.display = 'flex';
+            this.modalCancelButton.style.display = 'none';
+
+            this.modalText.textContent = 'Room code copied!';
+            this.modalConfirmButton.textContent = 'Confirm';
+
+            // Define the close function
+            const closeModal = () => {
+                if (!this.modal || !this.modalInput || !this.modalCancelButton ||
+                    !this.modalText || !this.modalConfirmButton) return;
+
+                this.modal.classList.add('hidden');
+                this.modalInput.style.display = 'flex';
+                this.modalText.textContent = 'Join Room';
+                this.modalCancelButton.style.display = 'flex';
+                this.modalConfirmButton.onclick = null;
+            };
+
+            this.modalConfirmButton.onclick = closeModal;
+
+            // Auto-close after 3 seconds
+            setTimeout(() => {
+                if (this.modal && !this.modal.classList.contains('hidden')) {
+                    closeModal();
+                }
+            }, 3000);
         }).catch(() => {
             alert("Could not copy. Please copy manually.");
         });
@@ -1025,6 +1306,9 @@ class GameClient {
 
     // #region [ Lobby Management ]
     //
+    /**
+     * Calls updateDisplay to show the lobby specific controls.
+     */
     private showLobbyControls(roomId: string): void {
         this.updateDisplay("lobby", roomId);
 
@@ -1033,7 +1317,7 @@ class GameClient {
             id: this.userId,
             color: this.myPlayer.color,
             isHost: this.isHost
-        });
+        }); // TODO: Consider sending the full player object here
 
         this.setupLobbyOptions();
 
@@ -1045,162 +1329,102 @@ class GameClient {
         this.updateHostDisplay();
     }
 
+    /**
+     * Sets up lobby toggles and input for game settings.
+     */
     private setupLobbyOptions(): void {
-        if (this.privateToggle) {
-            this.privateToggle.addEventListener('click', () => {
-                if (!this.isHost) return;
-
-                this.isPrivateRoom = !this.isPrivateRoom;
-                updateToggle('privateToggle', this.isPrivateRoom);
-
-                this.roomManager.sendMessage(JSON.stringify({
-                    type: 'lobby-options',
-                    privateRoom: this.isPrivateRoom
-                }));
-
-                console.log(`Room privacy changed to: ${this.isPrivateRoom ? 'Private' : 'Public'}`);
-            });
-        }
-
-        if (this.upgradesToggle) {
-            this.upgradesToggle.addEventListener('click', () => {
-                if (!this.isHost) return;
-
-                this.isUpgradesEnabled = !this.isUpgradesEnabled;
-                updateToggle('upgradesToggle', this.isUpgradesEnabled);
-
-                this.roomManager.sendMessage(JSON.stringify({
-                    type: 'lobby-options',
-                    upgradesEnabled: this.isUpgradesEnabled
-                }));
-            });
-        }
-
-        if (this.winsInput) {
-            this.winsInput.addEventListener('change', () => {
-                if (!this.isHost) return;
-                if (!this.winsInput) return;
-
-                const newWins = parseInt(this.winsInput.value);
-                if (isNaN(newWins) || newWins < 1) {
-                    this.winsInput.value = this.gameMaxWins.toString();
-                    return;
-                }
-
-                this.gameMaxWins = newWins;
-                updateInput('winsInput', this.gameMaxWins);
-
-                this.roomManager.sendMessage(JSON.stringify({
-                    type: 'lobby-options',
-                    maxWins: this.gameMaxWins
-                }));
-
-                console.log(`Game max wins changed to: ${this.gameMaxWins}`);
-            });
-        }
-
-        if (this.playersInput) {
-            this.playersInput.addEventListener('change', () => {
-                if (!this.isHost) return;
-                if (!this.playersInput) return;
-
-                const newPlayers = parseInt(this.playersInput.value);
-                if (isNaN(newPlayers) || newPlayers < 1) {
-                    this.playersInput.value = this.gameMaxPlayers.toString();
-                    return;
-                }
-
-                this.gameMaxPlayers = newPlayers;
-                updateInput('playersInput', this.gameMaxPlayers);
-
-                this.roomManager.sendMessage(JSON.stringify({
-                    type: 'lobby-options',
-                    maxPlayers: this.gameMaxPlayers
-                }));
-
-                console.log(`Game max players changed to: ${this.gameMaxPlayers}`);
-            });
-        }
+        this.setupLobbyToggle('privateToggle', 'privateRoom', () => this.isPrivateRoom, (val) => this.isPrivateRoom = val);
+        this.setupLobbyToggle('upgradesToggle', 'upgradesEnabled', () => this.isUpgradesEnabled, (val) => this.isUpgradesEnabled = val);
+        this.setupLobbyInput('winsInput', 'maxWins', () => this.gameMaxWins, (val) => this.gameMaxWins = val);
+        this.setupLobbyInput('playersInput', 'maxPlayers', () => this.gameMaxPlayers, (val) => this.gameMaxPlayers = val);
     }
 
-    private syncLobbyOptions(options: any): void { // TODO: Type protect options later once formulated
-        if (options.privateRoom !== undefined) {
-            this.isPrivateRoom = options.privateRoom;
-            updateToggle('privateToggle', this.isPrivateRoom);
-            console.log(`Lobby privacy synced to: ${this.isPrivateRoom ? 'Private' : 'Public'}`);
-        }
+    /**
+     * Called by setupLobbyOptions - Responsible for toggles.
+     */
+    private setupLobbyToggle(
+        elementProp: 'privateToggle' | 'upgradesToggle',
+        messageKey: string,
+        getter: () => boolean,
+        setter: (val: boolean) => void
+    ): void {
+        const element = this[elementProp];
+        if (!element) return;
 
-        if (options.maxWins !== undefined) {
-            this.gameMaxWins = options.maxWins;
-            updateInput('winsInput', this.gameMaxWins);
-            console.log(`Game max wins synced to: ${this.gameMaxWins}`);
-        }
+        element.addEventListener('click', () => {
+            if (!this.isHost) return;
 
-        if (options.maxPlayers !== undefined) {
-            this.gameMaxPlayers = options.maxPlayers;
-            updateInput('playersInput', this.gameMaxPlayers);
-            console.log(`Game max players synced to: ${this.gameMaxPlayers}`);
-        }
+            const newValue = !getter();
+            setter(newValue);
+            updateToggle(elementProp, newValue);
 
-        if (options.upgradesEnabled !== undefined) {
-            this.isUpgradesEnabled = options.upgradesEnabled;
-            updateToggle('upgradesToggle', this.isUpgradesEnabled);
-            console.log(`Game upgrades toggled: ${this.isUpgradesEnabled}`)
-        }
-    }
+            this.roomManager.sendMessage(JSON.stringify({
+                type: 'lobby-options',
+                [messageKey]: newValue
+            }));
 
-    private updateLobbyPlayersList(): void {
-        if (!this.lobbyPlayersList) return;
-
-        this.lobbyPlayersList.innerHTML = '';
-
-        // Sort players: host first, then others
-        const sortedPlayers = Array.from(this.lobbyPlayers.values()).sort((a, b) => {
-            if (a.isHost && !b.isHost) return -1;
-            if (!a.isHost && b.isHost) return 1;
-            return 0;
-        });
-
-        sortedPlayers.forEach(player => {
-            const playerDiv = document.createElement('div');
-            playerDiv.className = 'lobby_player';
-
-            const colorDiv = document.createElement('div');
-            colorDiv.className = 'player_color';
-            colorDiv.style.backgroundColor = player.color;
-
-            const nameDiv = document.createElement('div');
-            nameDiv.className = 'player_name';
-            nameDiv.textContent = `${player.id}${player.isHost ? ' (Host)' : ''}`;
-
-            const controlsDiv = document.createElement('div');
-            controlsDiv.className = 'player_controls';
-
-            // Only show controls if I'm the host and this isn't me
-            if (this.isHost && player.id !== this.userId) {
-                const promoteBtn = document.createElement('button');
-                promoteBtn.textContent = 'Promote';
-                promoteBtn.onclick = () => this.promotePlayer(player.id);
-
-                const kickBtn = document.createElement('button');
-                kickBtn.textContent = 'Kick';
-                kickBtn.className = 'danger';
-                kickBtn.onclick = () => this.kickPlayer(player.id);
-
-                controlsDiv.appendChild(promoteBtn);
-                controlsDiv.appendChild(kickBtn);
-            }
-
-            playerDiv.appendChild(colorDiv);
-            playerDiv.appendChild(nameDiv);
-            playerDiv.appendChild(controlsDiv);
-
-            if (this.lobbyPlayersList) {
-                this.lobbyPlayersList.appendChild(playerDiv);
-            }
+            console.log(`${messageKey} changed to: ${newValue}`);
         });
     }
 
+    /**
+     * Called by setupLobbyOptions - Responsible for input fields.
+     */
+    private setupLobbyInput(
+        elementProp: 'winsInput' | 'playersInput',
+        messageKey: string,
+        getter: () => number,
+        setter: (val: number) => void
+    ): void {
+        const element = this[elementProp];
+        if (!element) return;
+
+        element.addEventListener('change', () => {
+            if (!this.isHost) return;
+
+            const newValue = parseInt(element.value);
+            if (isNaN(newValue) || newValue < 1) {
+                element.value = getter().toString();
+                return;
+            }
+
+            setter(newValue);
+            updateInput(elementProp, newValue);
+
+            this.roomManager.sendMessage(JSON.stringify({
+                type: 'lobby-options',
+                [messageKey]: newValue
+            }));
+
+            console.log(`${messageKey} changed to: ${newValue}`);
+        });
+    }
+
+    /**
+     * Syncs lobby options when state change messages are received over websocket.
+     */
+    private syncLobbyOptions(options: any): void {
+        this.syncOption(options, 'privateRoom', 'isPrivateRoom', 'privateToggle', updateToggle, 'Lobby privacy', (v) => v ? 'Private' : 'Public');
+        this.syncOption(options, 'maxWins', 'gameMaxWins', 'winsInput', updateInput, 'Game max wins');
+        this.syncOption(options, 'maxPlayers', 'gameMaxPlayers', 'playersInput', updateInput, 'Game max players');
+        this.syncOption(options, 'upgradesEnabled', 'isUpgradesEnabled', 'upgradesToggle', updateToggle, 'Game upgrades toggled');
+    }
+
+    /**
+     * [DO NOT CALL] Syncs a lobby option - called by syncLobbyOptions.
+     */
+    private syncOption(options: any, key: string, prop: string, element: string, fn: Function, label: string, format?: (v: any) => string): void {
+        if (options[key] !== undefined) {
+            (this as any)[prop] = options[key];
+            fn(element, options[key]);
+            const displayValue = format ? format(options[key]) : options[key];
+            console.log(`${label} synced to: ${displayValue}`);
+        }
+    }
+
+    /**
+     * Promote specific player to host.
+     */
     private promotePlayer(playerId: string): void {
         this.roomManager.sendMessage(JSON.stringify({
             type: 'promote-player',
@@ -1208,6 +1432,9 @@ class GameClient {
         }));
     }
 
+    /**
+     * Kick specific  player from the current lobby.
+     */
     private kickPlayer(playerId: string): void {
         this.roomManager.sendMessage(JSON.stringify({
             type: 'kick-player',
@@ -1215,33 +1442,13 @@ class GameClient {
         }));
     }
 
+    /**
+     * Return to the lobby for this room from the game.
+     * 
+     * Called when game ends, or when you are the last player left in the game.
+     */
     private returnToLobby(): void {
-        this.gameRunning = false;
-        this.isRoundInProgress = false;
-
-        this.gameWinner = null;
-        this.roundWinner = null;
-
-        this.players.clear();
-        this.projectiles.clear();
-        this.ammoBoxes.clear();
-        this.leaderboard.clear();
-
-        // Clear decals
-        this.decals.clear();
-        if (this.decalCtx) {
-            this.decalCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
-        }
-
-        // Clear main
-        if (this.ctx) {
-            this.ctx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
-        }
-
-        this.clearChat();
-        this.clearLeaderboard();
-        this.resetPlayerConfig();
-        resetUpgrades();
+        this.resetGameState('Lobby');
 
         // Notify others and return to lobby
         this.roomManager.sendMessage(JSON.stringify({
@@ -1256,6 +1463,11 @@ class GameClient {
 
     // #region [ Round Management ]
     //
+    /**
+     * Responsible for checking if the round should end.
+     * 
+     * Called when players are hit or events happen that could end the round.
+     */
     private checkRoundEnd(): void {
         if (!this.isRoundInProgress) return;
 
@@ -1276,21 +1488,32 @@ class GameClient {
         }
     }
 
+    /**
+     * Processes end of round logic.
+     */
     private endRound(winnerId: string | null): void {
         if (!this.isRoundInProgress) return;
 
         this.isRoundInProgress = false;
         this.roundWinner = winnerId;
 
+        if (!winnerId) { // Everyone died somehow
+            console.log('Round ended with no survivors!');
+            setTimeout(() => {
+                this.startNewRound();
+            }, GAME.ROUND_END_DELAY);
+            return;
+        }
+
         // Increment win for the winner
-        if (winnerId && this.leaderboard.has(winnerId)) {
+        if (this.leaderboard.has(winnerId)) {
             const winnerEntry = this.leaderboard.get(winnerId)!;
             winnerEntry.wins++;
             console.log(`${winnerId} won the round! Total wins: ${winnerEntry.wins}`);
 
             // Check if they've won the game - use dynamic max wins
             if (winnerEntry.wins >= this.gameMaxWins) {
-                this.endGame(winnerId);
+                this.endGame(winnerId); // TODO: Maybe don't rely on leaderboard data to end the game but actual player data stored for the round
                 return; // Don't start a new round
             }
 
@@ -1298,19 +1521,18 @@ class GameClient {
             this.updateLeaderboardDisplay();
         }
 
-        // Show round results and start upgrade phase after delay
+        // We have a winner, start the upgrade phase after a delay
         setTimeout(() => {
             this.startUpgradePhase(winnerId);
         }, GAME.ROUND_END_DELAY);
     }
 
+    /**
+     * Processes end of game logic.
+     */
     private endGame(winnerId: string): void {
         this.gameWinner = winnerId;
         console.log(`${winnerId} won the game with ${this.gameMaxWins} wins!`);
-
-        this.resetPlayerConfig();
-        this.pausedPlayers.clear();
-        resetUpgrades();
 
         // Send game end message
         this.roomManager.sendMessage(JSON.stringify({
@@ -1324,17 +1546,17 @@ class GameClient {
         }, GAME.GAME_END_DELAY);
     }
 
+    /**
+     * Starts a new round, keeping track of full player states.
+     */
     private startNewRound(): void {
         console.log('Starting new round...');
 
         // Reset myself
         this.myPlayer.stats.health.value = this.myPlayer.stats.health.max;
+        //TODO: Update spawning so it is not random
         this.myPlayer.transform.pos.x = Math.random() * (CANVAS.WIDTH - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN;
         this.myPlayer.transform.pos.y = Math.random() * (CANVAS.HEIGHT - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN;
-
-        this.isReloading = false;
-        this.isBurstActive = false;
-        this.currentBurstShot = 0;
 
         setSlider('healthBar', this.myPlayer.stats.health.value, this.myPlayer.stats.health.max);
         setSlider('staminaBar', this.myPlayer.stats.stamina.value, this.myPlayer.stats.stamina.max);
@@ -1342,6 +1564,7 @@ class GameClient {
         // Locally update all other players
         // TODO: Keep full track of Player object here
         this.players.forEach(player => {
+            player.timestamp = player.timestamp || Date.now();
             player.actions.dash.cooldown = player.actions.dash.cooldown || PLAYER_DEFAULTS.ACTIONS.DASH.COOLDOWN;
             player.actions.dash.drain = player.actions.dash.drain || PLAYER_DEFAULTS.ACTIONS.DASH.DRAIN;
             player.actions.dash.multiplier = player.actions.dash.multiplier || PLAYER_DEFAULTS.ACTIONS.DASH.MULTIPLIER;
@@ -1354,21 +1577,30 @@ class GameClient {
             player.actions.primary.magazine.maxReserve = player.actions.primary.magazine.maxReserve || PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.MAX_RESERVE;
             player.actions.primary.magazine.size = player.actions.primary.magazine.size || PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.SIZE;
             player.actions.primary.offset = player.actions.primary.offset || PLAYER_DEFAULTS.ACTIONS.PRIMARY.OFFSET;
+            player.actions.primary.projectile.amount = player.actions.primary.projectile.amount || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.AMOUNT;
+            player.actions.primary.projectile.color = player.actions.primary.projectile.color || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.COLOR;
+            player.actions.primary.projectile.damage = player.actions.primary.projectile.damage || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.DAMAGE;
+            player.actions.primary.projectile.length = player.actions.primary.projectile.length || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.LENGTH;
+            player.actions.primary.projectile.range = player.actions.primary.projectile.range || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.RANGE;
+            player.actions.primary.projectile.size = player.actions.primary.projectile.size || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SIZE;
+            player.actions.primary.projectile.speed = player.actions.primary.projectile.speed || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPEED;
+            player.actions.primary.projectile.spread = player.actions.primary.projectile.spread || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD;
+            player.actions.primary.projectile.unique = player.actions.primary.projectile.unique || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.UNIQUE;
             player.actions.primary.reload.time = player.actions.primary.reload.time || PLAYER_DEFAULTS.ACTIONS.PRIMARY.RELOAD.TIME;
             player.actions.sprint.drain = player.actions.sprint.drain || PLAYER_DEFAULTS.ACTIONS.SPRINT.DRAIN;
             player.actions.sprint.multiplier = player.actions.sprint.multiplier || PLAYER_DEFAULTS.ACTIONS.SPRINT.MULTIPLIER;
             player.equipment.crosshair = player.equipment.crosshair || PLAYER_DEFAULTS.EQUIPMENT.CROSSHAIR;
             player.physics.acceleration = player.physics.acceleration || PLAYER_DEFAULTS.PHYSICS.ACCELERATION;
             player.physics.friction = player.physics.friction || PLAYER_DEFAULTS.PHYSICS.FRICTION;
-            player.stats.health.max = player.stats.health.max || PLAYER_DEFAULTS.STATS.MAX_HEALTH;
-            player.stats.health.value = player.stats.health.max || PLAYER_DEFAULTS.STATS.MAX_HEALTH;
-            player.stats.stamina.max = player.stats.stamina.max || PLAYER_DEFAULTS.STATS.MAX_STAMINA;
-            player.stats.stamina.recovery.delay = player.stats.stamina.recovery.delay || PLAYER_DEFAULTS.STAMINA.RECOVER_DELAY;
-            player.stats.stamina.recovery.rate = player.stats.stamina.recovery.rate || PLAYER_DEFAULTS.STAMINA.RECOVER_RATE;
-            player.stats.stamina.value = player.stats.stamina.value || PLAYER_DEFAULTS.STATS.MAX_STAMINA;
+            player.stats.health.max = player.stats.health.max || PLAYER_DEFAULTS.STATS.HEALTH.MAX;
+            player.stats.health.value = player.stats.health.max || PLAYER_DEFAULTS.STATS.HEALTH.MAX;
             player.stats.luck = player.stats.luck || PLAYER_DEFAULTS.STATS.LUCK;
             player.stats.size = player.stats.size || PLAYER_DEFAULTS.STATS.SIZE;
             player.stats.speed = player.stats.speed || PLAYER_DEFAULTS.STATS.SPEED;
+            player.stats.stamina.max = player.stats.stamina.max || PLAYER_DEFAULTS.STATS.STAMINA.MAX;
+            player.stats.stamina.recovery.delay = player.stats.stamina.recovery.delay || PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.DELAY;
+            player.stats.stamina.recovery.rate = player.stats.stamina.recovery.rate || PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.RATE;
+            player.stats.stamina.value = player.stats.stamina.value || PLAYER_DEFAULTS.STATS.STAMINA.MAX;
         });
 
         this.isRoundInProgress = true;
@@ -1385,6 +1617,7 @@ class GameClient {
                 },
                 rot: this.myPlayer.transform.rot
             },
+            timestamp: this.myPlayer.timestamp,
             actions: {
                 dash: {
                     cooldown: this.myPlayer.actions.dash.cooldown,
@@ -1405,6 +1638,17 @@ class GameClient {
                         size: this.myPlayer.actions.primary.magazine.size
                     },
                     offset: this.myPlayer.actions.primary.offset,
+                    projectile: {
+                        amount: this.myPlayer.actions.primary.projectile.amount,
+                        color: this.myPlayer.actions.primary.projectile.color,
+                        damage: this.myPlayer.actions.primary.projectile.damage,
+                        length: this.myPlayer.actions.primary.projectile.length,
+                        range: this.myPlayer.actions.primary.projectile.range,
+                        size: this.myPlayer.actions.primary.projectile.size,
+                        speed: this.myPlayer.actions.primary.projectile.speed,
+                        spread: this.myPlayer.actions.primary.projectile.spread,
+                        unique: this.myPlayer.actions.primary.projectile.unique
+                    },
                     reload: {
                         time: this.myPlayer.actions.primary.reload.time
                     }
@@ -1424,27 +1668,30 @@ class GameClient {
             stats: {
                 health: {
                     max: this.myPlayer.stats.health.max,
-                    value: this.myPlayer.stats.health.value,
+                    value: this.myPlayer.stats.health.max,
                 },
+                luck: this.myPlayer.stats.luck,
+                size: this.myPlayer.stats.size,
+                speed: this.myPlayer.stats.speed,
                 stamina: {
                     max: this.myPlayer.stats.stamina.max,
                     recovery: {
                         delay: this.myPlayer.stats.stamina.recovery.delay,
                         rate: this.myPlayer.stats.stamina.recovery.rate
                     },
-                    value: this.myPlayer.stats.stamina.value
+                    value: this.myPlayer.stats.stamina.max
                 },
-                luck: this.myPlayer.stats.luck,
-                size: this.myPlayer.stats.size,
-                speed: this.myPlayer.stats.speed
             }
         }));
     }
     //
-    // #endregion@work
+    // #endregion
 
-    // #region [ Chat ]
+    // #region [ Chat Management ]
     //
+    /**
+     * Sends a message in the chat.
+     */
     private sendChatMessage(): void {
         if (!this.chatInput || !this.chatInput.value.trim()) return;
 
@@ -1468,6 +1715,9 @@ class GameClient {
         this.chatInput.value = '';
     }
 
+    /**
+     * Displayes messages sent in the chat.
+     */
     private displayChatMessage(senderId: string, message: string, isOwn: boolean = false): void {
         if (!this.chatMessages) return;
 
@@ -1496,6 +1746,9 @@ class GameClient {
         }
     }
 
+    /**
+     * Resets the chat.
+     */
     private clearChat(): void {
         if (this.chatMessages) {
             this.chatMessages.innerHTML = '';
@@ -1503,179 +1756,6 @@ class GameClient {
         if (this.chatInput) {
             this.chatInput.value = '';
         }
-    }
-    //
-    // #endregion
-
-    // #region [ Events ]
-    //
-    private setupEventListeners(): void {
-        document.getElementById("hostBtn")?.addEventListener("click", () => this.hostRoom());
-        document.getElementById("joinBtn")?.addEventListener("click", () => this.joinRoom());
-        document.getElementById("quickBtn")?.addEventListener("click", () => this.quickPlay());
-
-        document.getElementById("lobbyLeaveBtn")?.addEventListener("click", () => this.leaveRoom());
-        document.getElementById("lobbyCodeBtn")?.addEventListener("click", () => this.copyRoomCode());
-
-        document.getElementById("gameLeaveBtn")?.addEventListener("click", () => this.leaveRoom());
-        document.getElementById("gameCodeBtn")?.addEventListener("click", () => this.copyRoomCode());
-
-        this.startGameBtn?.addEventListener("click", () => this.startGame());
-
-        // Chat event listeners
-        this.chatSendBtn?.addEventListener("click", () => this.sendChatMessage());
-        this.chatInput?.addEventListener("keypress", (e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                this.sendChatMessage();
-            }
-        });
-
-        // Add focus/blur listeners to chat input
-        this.chatInput?.addEventListener("focus", () => {
-            this.keys.clear();
-            this.canShoot = false;
-            this.isSprinting = false;
-            this.isDashing = false;
-            this.isBurstActive = false;
-            this.currentBurstShot = 0;
-        });
-
-        this.chatInput?.addEventListener("blur", () => {
-            this.keys.clear();
-            this.canShoot = true;
-            this.isSprinting = false;
-            this.isDashing = false;
-        });
-
-        // Keep keyboard events on document (for WASD movement)
-        document.addEventListener('keydown', (e) => this.onKeyDown(e));
-        document.addEventListener('keyup', (e) => this.onKeyUp(e));
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this.gameRunning && !this.inLobby) {
-                e.preventDefault();
-                this.myPlayer.stats.size *= 10
-                console.log(this.myPlayer.stats.size)
-            }
-        });
-
-        // CHANGE: Move mouse events to canvas only
-        this.canvas?.addEventListener('mousedown', (e) => this.onMouseDown(e));
-        this.canvas?.addEventListener('mouseup', (e) => this.onMouseUp(e));
-        this.canvas?.addEventListener('mousemove', (e) => this.onMouseMove(e));
-
-        // Room manager message handler
-        this.roomManager.onMessage((message) => this.handleRoomMessage(message));
-    }
-
-    private onKeyDown(e: KeyboardEvent): void {
-        if (this.chatInput === document.activeElement) return;
-        if (!this.gameRunning || this.gamePaused) return;
-
-        const key = e.key.toLowerCase();
-        const keybinds = GAME.KEYBINDS;
-        const isGameKey = Object.values(keybinds).includes(key);
-
-        if (isGameKey) {
-            e.preventDefault();
-            this.keys.add(key);
-
-            if (key === keybinds.RELOAD && !this.isReloading && this.myPlayer.actions.primary.magazine.currentAmmo < this.myPlayer.actions.primary.magazine.size && this.myPlayer.actions.primary.magazine.currentReserve > 0) {
-                this.startReload();
-            }
-
-            if (key === keybinds.SPRINT) {
-                this.isSprinting = true;
-            }
-
-            if (key === keybinds.DASH && !this.isDashing) {
-                this.startDash();
-            }
-        }
-    }
-
-    private onKeyUp(e: KeyboardEvent): void {
-        if (this.chatInput === document.activeElement) return;
-        if (!this.gameRunning) return;
-
-        const key = e.key.toLowerCase();
-        const keybinds = GAME.KEYBINDS;
-
-        if (Object.values(keybinds).includes(key)) {
-            e.preventDefault();
-            this.keys.delete(key);
-
-            if (key === keybinds.SPRINT) {
-                this.isSprinting = false;
-            }
-        }
-    }
-
-    private onMouseDown(e: MouseEvent): void {
-        if (this.chatInput === document.activeElement) return;
-        if (!this.gameRunning || this.gamePaused || !this.canvas) return;
-
-        if (e.button === 0 && this.canShoot && !this.isBurstActive) { // Left mouse button
-            this.updateMousePosition(e);
-            this.startBurst(); // Trigger burst on click
-            this.canShoot = false; // Prevent shooting until mouse up
-        }
-    }
-
-    private onMouseUp(e: MouseEvent): void {
-        if (this.chatInput === document.activeElement) return;
-        if (!this.gameRunning) return;
-
-        if (e.button === 0) { // Left mouse button
-            this.canShoot = true; // Allow shooting again
-        }
-    }
-
-    private onMouseMove(e: MouseEvent): void {
-        if (this.chatInput === document.activeElement) return;
-        if (!this.gameRunning || this.gamePaused) return;
-
-        this.updateMousePosition(e);
-
-        // Calculate rotation based on mouse position
-        const dx = this.mouseX - this.myPlayer.transform.pos.x;
-        const dy = this.mouseY - this.myPlayer.transform.pos.y;
-        const rotation = Math.atan2(dy, dx) + Math.PI / 2;
-
-        // Rotate my character
-        this.rotateCharacterPart(this.userId, rotation);
-
-        // Send rotation update if it changed significantly (avoid spamming)
-        const rotationDiff = Math.abs(rotation - this.lastSentRotation);
-        if (rotationDiff > 0.1) {
-            this.roomManager.sendMessage(JSON.stringify({
-                type: 'player-move',
-                transform: {
-                    pos: {
-                        x: this.myPlayer.transform.pos.x,
-                        y: this.myPlayer.transform.pos.y
-                    },
-                    rot: this.myPlayer.transform.rot
-                }
-            }));
-
-            this.lastSentRotation = rotation;
-        }
-
-        if (this.crosshair && this.myPlayer.equipment.crosshair) {
-            this.crosshair.style.left = `${e.clientX}px`;
-            this.crosshair.style.top = `${e.clientY}px`;
-        }
-    }
-
-    private updateMousePosition(e: MouseEvent): void {
-        if (this.chatInput === document.activeElement) return;
-        if (!this.canvas) return;
-
-        const rect = this.canvas.getBoundingClientRect();
-        this.mouseX = e.clientX - rect.left;
-        this.mouseY = e.clientY - rect.top;
     }
     //
     // #endregion
@@ -1801,8 +1881,8 @@ class GameClient {
             1: { x: 0, y: 0 }     // Return to start
         }, 175, 1);
 
-        // Calculate spawn offset to prevent immediate collision
-        const spawnOffset = (this.myPlayer.stats.size / 4) + PLAYER_DEFAULTS.PROJECTILE.SIZE + this.myPlayer.actions.primary.offset;
+        // Calculate spawn offset
+        const spawnOffset = (this.myPlayer.stats.size / 4) + this.myPlayer.actions.primary.projectile.size + this.myPlayer.actions.primary.offset;
         const bulletSpawnX = this.myPlayer.transform.pos.x + dirX * spawnOffset;
         const bulletSpawnY = this.myPlayer.transform.pos.y + dirY * spawnOffset;
         const rightX = -dirY;
@@ -1824,21 +1904,33 @@ class GameClient {
             { x: rightX * 0.8 + dirX * -0.2, y: rightY * 0.8 + dirY * -0.2 } // Right + slightly back
         );
 
-        // Create projectiles based on PROJECTILE.AMOUNT with spread
-        for (let i = 0; i < PLAYER_DEFAULTS.PROJECTILE.AMOUNT; i++) {
-            const spread = (Math.random() - 0.5) * PLAYER_DEFAULTS.PROJECTILE.SPREAD;
+        // Create projectiles
+        for (let i = 0; i < this.myPlayer.actions.primary.projectile.amount; i++) {
+            const spread = (Math.random() - 0.5) * (this.myPlayer.actions.primary.projectile.spread / 100);
             const angle = Math.atan2(dirY, dirX) + spread;
+            const dir = forward(angle);
 
             const projectile: Projectile = {
                 id: generateUID(),
-                x: this.myPlayer.transform.pos.x + Math.cos(angle) * spawnOffset, // Spawn with offset
-                y: this.myPlayer.transform.pos.y + Math.sin(angle) * spawnOffset, // Spawn with offset
-                velocityX: Math.cos(angle) * PLAYER_DEFAULTS.PROJECTILE.SPEED,
-                velocityY: Math.sin(angle) * PLAYER_DEFAULTS.PROJECTILE.SPEED,
-                range: PLAYER_DEFAULTS.PROJECTILE.RANGE * 100,
+                transform: {
+                    pos: {
+                        x: this.myPlayer.transform.pos.x + Math.cos(angle) * spawnOffset,
+                        y: this.myPlayer.transform.pos.y + Math.sin(angle) * spawnOffset,
+                    },
+                    rot: angle
+                },
+                timestamp: Date.now(),
+                color: this.myPlayer.actions.primary.projectile.color,
+                damage: this.myPlayer.actions.primary.projectile.damage,
                 distanceTraveled: 0,
+                length: this.myPlayer.actions.primary.projectile.length,
                 ownerId: this.userId,
-                timestamp: Date.now()
+                range: this.myPlayer.actions.primary.projectile.range * 100, // Convert to px
+                size: this.myPlayer.actions.primary.projectile.size,
+                velocity: {
+                    x: dir.x * this.myPlayer.actions.primary.projectile.speed,
+                    y: dir.y * this.myPlayer.actions.primary.projectile.speed,
+                },
             };
 
             this.projectiles.set(projectile.id, projectile);
@@ -1855,53 +1947,53 @@ class GameClient {
         const projectilesToRemove: string[] = [];
 
         this.projectiles.forEach((projectile, id) => {
-            projectile.x += projectile.velocityX;
-            projectile.y += projectile.velocityY;
+            projectile.transform.pos.x += projectile.velocity.x;
+            projectile.transform.pos.y += projectile.velocity.y;
 
             // Update distance traveled
             const frameDistance = Math.sqrt(
-                projectile.velocityX * projectile.velocityX +
-                projectile.velocityY * projectile.velocityY
+                projectile.velocity.x * projectile.velocity.x +
+                projectile.velocity.y * projectile.velocity.y
             );
             projectile.distanceTraveled += frameDistance;
 
             // Check collision with my player (only if I'm alive)
             if (this.myPlayer.stats.health.value > 0) {
-                const dx = projectile.x - this.myPlayer.transform.pos.x;
-                const dy = projectile.y - this.myPlayer.transform.pos.y;
+                const dx = projectile.transform.pos.x - this.myPlayer.transform.pos.x;
+                const dy = projectile.transform.pos.y - this.myPlayer.transform.pos.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 const col = this.myPlayer.stats.size / 4;
 
-                if (distance <= col + PLAYER_DEFAULTS.PROJECTILE.SIZE) {
-                    this.myPlayer.stats.health.value -= PLAYER_DEFAULTS.PROJECTILE.DAMAGE;
+                if (distance <= col + projectile.size) {
+                    this.myPlayer.stats.health.value -= projectile.damage;
                     setSlider('healthBar', this.myPlayer.stats.health.value, this.myPlayer.stats.health.max);
 
                     projectilesToRemove.push(id);
 
-                    this.createDecal(projectile.x, projectile.y, `blood_${id}`, DECALS.BLOOD);
+                    this.createDecal(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, DECALS.BLOOD);
 
                     // Create directional blood spray - spray backwards from projectile direction
                     const bloodDirection = {
-                        x: -projectile.velocityX / Math.sqrt(projectile.velocityX ** 2 + projectile.velocityY ** 2),
-                        y: -projectile.velocityY / Math.sqrt(projectile.velocityX ** 2 + projectile.velocityY ** 2)
+                        x: -projectile.velocity.x / Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2),
+                        y: -projectile.velocity.y / Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2)
                     };
-                    this.createParticles(projectile.x, projectile.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
-                    this.createEmitter(this.userId, projectile.x, projectile.y);
+                    this.createParticles(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
+                    this.createEmitter(this.userId, projectile.transform.pos.x, projectile.transform.pos.y);
 
                     // Notify everyone I was hit
                     this.roomManager.sendMessage(JSON.stringify({
                         type: 'player-hit',
                         targetId: this.userId,
                         shooterId: projectile.ownerId,
-                        damage: PLAYER_DEFAULTS.PROJECTILE.DAMAGE,
+                        damage: projectile.damage,
                         newHealth: this.myPlayer.stats.health.value,
                         projectileId: id
                     }));
 
                     // Check if I died
                     if (this.myPlayer.stats.health.value <= 0) {
-                        this.recordDeath();
-                        this.checkRoundEnd();
+                        // this.recordDeath();
+                        // this.checkRoundEnd(); // Calling in 'player-death' message handler
                     }
                 }
             }
@@ -1910,40 +2002,43 @@ class GameClient {
             if (projectile.ownerId === this.userId) {
                 this.players.forEach((player, playerId) => {
                     if (player.stats.health.value > 0) { // Only check collision if the player is alive
-                        const dx2 = projectile.x - player.transform.pos.x;
-                        const dy2 = projectile.y - player.transform.pos.y;
+                        const dx2 = projectile.transform.pos.x - player.transform.pos.x;
+                        const dy2 = projectile.transform.pos.y - player.transform.pos.y;
                         const distance2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
                         const col = player.stats.size / 4;
 
-                        if (distance2 <= col + PLAYER_DEFAULTS.PROJECTILE.SIZE) {
+                        if (distance2 <= col + projectile.size) { // Calculate hit based on MY projectile size
                             // Hit another player!
                             projectilesToRemove.push(id);
 
-                            // Calculate their new health
-                            const newHealth = Math.max(0, player.stats.health.value - PLAYER_DEFAULTS.PROJECTILE.DAMAGE);
+                            // Calculate their new health / use MY damage
+                            const newHealth = Math.max(0, player.stats.health.value - projectile.damage);
                             player.stats.health.value = newHealth;
 
-                            this.createDecal(projectile.x, projectile.y, `blood_${id}`, DECALS.BLOOD);
+                            this.createDecal(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, DECALS.BLOOD);
 
                             // Create directional blood spray - spray backwards from projectile direction
                             const bloodDirection = {
-                                x: -projectile.velocityX / Math.sqrt(projectile.velocityX ** 2 + projectile.velocityY ** 2),
-                                y: -projectile.velocityY / Math.sqrt(projectile.velocityX ** 2 + projectile.velocityY ** 2)
+                                x: -projectile.velocity.x / Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2),
+                                y: -projectile.velocity.y / Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2)
                             };
-                            this.createParticles(projectile.x, projectile.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
-                            this.createEmitter(playerId, projectile.x, projectile.y);
+                            this.createParticles(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
+                            this.createEmitter(playerId, projectile.transform.pos.x, projectile.transform.pos.y);
 
                             // If they died, I get a kill
                             if (newHealth <= 0) {
                                 console.log(`I killed ${playerId}!`);
-                                // Update my own kill count immediately
-                                if (this.leaderboard.has(this.userId)) {
-                                    this.leaderboard.get(this.userId)!.kills++;
+
+                                const me = this.leaderboard.get(this.userId);
+                                if (me) {
+                                    me.kills++;
                                 }
-                                // Update their death count immediately
-                                if (this.leaderboard.has(playerId)) {
-                                    this.leaderboard.get(playerId)!.deaths++;
+
+                                const other = this.leaderboard.get(playerId);
+                                if (other) {
+                                    other.deaths++;
                                 }
+
                                 this.updateLeaderboardDisplay();
                             }
 
@@ -1952,7 +2047,7 @@ class GameClient {
                                 type: 'player-hit',
                                 targetId: playerId,
                                 shooterId: this.userId,
-                                damage: PLAYER_DEFAULTS.PROJECTILE.DAMAGE,
+                                damage: projectile.damage,
                                 newHealth: newHealth,
                                 projectileId: id,
                                 wasKill: newHealth <= 0
@@ -1968,15 +2063,15 @@ class GameClient {
 
             // Check if projectile should be removed (range/bounds)
             if (projectile.distanceTraveled >= projectile.range ||
-                projectile.x < 0 || projectile.x > CANVAS.WIDTH ||
-                projectile.y < 0 || projectile.y > CANVAS.HEIGHT) {
+                projectile.transform.pos.x < 0 || projectile.transform.pos.x > CANVAS.WIDTH ||
+                projectile.transform.pos.y < 0 || projectile.transform.pos.y > CANVAS.HEIGHT) {
 
                 projectilesToRemove.push(id);
 
                 // Create burn mark where projectile expired (only for my projectiles)
                 if (projectile.ownerId === this.userId) {
                     if (projectile.distanceTraveled >= projectile.range) {
-                        this.createDecal(projectile.x, projectile.y, `impact_${id}`, DECALS.PROJECTILE);
+                        this.createDecal(projectile.transform.pos.x, projectile.transform.pos.y, `impact_${id}`, DECALS.PROJECTILE);
                     }
 
                     // Notify others to remove projectile
@@ -1995,9 +2090,9 @@ class GameClient {
     }
 
     private startReload(): void {
-        if (this.isReloading || this.myPlayer.actions.primary.magazine.currentAmmo >= this.myPlayer.actions.primary.magazine.size || this.myPlayer.actions.primary.magazine.currentReserve <= 0) return;
+        if (!this.canReload()) return;
+        console.log(`Ammo: ${this.myPlayer.actions.primary.magazine.currentAmmo}, Inventory: ${this.myPlayer.actions.primary.magazine.currentReserve}`);
 
-        console.log(`Starting reload - Current ammo: ${this.myPlayer.actions.primary.magazine.currentAmmo}, Inventory: ${this.myPlayer.actions.primary.magazine.currentReserve}`);
         this.isReloading = true;
         this.reloadStartTime = Date.now();
 
@@ -2009,11 +2104,98 @@ class GameClient {
             0: { x: 0, y: 8 } // Slide held back
         }, 0, 1); // duration=0 means infinite/held
     }
+
+    private canReload(): boolean {
+        return (
+            !this.isReloading &&
+            this.myPlayer.actions.primary.magazine.currentAmmo < this.myPlayer.actions.primary.magazine.size &&
+            this.myPlayer.actions.primary.magazine.currentReserve > 0
+        );
+    }
     //
     // #endregion
 
     // #region [ Player ]
     //
+    // TODO: Keep full track of Player object here
+    private initializePlayer(): Player {
+        return this.myPlayer = {
+            id: this.userId,
+            transform: {
+                pos: {
+                    x: Math.random() * (CANVAS.WIDTH - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN,
+                    y: Math.random() * (CANVAS.HEIGHT - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN
+                },
+                rot: 0
+            },
+            timestamp: Date.now(),
+            color: getRandomColor(),
+            actions: {
+                dash: {
+                    cooldown: PLAYER_DEFAULTS.ACTIONS.DASH.COOLDOWN,
+                    drain: PLAYER_DEFAULTS.ACTIONS.DASH.DRAIN,
+                    multiplier: PLAYER_DEFAULTS.ACTIONS.DASH.MULTIPLIER,
+                    time: PLAYER_DEFAULTS.ACTIONS.DASH.TIME
+                },
+                primary: {
+                    buffer: PLAYER_DEFAULTS.ACTIONS.PRIMARY.BUFFER,
+                    burst: {
+                        amount: PLAYER_DEFAULTS.ACTIONS.PRIMARY.BURST.AMOUNT,
+                        delay: PLAYER_DEFAULTS.ACTIONS.PRIMARY.BURST.DELAY
+                    },
+                    magazine: {
+                        currentAmmo: PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.SIZE,
+                        currentReserve: PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.STARTING_RESERVE,
+                        maxReserve: PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.MAX_RESERVE,
+                        size: PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.SIZE
+                    },
+                    offset: PLAYER_DEFAULTS.ACTIONS.PRIMARY.OFFSET,
+                    projectile: {
+                        amount: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.AMOUNT,
+                        color: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.COLOR,
+                        damage: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.DAMAGE,
+                        length: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.LENGTH,
+                        range: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.RANGE,
+                        size: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SIZE,
+                        speed: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPEED,
+                        spread: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD,
+                        unique: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.UNIQUE
+                    },
+                    reload: {
+                        time: PLAYER_DEFAULTS.ACTIONS.PRIMARY.RELOAD.TIME
+                    }
+                },
+                sprint: {
+                    drain: PLAYER_DEFAULTS.ACTIONS.SPRINT.DRAIN,
+                    multiplier: PLAYER_DEFAULTS.ACTIONS.SPRINT.MULTIPLIER
+                }
+            },
+            equipment: {
+                crosshair: PLAYER_DEFAULTS.EQUIPMENT.CROSSHAIR
+            },
+            physics: {
+                acceleration: PLAYER_DEFAULTS.PHYSICS.ACCELERATION,
+                friction: PLAYER_DEFAULTS.PHYSICS.FRICTION
+            },
+            stats: {
+                health: {
+                    max: PLAYER_DEFAULTS.STATS.HEALTH.MAX,
+                    value: PLAYER_DEFAULTS.STATS.HEALTH.MAX,
+                },
+                luck: PLAYER_DEFAULTS.STATS.LUCK,
+                size: PLAYER_DEFAULTS.STATS.SIZE,
+                speed: PLAYER_DEFAULTS.STATS.SPEED,
+                stamina: {
+                    max: PLAYER_DEFAULTS.STATS.STAMINA.MAX,
+                    recovery: {
+                        delay: PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.DELAY,
+                        rate: PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.RATE
+                    },
+                    value: PLAYER_DEFAULTS.STATS.STAMINA.MAX,
+                },
+            }
+        };
+    }
     private updatePlayerPosition(): void {
         if (!this.gameRunning || this.myPlayer.stats.health.value <= 0) return;
 
@@ -2075,23 +2257,10 @@ class GameClient {
         }
 
         // Normal movement logic
-        const keybinds = GAME.KEYBINDS;
-        let inputX = 0;
-        let inputY = 0;
-
-        if (this.keys.has(keybinds.MOVE_UP)) inputY -= 1;
-        if (this.keys.has(keybinds.MOVE_DOWN)) inputY += 1;
-        if (this.keys.has(keybinds.MOVE_LEFT)) inputX -= 1;
-        if (this.keys.has(keybinds.MOVE_RIGHT)) inputX += 1;
-
-        const inputLength = Math.sqrt(inputX * inputX + inputY * inputY);
-        if (inputLength > 0) {
-            inputX = inputX / inputLength;
-            inputY = inputY / inputLength;
-        }
+        const { inputX, inputY } = this.getInput();
 
         // Only allow sprinting if we have stamina
-        const canSprint = this.isSprinting && this.myPlayer.stats.stamina.value > 0;
+        const canSprint = this.isSprinting && this.myPlayer.stats.stamina.value > 0 && this.isMoving();
         const currentSpeed = canSprint ? this.myPlayer.stats.speed * this.myPlayer.actions.sprint.multiplier : this.myPlayer.stats.speed;
 
         // Stop sprinting if out of stamina
@@ -2106,7 +2275,7 @@ class GameClient {
         this.playerVelocityX += (targetVelocityX - this.playerVelocityX) * this.myPlayer.physics.acceleration;
         this.playerVelocityY += (targetVelocityY - this.playerVelocityY) * this.myPlayer.physics.acceleration;
 
-        if (inputLength === 0) {
+        if (!this.isMoving()) {
             this.playerVelocityX *= this.myPlayer.physics.friction;
             this.playerVelocityY *= this.myPlayer.physics.friction;
         }
@@ -2159,13 +2328,17 @@ class GameClient {
     private rotateCharacterPart(playerId: string, rotation: number): void {
         if (playerId === this.userId) {
             this.myPlayer.transform.rot = rotation;
-        } else if (this.players.has(playerId)) {
-            this.players.get(playerId)!.transform.rot = rotation;
+        } else {
+            const player = this.players.get(playerId);
+            if (!player) return;
+            player.transform.rot = rotation;
         }
     }
 
     private recordDeath(): void {
         console.log('I died! Waiting for round to end...');
+
+        this.resetPlayerState();
 
         const ammoBox = this.spawnAmmoBox(10);
         this.ammoBoxes.set(ammoBox.id, ammoBox);
@@ -2187,16 +2360,6 @@ class GameClient {
             ammoBox: ammoBox,
             gore: gore
         }));
-    }
-
-    private resetPlayerConfig(): void {
-        Object.assign(PLAYER_DEFAULTS, JSON.parse(JSON.stringify(this.defaultPlayerConfig)));
-
-        if (this.crosshair) {
-            this.toggleCrosshair();
-        }
-
-        console.log('Player config reset to defaults');
     }
 
     private requestStamina(amount: number): boolean {
@@ -2242,30 +2405,71 @@ class GameClient {
     }
 
     private checkCollisions(): void {
-        const collisionRadius = (this.myPlayer.stats.size / 4) + 15; // Player radius + ammo box radius
+        const collisionRadius = (this.myPlayer.stats.size / 4) + 5;
 
         this.ammoBoxes.forEach((ammoBox, boxId) => {
-            const dx = this.myPlayer.transform.pos.x - ammoBox.x;
-            const dy = this.myPlayer.transform.pos.y - ammoBox.y;
+            if (ammoBox.isOpen) return;
+
+            const dx = this.myPlayer.transform.pos.x - ammoBox.transform.pos.x;
+            const dy = this.myPlayer.transform.pos.y - ammoBox.transform.pos.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             if (distance <= collisionRadius) {
-                // Pick up ammo box
-                this.myPlayer.actions.primary.magazine.currentReserve = Math.min(this.myPlayer.actions.primary.magazine.maxReserve, this.myPlayer.actions.primary.magazine.currentReserve + ammoBox.ammoAmount);
+                // Pick up ammo
+                this.myPlayer.actions.primary.magazine.currentReserve = Math.min(
+                    this.myPlayer.actions.primary.magazine.maxReserve,
+                    this.myPlayer.actions.primary.magazine.currentReserve + ammoBox.ammoAmount
+                );
 
                 console.log(`Picked up ammo box! +${ammoBox.ammoAmount} bullets. Inventory: ${this.myPlayer.actions.primary.magazine.currentReserve}/${this.myPlayer.actions.primary.magazine.maxReserve}`);
 
-                // Remove from local map
-                this.ammoBoxes.delete(boxId);
+                // Generate random lid physics
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 3;
 
-                // Broadcast pickup to other players
+                ammoBox.isOpen = true;
+                ammoBox.lid.velocity = {
+                    x: Math.cos(angle) * speed,
+                    y: Math.sin(angle) * speed
+                };
+                ammoBox.lid.torque = (Math.random() - 0.5) * 0.3;
+
+                // Broadcast pickup with full box state
                 this.roomManager.sendMessage(JSON.stringify({
                     type: 'ammo-pickup',
                     ammoBoxId: boxId,
-                    playerId: this.userId
+                    playerId: this.userId,
+                    boxState: {
+                        isOpen: true,
+                        lid: ammoBox.lid
+                    }
                 }));
             }
         });
+    }
+
+    private getInput(): { inputX: number; inputY: number; inputLength: number } {
+        const keybinds = GAME.KEYBINDS;
+        let inputX = 0;
+        let inputY = 0;
+
+        if (this.keys.has(keybinds.MOVE_UP)) inputY -= 1;
+        if (this.keys.has(keybinds.MOVE_DOWN)) inputY += 1;
+        if (this.keys.has(keybinds.MOVE_LEFT)) inputX -= 1;
+        if (this.keys.has(keybinds.MOVE_RIGHT)) inputX += 1;
+
+        const inputLength = Math.sqrt(inputX * inputX + inputY * inputY);
+
+        if (inputLength > 0) {
+            inputX = inputX / inputLength;
+            inputY = inputY / inputLength;
+        }
+
+        return { inputX, inputY, inputLength };
+    }
+
+    private isMoving(): boolean {
+        return this.getInput().inputLength > 0;
     }
 
     private spawnGore(centerX: number, centerY: number): any[] {
@@ -2353,47 +2557,57 @@ class GameClient {
 
         this.decalCtx.restore();
     }
+
+    private resetPlayerState(): void {
+        this.canShoot = true;
+        this.isBurstActive = false;
+        this.isReloading = false;
+        this.isSprinting = false;
+        this.isDashing = false;
+        this.isStaminaRecoveryBlocked = false;
+
+        this.playerVelocityX = 0;
+        this.playerVelocityY = 0;
+
+        this.dashStartTime = 0;
+        this.lastDashTime = 0;
+        this.reloadStartTime = 0;
+        this.lastShotTime = 0;
+        this.nextBurstShotTime = 0;
+        this.currentBurstShot = 0;
+        this.lastStaminaDrainTime = 0;
+        this.staminaRecoveryBlockedUntil = 0;
+    }
     //
     // #endregion
 
     // #region [ Dash ]
     //
     private startDash(): void {
-        if (this.isDashing || this.myPlayer.stats.health.value <= 0) return;
-        console.log("Starting dash...");
+        if (this.isDashing || this.myPlayer.stats.health.value <= 0 || !this.isMoving()) return;
 
-        const currentTime = Date.now();
-
-        // Check if dash is on cooldown
+        const currentTime = Date.now(); // Cooldown check first
         if (currentTime < this.lastDashTime + this.myPlayer.actions.dash.cooldown) {
             console.log('Dash on cooldown');
             return;
         }
 
-        if (!this.requestStamina(this.myPlayer.actions.dash.drain)) {
-            console.log('Not enough stamina to dash');
-            return;
-        }
-
-        // Only dash if we have movement input
-        const keybinds = GAME.KEYBINDS;
-        let inputX = 0;
-        let inputY = 0;
-
-        if (this.keys.has(keybinds.MOVE_UP)) inputY -= 1;
-        if (this.keys.has(keybinds.MOVE_DOWN)) inputY += 1;
-        if (this.keys.has(keybinds.MOVE_LEFT)) inputX -= 1;
-        if (this.keys.has(keybinds.MOVE_RIGHT)) inputX += 1;
+        // Input check
+        let { inputX, inputY, inputLength } = this.getInput();
 
         // Normalize input
-        const inputLength = Math.sqrt(inputX * inputX + inputY * inputY);
-        if (inputLength === 0) {
+        if (!this.isMoving()) {
             console.log('No movement input for dash');
             return;
         }
 
         inputX = inputX / inputLength;
         inputY = inputY / inputLength;
+
+        if (!this.requestStamina(this.myPlayer.actions.dash.drain)) {
+            console.log('Not enough stamina to dash');
+            return;
+        }
 
         // Start dash
         this.isDashing = true;
@@ -2449,11 +2663,17 @@ class GameClient {
         this.myPlayer.actions.primary.magazine.currentAmmo = this.myPlayer.actions.primary.magazine.size;
         this.isReloading = false;
 
+        this.initializePlayer();
         this.createLeaderboard();
-        this.resetPlayerConfig();
+
         resetUpgrades();
 
+        if (this.crosshair) {
+            this.toggleCrosshair(); // TODO: Create a function to toggle off all equipment
+        }
+
         // Send my player data
+        // TODO: You can maybe just call this.initializePlayer and use the returned player object, unsure yet.
         // TODO: Keep full track of Player object here
         this.roomManager.sendMessage(JSON.stringify({
             type: 'player-state',
@@ -2465,6 +2685,7 @@ class GameClient {
                 },
                 rot: this.myPlayer.transform.rot
             },
+            timestamp: this.myPlayer.timestamp,
             color: this.myPlayer.color,
             actions: {
                 dash: {
@@ -2486,6 +2707,17 @@ class GameClient {
                         size: this.myPlayer.actions.primary.magazine.size
                     },
                     offset: this.myPlayer.actions.primary.offset,
+                    projectile: {
+                        amount: this.myPlayer.actions.primary.projectile.amount,
+                        color: this.myPlayer.actions.primary.projectile.color,
+                        damage: this.myPlayer.actions.primary.projectile.damage,
+                        length: this.myPlayer.actions.primary.projectile.length,
+                        range: this.myPlayer.actions.primary.projectile.range,
+                        size: this.myPlayer.actions.primary.projectile.size,
+                        speed: this.myPlayer.actions.primary.projectile.speed,
+                        spread: this.myPlayer.actions.primary.projectile.spread,
+                        unique: this.myPlayer.actions.primary.projectile.unique
+                    },
                     reload: {
                         time: this.myPlayer.actions.primary.reload.time
                     }
@@ -2507,6 +2739,9 @@ class GameClient {
                     max: this.myPlayer.stats.health.max,
                     value: this.myPlayer.stats.health.value
                 },
+                luck: this.myPlayer.stats.luck,
+                size: this.myPlayer.stats.size,
+                speed: this.myPlayer.stats.speed,
                 stamina: {
                     max: this.myPlayer.stats.stamina.max,
                     recovery: {
@@ -2515,9 +2750,6 @@ class GameClient {
                     },
                     value: this.myPlayer.stats.stamina.value,
                 },
-                luck: this.myPlayer.stats.luck,
-                size: this.myPlayer.stats.size,
-                speed: this.myPlayer.stats.speed
             }
         }));
 
@@ -2545,13 +2777,9 @@ class GameClient {
 
         setSlider('staminaBar', this.myPlayer.stats.stamina.value, this.myPlayer.stats.stamina.max);
 
-        // Clear canvas - used to show bg img
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.clearCtx(this.ctx);
 
-        // Draw decals
-        if (this.decalCanvas) {
-            this.ctx.drawImage(this.decalCanvas, 0, 0)
-        }
+        this.ctx.drawImage(this.decalCanvas, 0, 0)
 
         // Draw border
         this.ctx.strokeStyle = CANVAS.BORDER_COLOR;
@@ -2636,6 +2864,45 @@ class GameClient {
         } else if (!shouldPause && this.gamePaused) {
             this.resumeGame();
             console.log('Game resumed. All players unpaused.');
+        }
+    }
+
+    private resetGameState(resetType: ResetType): void {
+        // Clear game flags
+        this.gameRunning = false;
+        this.isRoundInProgress = false;
+        this.gameWinner = null;
+        this.roundWinner = null;
+
+        if (resetType === 'Room') {
+            this.inLobby = false;
+            this.isHost = false;
+        }
+
+        // Clear all collections
+        this.players.clear();
+        this.projectiles.clear();
+        this.ammoBoxes.clear();
+        this.decals.clear();
+        this.particles.clear();
+        this.emitters.clear();
+        this.pausedPlayers.clear();
+
+        if (resetType === 'Room') {
+            this.lobbyPlayers.clear();
+        }
+
+        // Reset UI and player
+        this.clearCtx();
+        this.clearChat();
+        this.clearLeaderboard();
+        this.resetPlayerState();
+        this.initializePlayer();
+
+        // Reset upgrades and equipment
+        resetUpgrades();
+        if (this.crosshair) {
+            this.toggleCrosshair(); // TODO: Create a function to toggle off all equipment
         }
     }
     //
@@ -2752,9 +3019,8 @@ class GameClient {
         }));
 
         // Hide upgrade UI
-        const upgradeContainer = document.getElementById('upgradeContainer');
-        if (upgradeContainer) {
-            upgradeContainer.style.display = 'none';
+        if (this.upgradeContainer) {
+            this.upgradeContainer.style.display = 'none';
         }
 
         // Signal I'm done with upgrades
@@ -2766,7 +3032,7 @@ class GameClient {
         console.log('Upgrade selected, waiting for others...');
     }
 
-    public toggleCrosshair(): void {
+    public toggleCrosshair(): void { // TODO: Expand this to be something like "toggleEquipment" - pass the equipment, then case switch
         if (!this.crosshair) return;
 
         if (this.myPlayer.equipment.crosshair) {
@@ -2778,13 +3044,25 @@ class GameClient {
         }
     }
 
-    private spawnAmmoBox(amount: number): AmmoBox {
+    private spawnAmmoBox(amount: number): AmmoBox { // TODO: Expand this "spawnObject" - this should be able to spawn any game object type
         const ammoBox: AmmoBox = {
             id: generateUID(),
-            x: this.myPlayer.transform.pos.x,
-            y: this.myPlayer.transform.pos.y,
+            transform: {
+                pos: {
+                    x: this.myPlayer.transform.pos.x,
+                    y: this.myPlayer.transform.pos.y
+                },
+                rot: this.myPlayer.transform.rot
+            },
+            timestamp: Date.now(),
             ammoAmount: amount,
-            timestamp: Date.now()
+            isOpen: false,
+            lid: {
+                pos: { x: 0, y: 0 },
+                rot: 0,
+                velocity: { x: 0, y: 0 },
+                torque: 0
+            }
         };
         return ammoBox;
     }
@@ -2998,20 +3276,20 @@ class GameClient {
         if (!this.ctx) return;
 
         // Calculate projectile direction
-        const speed = Math.sqrt(projectile.velocityX * projectile.velocityX + projectile.velocityY * projectile.velocityY);
-        const dirX = projectile.velocityX / speed;
-        const dirY = projectile.velocityY / speed;
+        const speed = Math.sqrt(projectile.velocity.x * projectile.velocity.x + projectile.velocity.y * projectile.velocity.y);
+        const dirX = projectile.velocity.x / speed;
+        const dirY = projectile.velocity.y / speed;
 
         // Calculate front and back points
-        const frontX = projectile.x + dirX * (PLAYER_DEFAULTS.PROJECTILE.LENGTH / 2);
-        const frontY = projectile.y + dirY * (PLAYER_DEFAULTS.PROJECTILE.LENGTH / 2);
-        const backX = projectile.x - dirX * (PLAYER_DEFAULTS.PROJECTILE.LENGTH / 2);
-        const backY = projectile.y - dirY * (PLAYER_DEFAULTS.PROJECTILE.LENGTH / 2);
+        const frontX = projectile.transform.pos.x + dirX * (projectile.length / 2);
+        const frontY = projectile.transform.pos.y + dirY * (projectile.length / 2);
+        const backX = projectile.transform.pos.x - dirX * (projectile.length / 2);
+        const backY = projectile.transform.pos.y - dirY * (projectile.length / 2);
 
         // Draw the capsule body (rectangle)
-        this.ctx.fillStyle = PLAYER_DEFAULTS.PROJECTILE.COLOR;
-        this.ctx.strokeStyle = PLAYER_DEFAULTS.PROJECTILE.COLOR;
-        this.ctx.lineWidth = PLAYER_DEFAULTS.PROJECTILE.SIZE * 2;
+        this.ctx.fillStyle = projectile.color;
+        this.ctx.strokeStyle = projectile.color;
+        this.ctx.lineWidth = projectile.size;
         this.ctx.lineCap = 'round';
 
         this.ctx.beginPath();
@@ -3052,26 +3330,78 @@ class GameClient {
         this.ammoBoxes.forEach(ammoBox => {
             if (!this.ctx) return;
 
-            // TODO: Update ammo box with foster drawing
+            // Load and cache images
+            if (!this.ammoBoxImages) this.ammoBoxImages = {};
+            const layers: (keyof typeof AMMO_BOX)[] = ['BODY', 'BULLETS', 'LID'];
+            layers.forEach(layer => {
+                if (!this.ammoBoxImages[layer]) {
+                    const img = new Image();
+                    img.src = AMMO_BOX[layer];
+                    this.ammoBoxImages[layer] = img;
+                }
+            });
+
+            if (!layers.every(layer => this.ammoBoxImages[layer]?.complete && this.ammoBoxImages[layer]?.naturalWidth > 0)) return;
+
+            const scale = 35;
+            const x = ammoBox.transform.pos.x;
+            const y = ammoBox.transform.pos.y;
+
+            // Update lid physics if open
+            if (ammoBox.isOpen) {
+                ammoBox.lid.velocity.x *= 0.85;
+                ammoBox.lid.velocity.y *= 0.85;
+                ammoBox.lid.torque *= 0.85;
+
+                ammoBox.lid.pos.x += ammoBox.lid.velocity.x;
+                ammoBox.lid.pos.y += ammoBox.lid.velocity.y;
+                ammoBox.lid.rot += ammoBox.lid.torque;
+            }
+
             this.ctx.save();
+            this.ctx.translate(x, y);
+            this.ctx.rotate(ammoBox.transform.rot || 0);
 
-            // Main ammo box circle
-            this.ctx.beginPath();
-            this.ctx.arc(ammoBox.x, ammoBox.y, 15, 0, 2 * Math.PI);
-            this.ctx.fillStyle = '#FFD700'; // Gold color
-            this.ctx.fill();
-            this.ctx.strokeStyle = '#FFA500'; // Orange border
-            this.ctx.lineWidth = 2;
-            this.ctx.stroke();
+            // Draw body
+            this.ctx.drawImage(this.ammoBoxImages['BODY'], -scale / 2, -scale / 2, scale, scale);
 
-            // Ammo text
-            this.ctx.fillStyle = '#000000';
-            this.ctx.font = 'bold 10px Arial';
-            this.ctx.textAlign = 'center';
-            this.ctx.fillText(ammoBox.ammoAmount.toString(), ammoBox.x, ammoBox.y + 3);
+            // Draw bullets only if NOT open
+            if (!ammoBox.isOpen) {
+                this.ctx.drawImage(this.ammoBoxImages['BULLETS'], -scale / 2, -scale / 2, scale, scale);
+                // Draw closed lid here
+                this.ctx.drawImage(this.ammoBoxImages['LID'], -scale / 2, -scale / 2, scale, scale);
+            }
 
             this.ctx.restore();
+
+            // Draw flying lid separately if open
+            if (ammoBox.isOpen) {
+                this.ctx.save();
+                this.ctx.translate(x + ammoBox.lid.pos.x, y + ammoBox.lid.pos.y);
+                this.ctx.rotate((ammoBox.transform.rot || 0) + ammoBox.lid.rot);
+                this.ctx.drawImage(this.ammoBoxImages['LID'], -scale / 2, -scale / 2, scale, scale);
+                this.ctx.restore();
+            }
         });
+    }
+
+    /**
+     * Clear all canvas rendering context in the game.
+     * 
+     * / OR /
+     * 
+     * Pass the specific CanvasRenderingContext2D to clear.
+     */
+    private clearCtx(customCtx?: CanvasRenderingContext2D): void {
+        if (customCtx) {
+            customCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+            return;
+        }
+
+        if (!this.decalCtx || !this.ctx) return;
+
+        this.ctx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+        this.decalCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
     }
     //
     // #endregion
@@ -3635,6 +3965,128 @@ class GameClient {
 
     // #region [ UI ]
     //
+
+
+
+
+
+
+
+
+    private showJoinRoomModal(): void {
+        if (!this.modal || !this.modalInput || !this.modalConfirmButton ||
+            !this.modalCancelButton || !this.modalErrorDiv) return;
+
+        this.modal.classList.remove('hidden');
+        this.modalInput.value = '';
+        this.modalErrorDiv.textContent = '';
+
+        this.modalInput.focus();
+
+        const closeModal = () => {
+            if (!this.modal || !this.modalInput || !this.modalConfirmButton ||
+                !this.modalCancelButton || !this.modalErrorDiv) return;
+
+            this.modal.classList.add('hidden');
+            this.modalConfirmButton.onclick = null;
+            this.modalCancelButton.onclick = null;
+            this.modalInput.onkeydown = null;
+        };
+
+        this.modalConfirmButton.onclick = () => {
+            if (!this.modalInput || !this.modalErrorDiv) return;
+
+            const value = this.modalInput.value.trim();
+            if (!value) {
+                this.modalErrorDiv.textContent = 'Invalid code...';
+                return;
+            }
+            let roomId: string | null = null;
+            try {
+                const url = new URL(value, window.location.origin);
+                if (url.pathname.startsWith("/room_")) {
+                    roomId = url.pathname.replace("/", "").replace("/", "");
+                } else {
+                    roomId = new URLSearchParams(url.search).get("room");
+                }
+            } catch {
+                if (value.startsWith("room_")) {
+                    roomId = value;
+                }
+            }
+            if (!roomId) {
+                this.modalErrorDiv.textContent = 'Invalid code...';
+                return;
+            }
+            closeModal();
+            this.joinRoomById(roomId);
+        };
+
+        this.modalCancelButton.onclick = closeModal;
+
+        this.modalInput.onkeydown = (e) => {
+            if (e.key === "Enter") if (this.modalConfirmButton) this.modalConfirmButton.click();
+            if (e.key === "Escape") closeModal();
+        };
+    }
+
+
+
+    private updateLobbyPlayersList(): void {
+        if (!this.lobbyPlayersList) return;
+
+        this.lobbyPlayersList.innerHTML = '';
+
+        // Sort players: host first, then others
+        const sortedPlayers = Array.from(this.lobbyPlayers.values()).sort((a, b) => {
+            if (a.isHost && !b.isHost) return -1;
+            if (!a.isHost && b.isHost) return 1;
+            return 0;
+        });
+
+        sortedPlayers.forEach(player => {
+            const playerDiv = document.createElement('div');
+            playerDiv.className = 'lobby_player';
+
+            const colorDiv = document.createElement('div');
+            colorDiv.className = 'player_color';
+            colorDiv.style.backgroundColor = player.color;
+
+            const nameDiv = document.createElement('div');
+            nameDiv.className = 'player_name';
+            nameDiv.textContent = `${player.id}${player.isHost ? ' (Host)' : ''}`;
+
+            const controlsDiv = document.createElement('div');
+            controlsDiv.className = 'player_controls';
+
+            // Only show controls if I'm the host and this isn't me
+            if (this.isHost && player.id !== this.userId) {
+                const promoteBtn = document.createElement('button');
+                promoteBtn.textContent = 'Promote';
+                promoteBtn.onclick = () => this.promotePlayer(player.id);
+
+                const kickBtn = document.createElement('button');
+                kickBtn.textContent = 'Kick';
+                kickBtn.className = 'danger';
+                kickBtn.onclick = () => this.kickPlayer(player.id);
+
+                controlsDiv.appendChild(promoteBtn);
+                controlsDiv.appendChild(kickBtn);
+            }
+
+            playerDiv.appendChild(colorDiv);
+            playerDiv.appendChild(nameDiv);
+            playerDiv.appendChild(controlsDiv);
+
+            if (this.lobbyPlayersList) {
+                this.lobbyPlayersList.appendChild(playerDiv);
+            }
+        });
+    }
+
+
+
+
     /**
      * Updates the display based on the current state.
      */
@@ -3689,13 +4141,14 @@ class GameClient {
      */
     private clearDisplay(): void {
         if (!this.roomControls || !this.lobbyContainer || !this.gameContainer ||
-            !this.chatContainer || !this.leaderboardContainer) return;
+            !this.chatContainer || !this.leaderboardContainer || !this.upgradeContainer) return;
 
         this.roomControls.style.display = "none";
         this.lobbyContainer.style.display = "none";
         this.gameContainer.style.display = "none";
         this.chatContainer.style.display = "none";
         this.leaderboardContainer.style.display = "none";
+        this.upgradeContainer.style.display = "none";
     }
     //
     // #endregion

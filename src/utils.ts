@@ -1,4 +1,5 @@
 import { PLAYER_DEFAULTS, ROOM } from './config';
+import { Vec2 } from './defs';
 
 export function generateUID(): string {
     const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
@@ -22,11 +23,6 @@ export function createRoomLink(roomId: string): string {
     return `${window.location.origin}?room=${roomId}`;
 }
 
-export function getRoomIdFromURL(): string | null {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('room');
-}
-
 export function updateURLWithRoom(roomId: string): void {
     const newURL = `${window.location.origin}?room=${roomId}`;
     window.history.pushState({ roomId }, '', newURL);
@@ -46,12 +42,16 @@ export function hexToRgb(hex: string): { r: number, g: number, b: number } | nul
     } : null;
 }
 
+export function forward(rot: number): Vec2 {
+    return { x: Math.cos(rot), y: Math.sin(rot) };
+}
+
 // #region [ UI Utilities ]
 //
 export function setSlider(sliderId: string, targetValue: number, maxValue: number = 100, lerpTime: number = 300): void {
     const sliderContainer = document.getElementById(sliderId);
     const sliderFill = sliderContainer?.querySelector('div') as HTMLElement;
-    
+
     if (!sliderContainer || !sliderFill) {
         console.warn(`Slider not found: ${sliderId}`);
         return;
@@ -82,7 +82,7 @@ export function setSlider(sliderId: string, targetValue: number, maxValue: numbe
 
 export function setHudValue(spanId: string, value: string | number): void {
     const spanElement = document.getElementById(spanId);
-    
+
     if (!spanElement) {
         console.warn(`HUD element not found: ${spanId}`);
         return;

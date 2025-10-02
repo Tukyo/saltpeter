@@ -531,7 +531,7 @@ toggle:hover {
 
 /* #region [ Visuals ] */
 /**/
-#saltpeterTitle {
+#webSocketTitle {
     z-index: -1;
 }
 
@@ -809,22 +809,11 @@ toggle:hover {
     min-height: 18px;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-.divider {
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
-    background-position: center;
+.stats_divider,
+.vitals_divider {
+    background: none;
+    min-width: 0;
+    min-height: 0;
 }
 
 .stats_divider {
@@ -833,57 +822,35 @@ toggle:hover {
 
 .vitals_divider {
     flex: 0.1 1 0;
-    background-image: url('./assets/img/icon/elements/wireconnector_60px_03.png');
-
 }
 
 .stamina_divider {
     flex: 0.25 1 0;
-    background-image: url('./assets/img/icon/elements/wireconnector_120px.png');
 }
 
-.divider.top,
-.divider.middle,
-.divider.bottom {
+.divider.top {
+    border-top: 1px solid var(--secondary-color);
+    height: 35%;
+    align-self: center;
+}
+
+.divider.middle {
     height: 16px;
     align-self: center;
 }
 
-#playerStats>div.divider:nth-child(2) { /* 1st divider */
-    background-image: url('./assets/img/icon/elements/wireconnector_60px_01.png');
-    transform: translateY(20%);
+.divider.bottom {
+    border-bottom: 1px solid var(--secondary-color);
+    height: 60%;
+    align-self: center;
 }
 
-#playerStats>div.divider:nth-child(4) { /* 2nd divider */
-    background-image: url('./assets/img/icon/elements/wireconnector_60px_02.png');
-    transform: translateY(-12%);
+.divider.long {
+    background-image: url('./assets/img/icon/elements/wireconnector_120px.png');
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    background-position: center;
 }
-
-#playerStats>div.divider:nth-child(6) { /* 3rd divider */
-    background-image: url('./assets/img/icon/elements/wireconnector_60px_05.png');
-    transform: translateY(5%);
-}
-
-#playerStats>div.divider:nth-child(8) { /* 4th divider */
-    background-image: url('./assets/img/icon/elements/wireconnector_60px_04.png');
-    transform: translateY(-35%);
-}
-
-#playerStats>div.divider:nth-child(10) { /* 5th divider */
-    background-image: url('./assets/img/icon/elements/wireconnector_60px_00.png');
-}
-
-
-
-
-
-
-
-
-
-
-
-
 
 #roomId {
     margin: 1rem;
@@ -892,6 +859,7 @@ toggle:hover {
 #gameRoomId {
     display: none;
 }
+
 
 
 /* #region [ Chat ] */
