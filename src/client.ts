@@ -14,6 +14,8 @@ class GameClient {
     private ctx: CanvasRenderingContext2D | null = null;
     private decalCanvas: HTMLCanvasElement | null = null;
     private decalCtx: CanvasRenderingContext2D | null = null;
+    private ammoReservesCanvas: HTMLCanvasElement | null = null;
+    private ammoReservesCtx: CanvasRenderingContext2D | null = null;
 
     private roomControls: HTMLDivElement | null = null;
     private gameContainer: HTMLDivElement | null = null;
@@ -61,6 +63,7 @@ class GameClient {
 
     private characterImages: Map<string, HTMLImageElement> = new Map();
     private ammoBoxImages: { [layer: string]: HTMLImageElement } = {};
+    private ammoReserveIcon: HTMLImageElement | null = null;
 
     private characterOffsets: Map<string, { x: number, y: number }> = new Map();
     private characterAnimations: Map<string, {
@@ -115,6 +118,7 @@ class GameClient {
     // Game
     private gamePaused = false; // Tracks paused state of game
     private gameRunning = false; // Actual websocket connection tracking, deeper than pause
+    private lastFrameTime: number = performance.now();
 
     private isHost = false;
     private inLobby = false;
@@ -192,6 +196,7 @@ class GameClient {
     private initializeElements(): void {
         this.canvas = document.getElementById("gameCanvas") as HTMLCanvasElement;
         this.decalCanvas = document.createElement('canvas') as HTMLCanvasElement;
+        this.ammoReservesCanvas = document.getElementById("ammoReservesCanvas") as HTMLCanvasElement;
 
         this.roomControls = document.getElementById("roomControls") as HTMLDivElement;
         this.gameContainer = document.getElementById("gameContainer") as HTMLDivElement;
@@ -240,7 +245,7 @@ class GameClient {
         this.modalContent = document.getElementById('modalContent') as HTMLDivElement;
         this.modalText = document.getElementById('modalText') as HTMLSpanElement;
 
-        if (!this.canvas || !this.decalCanvas || !this.roomControls || !this.gameContainer ||
+        if (!this.canvas || !this.decalCanvas || !this.ammoReservesCanvas || !this.roomControls || !this.gameContainer ||
             !this.lobbyContainer || !this.userIdDisplay || !this.roomIdDisplay || !this.gameRoomIdDisplay ||
             !this.lobbyPlayersList || !this.startGameBtn || !this.gameOptionsContainer ||
             !this.chatContainer || !this.chatMessages || !this.chatInput || !this.chatSendBtn ||
@@ -257,14 +262,19 @@ class GameClient {
         this.canvas.height = CANVAS.HEIGHT;
         this.decalCanvas.width = CANVAS.WIDTH;
         this.decalCanvas.height = CANVAS.HEIGHT;
+        this.ammoReservesCanvas.width = 38;
+        this.ammoReservesCanvas.height = 64;
 
         this.ctx = this.canvas.getContext('2d');
         this.decalCtx = this.decalCanvas.getContext('2d');
+        this.ammoReservesCtx = this.ammoReservesCanvas.getContext('2d');
 
-        if (!this.ctx || !this.decalCtx) {
+        if (!this.ctx || !this.decalCtx || !this.ammoReservesCtx) {
             alert('Failed to load game. Please refresh the page.');
             throw new Error('Could not get canvas context');
         }
+
+        this.initializeAmmoReserveCanvas();
 
         this.userIdDisplay.textContent = this.userId;
         this.showRoomControls();
@@ -1762,7 +1772,7 @@ class GameClient {
 
     // #region [ Attack ]
     //
-    private updateAttack(): void {
+    private updateAttack(delta: number): void {
         if (!this.gameRunning || this.myPlayer.stats.health.value <= 0) return;
 
         const currentTime = Date.now();
@@ -1943,18 +1953,18 @@ class GameClient {
         }
     }
 
-    private updateProjectiles(): void {
+    private updateProjectiles(delta: number): void {
         const projectilesToRemove: string[] = [];
 
         this.projectiles.forEach((projectile, id) => {
-            projectile.transform.pos.x += projectile.velocity.x;
-            projectile.transform.pos.y += projectile.velocity.y;
+            projectile.transform.pos.x += projectile.velocity.x * delta;
+            projectile.transform.pos.y += projectile.velocity.y * delta;
 
             // Update distance traveled
             const frameDistance = Math.sqrt(
                 projectile.velocity.x * projectile.velocity.x +
                 projectile.velocity.y * projectile.velocity.y
-            );
+            ) * delta;
             projectile.distanceTraveled += frameDistance;
 
             // Check collision with my player (only if I'm alive)
@@ -2196,18 +2206,14 @@ class GameClient {
             }
         };
     }
-    private updatePlayerPosition(): void {
+    private updatePlayerPosition(delta: number): void {
         if (!this.gameRunning || this.myPlayer.stats.health.value <= 0) return;
-
-        this.updateStamina();
-        this.updateDash();
-        this.checkCollisions();
 
         // If dashing, skip normal movement logic
         if (this.isDashing) {
             // Calculate new position using current dash velocity
-            let newX = this.myPlayer.transform.pos.x + this.playerVelocityX;
-            let newY = this.myPlayer.transform.pos.y + this.playerVelocityY;
+            let newX = this.myPlayer.transform.pos.x + this.playerVelocityX * delta;
+            let newY = this.myPlayer.transform.pos.y + this.playerVelocityY * delta;
 
             let moved = false;
 
@@ -2272,16 +2278,16 @@ class GameClient {
         const targetVelocityX = inputX * currentSpeed;
         const targetVelocityY = inputY * currentSpeed;
 
-        this.playerVelocityX += (targetVelocityX - this.playerVelocityX) * this.myPlayer.physics.acceleration;
-        this.playerVelocityY += (targetVelocityY - this.playerVelocityY) * this.myPlayer.physics.acceleration;
+        this.playerVelocityX += (targetVelocityX - this.playerVelocityX) * this.myPlayer.physics.acceleration * delta;
+        this.playerVelocityY += (targetVelocityY - this.playerVelocityY) * this.myPlayer.physics.acceleration * delta;
 
         if (!this.isMoving()) {
-            this.playerVelocityX *= this.myPlayer.physics.friction;
-            this.playerVelocityY *= this.myPlayer.physics.friction;
+            this.playerVelocityX *= Math.pow(this.myPlayer.physics.friction, delta);
+            this.playerVelocityY *= Math.pow(this.myPlayer.physics.friction, delta);
         }
 
-        let newX = this.myPlayer.transform.pos.x + this.playerVelocityX;
-        let newY = this.myPlayer.transform.pos.y + this.playerVelocityY;
+        let newX = this.myPlayer.transform.pos.x + this.playerVelocityX * delta;
+        let newY = this.myPlayer.transform.pos.y + this.playerVelocityY * delta;
 
         let moved = false;
 
@@ -2378,7 +2384,7 @@ class GameClient {
         return true;
     }
 
-    private updateStamina(): void {
+    private updateStamina(delta: number): void {
         const currentTime = Date.now();
 
         // Handle sprint stamina drain (every second while sprinting)
@@ -2397,14 +2403,13 @@ class GameClient {
 
             // Recover stamina if not at max and not sprinting
             if (this.myPlayer.stats.stamina.value < this.myPlayer.stats.stamina.max && !this.isSprinting) {
-                // Recover stamina per second (16ms frame rate approximation)
-                const staminaRecoveryPerFrame = (this.myPlayer.stats.stamina.recovery.rate / 1000) * 16;
+                const staminaRecoveryPerFrame = (this.myPlayer.stats.stamina.recovery.rate / 1000) * 16.67 * delta;
                 this.myPlayer.stats.stamina.value = Math.min(this.myPlayer.stats.stamina.max, this.myPlayer.stats.stamina.value + staminaRecoveryPerFrame);
             }
         }
     }
 
-    private checkCollisions(): void {
+    private checkCollisions(delta: number): void {
         const collisionRadius = (this.myPlayer.stats.size / 4) + 5;
 
         this.ammoBoxes.forEach((ammoBox, boxId) => {
@@ -2622,7 +2627,7 @@ class GameClient {
         console.log(`Dashing! Speed: ${dashSpeed}`);
     }
 
-    private updateDash(): void {
+    private updateDash(delta: number): void {
         if (!this.isDashing) return;
 
         const currentTime = Date.now();
@@ -2767,13 +2772,19 @@ class GameClient {
             return;
         }
 
+        const dt = this.deltaTime();
+
         // Update
-        this.updatePlayerPosition();
-        this.updateAttack();
-        this.updateProjectiles();
-        this.updateParticles();
-        this.updateEmitters();
-        this.updateCharacterAnimations();
+        this.updatePlayerPosition(dt);
+        this.updateAttack(dt);
+        this.updateProjectiles(dt);
+        this.updateParticles(dt);
+        this.updateEmitters(dt);
+        this.updateCharacterAnimations(dt);
+        this.updateStamina(dt);
+        this.updateDash(dt);
+
+        this.checkCollisions(dt);
 
         setSlider('staminaBar', this.myPlayer.stats.stamina.value, this.myPlayer.stats.stamina.max);
 
@@ -3385,6 +3396,28 @@ class GameClient {
         });
     }
 
+    private initializeAmmoReserveCanvas(): void {
+        this.ammoReserveIcon = new Image();
+        this.ammoReserveIcon.src = '/assets/img/icon/inventory/ammobox.png';
+        this.ammoReserveIcon.onload = () => {
+            this.renderAmmoReserves();
+        };
+    }
+
+    private renderAmmoReserves(): void {
+        if (!this.ammoReservesCtx || !this.ammoReserveIcon || !this.ammoReserveIcon.complete) return;
+
+        // Clear the canvas
+        this.ammoReservesCtx.clearRect(0, 0, this.ammoReservesCanvas!.width, this.ammoReservesCanvas!.height);
+
+        // Draw the ammobox icon to fill the entire canvas
+        this.ammoReservesCtx.drawImage(
+            this.ammoReserveIcon,
+            0, 0,
+            this.ammoReservesCanvas!.width,
+            this.ammoReservesCanvas!.height
+        );
+    }
     /**
      * Clear all canvas rendering context in the game.
      * 
@@ -3432,7 +3465,7 @@ class GameClient {
     }
 
     // Add to gameLoop update section (around line 1925, after updateParticles)
-    private updateCharacterAnimations(): void {
+    private updateCharacterAnimations(delta: number): void {
         const animationsToRemove: string[] = [];
         const currentTime = Date.now();
 
@@ -3711,15 +3744,15 @@ class GameClient {
     /**
      * Handles updating of all particles in the game during the update loop.
      */
-    private updateParticles(): void {
+    private updateParticles(delta: number): void {
         const particlesToRemove: string[] = [];
 
         this.particles.forEach((particle, id) => {
-            particle.x += particle.velocityX;
-            particle.y += particle.velocityY;
-            particle.age += 16;
+            particle.x += particle.velocityX * delta;
+            particle.y += particle.velocityY * delta;
+            particle.age += 16.67 * delta;
 
-            particle.rotation += (particle.torque * Math.PI / 180) / 60;
+            particle.rotation += (particle.torque * Math.PI / 180) * delta;
 
             if (particle.fade) {
                 const ageRatio = particle.age / particle.lifetime;
@@ -3909,11 +3942,11 @@ class GameClient {
     /**
      * Process all particle emitters in the game during the update loop.
      */
-    private updateEmitters(): void {
+    private updateEmitters(delta: number): void {
         const emittersToRemove: string[] = [];
 
         this.emitters.forEach((emitter, emitterId) => {
-            emitter.age += 16; // 60fps frame time
+            emitter.age += 16.67 * delta;
 
             const player = emitter.playerId === this.userId ? this.myPlayer : this.players.get(emitter.playerId);
             if (!player || player.stats.health.value <= 0) {
@@ -4149,6 +4182,20 @@ class GameClient {
         this.chatContainer.style.display = "none";
         this.leaderboardContainer.style.display = "none";
         this.upgradeContainer.style.display = "none";
+    }
+    //
+    // #endregion
+
+    // #region [ Utility ]
+    //
+    private deltaTime(): number {
+        const now = performance.now();
+        const delta = now - this.lastFrameTime;
+        this.lastFrameTime = now;
+
+        // Normalize to 60fps (16.67ms per frame)
+        // Cap at 100ms to prevent huge jumps during lag spikes
+        return Math.min(delta, 100) / 16.67;
     }
     //
     // #endregion
