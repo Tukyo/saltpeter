@@ -521,7 +521,7 @@ class GameClient {
                 this.updateLobbyPlayersList();
                 this.updateHostDisplay();
 
-                if (this.lobbyPlayers.size === 1) {
+                if (this.lobbyPlayers.size === 0) { // No other players added to lobby list
                     this.isHost = true;
                     this.lobbyPlayers.get(this.userId)!.isHost = true;
                     this.updateHostDisplay();
