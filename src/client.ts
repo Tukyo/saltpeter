@@ -64,6 +64,17 @@ class GameClient {
     private characterImages: Map<string, HTMLImageElement> = new Map();
     private ammoBoxImages: { [layer: string]: HTMLImageElement } = {};
     private ammoReserveIcon: HTMLImageElement | null = null;
+    private projectileIcon: HTMLImageElement | null = null;
+    private reserveBullets: {
+        x: number;
+        y: number;
+        vx: number;
+        vy: number;
+        rotation: number;
+        torque: number;
+        width: number;
+        height: number;
+    }[] = [];
 
     private characterOffsets: Map<string, { x: number, y: number }> = new Map();
     private characterAnimations: Map<string, {
@@ -262,8 +273,8 @@ class GameClient {
         this.canvas.height = CANVAS.HEIGHT;
         this.decalCanvas.width = CANVAS.WIDTH;
         this.decalCanvas.height = CANVAS.HEIGHT;
-        this.ammoReservesCanvas.width = 38;
-        this.ammoReservesCanvas.height = 64;
+        this.ammoReservesCanvas.width = 100;
+        this.ammoReservesCanvas.height = 60;
 
         this.ctx = this.canvas.getContext('2d');
         this.decalCtx = this.decalCanvas.getContext('2d');
@@ -1778,7 +1789,7 @@ class GameClient {
         const currentTime = Date.now();
 
         // Handle reload
-        if (this.isReloading) {
+        if (this.isReloading) { // TODO: Put this into a reload function
             if (currentTime >= this.reloadStartTime + this.myPlayer.actions.primary.reload.time) {
                 // Reload complete - calculate how much to reload
                 const magazineSpace = this.myPlayer.actions.primary.magazine.size - this.myPlayer.actions.primary.magazine.currentAmmo;
@@ -1787,6 +1798,8 @@ class GameClient {
                 this.myPlayer.actions.primary.magazine.currentAmmo += ammoToReload;
                 this.myPlayer.actions.primary.magazine.currentReserve -= ammoToReload;
                 this.isReloading = false;
+
+                this.removeBullet(ammoToReload);
 
                 this.animateCharacterPart(this.userId, 'WEAPON', {
                     0: { x: 0, y: 20 }, // Start with slide back
@@ -3402,6 +3415,182 @@ class GameClient {
         this.ammoReserveIcon.onload = () => {
             this.renderAmmoReserves();
         };
+
+        this.projectileIcon = new Image();
+        this.projectileIcon.src = '/assets/img/icon/inventory/9mm.png';
+
+        this.ammoReservesCanvas!.addEventListener('click', (e) => {
+            this.handleAmmoCanvasClick(e);
+        });
+
+        // Start physics loop
+        requestAnimationFrame(() => this.updateAmmoReservePhysics());
+    }
+
+    private handleAmmoCanvasClick(e: MouseEvent): void {
+        if (!this.ammoReservesCanvas || !this.projectileIcon || !this.projectileIcon.complete) return;
+
+        // Get click position relative to canvas
+        const rect = this.ammoReservesCanvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+
+        // Define collision zone (same as your visual box)
+        const collisionWidth = 63;
+        const collisionHeight = 27;
+        const collisionX = (this.ammoReservesCanvas.width - collisionWidth) / 2 - 3;
+        const collisionY = (this.ammoReservesCanvas.height - collisionHeight) / 2 - 1;
+
+        // Check if click is within collision zone
+        if (clickX >= collisionX && clickX <= collisionX + collisionWidth &&
+            clickY >= collisionY && clickY <= collisionY + collisionHeight) {
+
+            // Calculate spawn position: right border of collision zone, centered vertically
+            const spawnX = collisionX + collisionWidth;
+            const spawnY = collisionY + collisionHeight / 2;
+
+            // Spawn bullet at materializer position
+            this.spawnBullet(spawnX, spawnY);
+        }
+    }
+
+    private spawnBullet(x: number, y: number, amount: number = 1): void {
+        if (!this.ammoReservesCtx || !this.projectileIcon) return;
+
+        const spawnDelay = 100; // ms
+
+        for (let i = 0; i < amount; i++) {
+            setTimeout(() => {
+                const scale = 0.25;
+                const bulletWidth = 11 * scale;
+                const bulletHeight = 28 * scale;
+
+                // Initial velocity: rightward, with a much wider angle and more random speed
+                const speed = 2 + Math.random() * 8; // Speed between 2 and 10
+                const angle = (Math.random() - 0.5) * (Math.PI / 3); // Angle between -30° and +30°
+                const vx = Math.cos(angle) * speed;
+                const vy = Math.sin(angle) * speed;
+
+                // Random rotation and torque
+                const rotation = Math.random() * Math.PI * 2;
+                const torque = (Math.random() - 0.5) * 0.1;
+
+                this.reserveBullets.push({
+                    x, y, vx, vy, rotation, torque, width: bulletWidth, height: bulletHeight
+                });
+            }, i * spawnDelay);
+        }
+    }
+
+    private removeBullet(amount: number = 1): void {
+        this.reserveBullets.splice(0, amount);
+    }
+
+    private updateAmmoReservePhysics(): void {
+        if (!this.ammoReservesCtx || !this.ammoReserveIcon) return;
+
+        // TODO: Add sleeping when they come to a stop and end simulation
+
+        // Physics constants
+        const friction = 0.9;
+        const bounce = 0.5;
+
+        // Collision zone
+        const collisionWidth = 63;
+        const collisionHeight = 27;
+        const collisionX = (this.ammoReservesCanvas!.width - collisionWidth) / 2 - 3;
+        const collisionY = (this.ammoReservesCanvas!.height - collisionHeight) / 2 - 1;
+
+        // Clear
+        this.ammoReservesCtx.clearRect(0, 0, this.ammoReservesCanvas!.width, this.ammoReservesCanvas!.height);
+
+        // Draw background box
+        this.ammoReservesCtx.drawImage(
+            this.ammoReserveIcon,
+            0, 0,
+            this.ammoReservesCanvas!.width,
+            this.ammoReservesCanvas!.height
+        );
+
+        // Update and draw bullets
+        for (let bullet of this.reserveBullets) {
+            // Physics
+            bullet.x += bullet.vx;
+            bullet.y += bullet.vy;
+            bullet.rotation += bullet.torque;
+
+            bullet.vx *= friction;
+            bullet.vy *= friction;
+            bullet.torque *= friction;
+
+            // Wall collisions
+            // Left
+            if (bullet.x - bullet.width / 2 < collisionX) {
+                bullet.x = collisionX + bullet.width / 2;
+                bullet.vx *= -bounce;
+            }
+            // Right
+            if (bullet.x + bullet.width / 2 > collisionX + collisionWidth) {
+                bullet.x = collisionX + collisionWidth - bullet.width / 2;
+                bullet.vx *= -bounce;
+            }
+            // Top
+            if (bullet.y - bullet.height / 2 < collisionY) {
+                bullet.y = collisionY + bullet.height / 2;
+                bullet.vy *= -bounce;
+            }
+            // Bottom
+            if (bullet.y + bullet.height / 2 > collisionY + collisionHeight) {
+                bullet.y = collisionY + collisionHeight - bullet.height / 2;
+                bullet.vy *= -bounce;
+            }
+        }
+
+        // Optional: bullet-bullet collisions (efficient, skip if <2 bullets)
+        for (let i = 0; i < this.reserveBullets.length; i++) {
+            for (let j = i + 1; j < this.reserveBullets.length; j++) {
+                const a = this.reserveBullets[i];
+                const b = this.reserveBullets[j];
+                const dx = a.x - b.x;
+                const dy = a.y - b.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const minDist = (a.width + b.width) / 2;
+                if (dist < minDist) {
+                    // Simple elastic collision
+                    const angle = Math.atan2(dy, dx);
+                    const overlap = minDist - dist;
+                    const ax = Math.cos(angle) * overlap / 2;
+                    const ay = Math.sin(angle) * overlap / 2;
+                    a.x += ax;
+                    a.y += ay;
+                    b.x -= ax;
+                    b.y -= ay;
+                    // Swap velocities (1D along collision axis)
+                    const va = a.vx * Math.cos(angle) + a.vy * Math.sin(angle);
+                    const vb = b.vx * Math.cos(angle) + b.vy * Math.sin(angle);
+                    const avg = (va + vb) / 2;
+                    a.vx += (avg - va) * bounce;
+                    b.vx += (avg - vb) * bounce;
+                }
+            }
+        }
+
+        // Draw bullets
+        for (let bullet of this.reserveBullets) {
+            this.ammoReservesCtx.save();
+            this.ammoReservesCtx.translate(bullet.x, bullet.y);
+            this.ammoReservesCtx.rotate(bullet.rotation);
+            this.ammoReservesCtx.drawImage(
+                this.projectileIcon!,
+                -bullet.width / 2,
+                -bullet.height / 2,
+                bullet.width,
+                bullet.height
+            );
+            this.ammoReservesCtx.restore();
+        }
+
+        requestAnimationFrame(() => this.updateAmmoReservePhysics());
     }
 
     private renderAmmoReserves(): void {
@@ -3417,6 +3606,17 @@ class GameClient {
             this.ammoReservesCanvas!.width,
             this.ammoReservesCanvas!.height
         );
+
+        const collisionWidth = 63;
+        const collisionHeight = 27;
+        const collisionX = (this.ammoReservesCanvas!.width - collisionWidth) / 2 - 3;
+        const collisionY = (this.ammoReservesCanvas!.height - collisionHeight) / 2 - 1;
+
+        const spawnX = collisionX + collisionWidth;
+        const spawnY = collisionY + collisionHeight / 2;
+
+        // Spawn bullet at materializer position
+        this.spawnBullet(spawnX, spawnY, this.myPlayer.actions.primary.magazine.currentReserve);
     }
     /**
      * Clear all canvas rendering context in the game.
