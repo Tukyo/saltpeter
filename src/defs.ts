@@ -11,14 +11,22 @@ export interface GameObject {
   timestamp: number;
 }
 
+export type ObjectType = 'AmmoBox' | 'Player' | 'Projectile'; 
+
 export interface Player extends GameObject {
-  color: string;
   actions: {
     dash: {
       drain: number;
       cooldown: number;
       multiplier: number;
       time: number;
+    }
+    melee: {
+      cooldown: number;
+      damage: number;
+      duration: number;
+      range: number;
+      size: number;
     }
     primary: {
       buffer: number;
@@ -51,12 +59,19 @@ export interface Player extends GameObject {
       multiplier: number;
     }
   }
+  color: string;
   equipment: {
     crosshair: boolean;
   }
   physics: {
     acceleration: number;
     friction: number;
+  }
+  rig: {
+    body: string;
+    head: string;
+    headwear: string;
+    weapon: string;
   }
   stats: {
     health: {
@@ -97,6 +112,35 @@ export interface AmmoBox extends GameObject {
     velocity: Vec2;
     torque: number;
   };
+}
+
+export interface SpawnObjectParams {
+  transform: Transform;
+  type: ObjectType;
+  data?: any;
+}
+
+export interface GameOptions {
+  controls: {
+    keybinds: {
+      dash: string;
+      melee: string;
+      moveDown: string;
+      moveLeft: string;
+      moveRight: string;
+      moveUp: string;
+      reload: string;
+      sprint: string;
+    }
+  }
+}
+
+export interface AnimationParams {
+    playerId: string;
+    part: string;
+    frames: { [key: number]: { x: number, y: number } };
+    duration: number;
+    partIndex?: number;
 }
 
 export interface RoomMessage {

@@ -1,10 +1,3 @@
-export interface CharacterConfig {
-    body: keyof typeof BODY;
-    weapon: keyof typeof WEAPON;
-    head: keyof typeof HEAD;
-    headwear: keyof typeof HEADWEAR;
-}
-
 export type CharacterLayer = 'BODY' | 'WEAPON' | 'HEAD' | 'HEADWEAR';
 
 export const WEAPON = {
@@ -54,13 +47,6 @@ export const CHARACTER_DECALS = {
         '/assets/img/effects/gore/gore_13.png'
     ]
 }
-
-export const CHARACTER: CharacterConfig = {
-    body: 'DEFAULT',
-    weapon: 'GLOCK', 
-    head: 'DEFAULT',
-    headwear: 'DEFAULT'
-};
 
 export function getCharacterAsset(layer: CharacterLayer, variant: string): string | string[] {
     switch (layer) {

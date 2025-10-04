@@ -8,8 +8,9 @@ export const PLAYER_DEFAULTS = {
         },
         MELEE: {
             COOLDOWN: 600, // ms
-            RANGE: 40, // px
             DAMAGE: 35,
+            DURATION: 100, // ms
+            RANGE: 40, // px
             SIZE: 18, // px^2 area at tip
         },
         PRIMARY: {
@@ -53,6 +54,12 @@ export const PLAYER_DEFAULTS = {
     PHYSICS: {
         ACCELERATION: 0.55,
         FRICTION: 0.85
+    },
+    RIG: {
+        BODY: 'DEFAULT',
+        HEAD: 'DEFAULT',
+        HEADWEAR: 'DEFAULT',
+        WEAPON: 'GLOCK'
     },
     STATS: {
         HEALTH: {
@@ -257,9 +264,9 @@ export const PARTICLES = {
 };
 
 export const AMMO_BOX = {
-    LID: '/assets/img/object/ammobox/lid.png',
+    BODY: '/assets/img/object/ammobox/body.png',
     BULLETS: '/assets/img/object/ammobox/bullets.png',
-    BODY: '/assets/img/object/ammobox/body.png'
+    LID: '/assets/img/object/ammobox/lid.png',
 }
 
 export const CANVAS = {
@@ -273,16 +280,18 @@ export const CANVAS = {
 export const GAME = {
     RECONNECT_DELAY: 3000,
     CONNECTION_TIMEOUT: 1000,
-    KEYBINDS: {
-        MELEE: 'f',
-        MOVE_UP: 'w',
-        MOVE_LEFT: 'a',
-        MOVE_DOWN: 's',
-        MOVE_RIGHT: 'd',
-        RELOAD: 'r',
-        SPRINT: 'shift',
-        ATTACK: 'mouse1',
-        DASH: ' '
+    CONTROLS: {
+        KEYBINDS: {
+            MELEE: 'f',
+            MOVE_UP: 'w',
+            MOVE_LEFT: 'a',
+            MOVE_DOWN: 's',
+            MOVE_RIGHT: 'd',
+            RELOAD: 'r',
+            SPRINT: 'shift',
+            ATTACK: 'mouse1',
+            DASH: ' '
+        },
     },
     MAX_PLAYERS: 4,
     MAX_WINS: 5,

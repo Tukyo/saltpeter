@@ -142,7 +142,7 @@ function handleRoomMessage(ws, message) {
             if (gameData.type === 'lobby-options') {
               const room = rooms.get(message.roomId);
               if (room && room.hostUserId === message.userId) {
-                if (gameData.privateRoom !== undefined) { //TODO: MAYBE TRACK ROOM MAX PLAYERS HERE?
+                if (gameData.privateRoom !== undefined) {
                   room.isPrivate = gameData.privateRoom;
                   console.log(`Room ${message.roomId} privacy changed to: ${room.isPrivate ? 'Private' : 'Public'}`);
                 }

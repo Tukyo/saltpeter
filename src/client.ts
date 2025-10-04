@@ -1,9 +1,9 @@
 import { generateUID, getRandomColor, hexToRgb, setSlider, updateToggle, updateInput, forward } from './utils';
 import { RoomManager } from './roomManager';
-import { Player, RoomMessage, Projectile, LobbyPlayer, Leaderboard, LeaderboardEntry, AmmoBox, ResetType } from './defs';
+import { Player, RoomMessage, Projectile, LobbyPlayer, Leaderboard, LeaderboardEntry, AmmoBox, ResetType, GameOptions, AnimationParams, GameObject, SpawnObjectParams } from './defs';
 import { PLAYER_DEFAULTS, CANVAS, GAME, UI, CHAT, DECALS, PARTICLES, AMMO_BOX, NETWORK } from './config';
 import { applyUpgrade, getUpgrades, removeUpgradeFromPool, resetUpgrades, UPGRADES } from './upgrades';
-import { CHARACTER, CHARACTER_DECALS, CharacterLayer, getCharacterAsset } from './char';
+import { CHARACTER_DECALS, CharacterLayer, getCharacterAsset } from './char';
 
 class GameClient {
     private ws: WebSocket | null = null;
@@ -58,6 +58,8 @@ class GameClient {
     private gameCodeButton: HTMLButtonElement | null = null;
 
     private myPlayer: Player; // My player object
+    private myGameOptions: GameOptions; // My custom settings
+
     private players: Map<string, Player> = new Map(); // Other player objects
     private lobbyPlayers: Map<string, LobbyPlayer> = new Map(); // Temporary partial player object used for lobby only information
 
@@ -189,6 +191,7 @@ class GameClient {
         this.roomManager = new RoomManager(this.userId);
 
         this.myPlayer = this.initializePlayer();
+        this.myGameOptions = this.initializeGameOptions();
 
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
@@ -396,27 +399,27 @@ class GameClient {
         if (!this.gameRunning || this.gamePaused) return;
 
         const key = e.key.toLowerCase();
-        const keybinds = GAME.KEYBINDS;
+        const keybinds = this.myGameOptions.controls.keybinds;
         const isGameKey = Object.values(keybinds).includes(key);
 
         if (isGameKey) {
             e.preventDefault();
             this.keys.add(key);
 
-            if (key === keybinds.DASH) {
-                this.startDash();
-            }
-
-            if (key === GAME.KEYBINDS.MELEE && this.canMelee()) {
-                this.startMelee();
-            }
-
-            if (key === keybinds.RELOAD) {
-                this.startReload();
-            }
-
-            if (key === keybinds.SPRINT && this.isMoving()) {
-                this.isSprinting = true;
+            switch (key) {
+                case keybinds.dash:
+                    this.startDash();
+                    break;
+                case keybinds.melee:
+                    if (this.canMelee()) this.startMelee();
+                    break;
+                case keybinds.reload:
+                    this.startReload();
+                    break;
+                case keybinds.sprint:
+                    if (this.isMoving()) this.isSprinting = true;
+                    break;
+                // TODO: Add more actions here as needed
             }
         }
     }
@@ -429,13 +432,13 @@ class GameClient {
         if (!this.gameRunning) return;
 
         const key = e.key.toLowerCase();
-        const keybinds = GAME.KEYBINDS;
+        const keybinds = this.myGameOptions.controls.keybinds;
 
         if (Object.values(keybinds).includes(key)) {
             e.preventDefault();
             this.keys.delete(key);
 
-            if (key === keybinds.SPRINT) {
+            if (key === keybinds.sprint) {
                 this.isSprinting = false;
             }
         }
@@ -543,7 +546,7 @@ class GameClient {
                     color: this.myPlayer.color,
                     isHost: this.isHost
                 });
-                this.updateLobbyPlayersList();
+                this.displayLobbyPlayers();
                 this.updateHostDisplay();
 
                 if (this.lobbyPlayers.size === 0) { // No other players added to lobby list
@@ -557,7 +560,7 @@ class GameClient {
                 console.log(`User ${message.userId} joined`);
 
                 // If I'm in an active game, send my current state to the new player
-                // TODO: Keep full track of Player object here
+                // [ IMPORTANT ] Keep full track of Player object here
                 if (this.gameRunning && !this.inLobby) {
                     this.roomManager.sendMessage(JSON.stringify({
                         type: 'player-state',
@@ -577,6 +580,13 @@ class GameClient {
                                 drain: this.myPlayer.actions.dash.drain,
                                 multiplier: this.myPlayer.actions.dash.multiplier,
                                 time: this.myPlayer.actions.dash.time
+                            },
+                            melee: {
+                                cooldown: this.myPlayer.actions.melee.cooldown,
+                                damage: this.myPlayer.actions.melee.damage,
+                                duration: this.myPlayer.actions.melee.duration,
+                                range: this.myPlayer.actions.melee.range,
+                                size: this.myPlayer.actions.melee.size
                             },
                             primary: {
                                 buffer: this.myPlayer.actions.primary.buffer,
@@ -617,6 +627,12 @@ class GameClient {
                         physics: {
                             acceleration: this.myPlayer.physics.acceleration,
                             friction: this.myPlayer.physics.friction
+                        },
+                        rig: {
+                            body: this.myPlayer.rig.body,
+                            head: this.myPlayer.rig.head,
+                            headwear: this.myPlayer.rig.headwear,
+                            weapon: this.myPlayer.rig.weapon
                         },
                         stats: {
                             health: {
@@ -662,7 +678,7 @@ class GameClient {
                         this.projectiles.delete(id);
                     }
                 });
-                this.updateLobbyPlayersList();
+                this.displayLobbyPlayers();
                 break;
             case 'room-message':
                 this.handleGameMessage(message);
@@ -689,7 +705,7 @@ class GameClient {
                         color: gameData.color,
                         isHost: false
                     });
-                    this.updateLobbyPlayersList();
+                    this.displayLobbyPlayers();
 
                     // If I'm host, send current lobby state to new player
                     if (this.isHost) {
@@ -713,7 +729,7 @@ class GameClient {
                         this.lobbyPlayers.set(player.id, player);
                     });
 
-                    this.updateLobbyPlayersList();
+                    this.displayLobbyPlayers();
                     this.updateHostDisplay();
 
                     if (gameData.options) {
@@ -736,7 +752,7 @@ class GameClient {
                         console.log('I am now the host due to host migration');
                     }
 
-                    this.updateLobbyPlayersList();
+                    this.displayLobbyPlayers();
                     this.updateHostDisplay();
                     break;
                 case 'return-to-lobby': // New message type
@@ -774,7 +790,7 @@ class GameClient {
                 //
                 // #region [ Player ]
                 //
-                // TODO: Keep full track of Player object here
+                // [ IMPORTANT ] Keep full track of Player object here
                 case 'player-state':
                     if (!this.inLobby) {
                         this.players.set(message.userId, {
@@ -794,6 +810,13 @@ class GameClient {
                                     drain: gameData.actions?.dash.drain || PLAYER_DEFAULTS.ACTIONS.DASH.DRAIN,
                                     multiplier: gameData.actions?.dash.multiplier || PLAYER_DEFAULTS.ACTIONS.DASH.MULTIPLIER,
                                     time: gameData.actions?.dash.time || PLAYER_DEFAULTS.ACTIONS.DASH.TIME
+                                },
+                                melee: {
+                                    cooldown: gameData.actions?.melee.cooldown || PLAYER_DEFAULTS.ACTIONS.MELEE.COOLDOWN,
+                                    damage: gameData.actions?.melee.damage || PLAYER_DEFAULTS.ACTIONS.MELEE.DAMAGE,
+                                    duration: gameData.actions?.melee.duration || PLAYER_DEFAULTS.ACTIONS.MELEE.DURATION,
+                                    range: gameData.actions?.melee.range || PLAYER_DEFAULTS.ACTIONS.MELEE.RANGE,
+                                    size: gameData.actions?.melee.size || PLAYER_DEFAULTS.ACTIONS.MELEE.SIZE
                                 },
                                 primary: {
                                     buffer: gameData.actions?.primary.buffer || PLAYER_DEFAULTS.ACTIONS.PRIMARY.BUFFER,
@@ -834,6 +857,12 @@ class GameClient {
                             physics: {
                                 acceleration: gameData.physics?.acceleration || PLAYER_DEFAULTS.PHYSICS.ACCELERATION,
                                 friction: gameData.physics?.friction || PLAYER_DEFAULTS.PHYSICS.FRICTION
+                            },
+                            rig: {
+                                body: gameData.rig?.body || PLAYER_DEFAULTS.RIG.BODY,
+                                head: gameData.rig?.head || PLAYER_DEFAULTS.RIG.HEAD,
+                                headwear: gameData.rig?.headwear || PLAYER_DEFAULTS.RIG.HEADWEAR,
+                                weapon: gameData.rig?.weapon || PLAYER_DEFAULTS.RIG.WEAPON
                             },
                             stats: {
                                 health: {
@@ -915,27 +944,13 @@ class GameClient {
                     }
                     break;
                 case 'player-death':
-                    // TODO Death processing
-                    if (message.userId !== this.userId && gameData.ammoBox) {
+                    if (message.userId !== this.userId && gameData.ammoBox) { // Spawn ammo
                         this.ammoBoxes.set(gameData.ammoBox.id, gameData.ammoBox);
                         console.log(`Ammo box spawned at death of ${message.userId}`);
                     }
 
-                    if (gameData.gore && Array.isArray(gameData.gore)) {
-                        gameData.gore.forEach((goreDecal: any, index: number) => {
-                            const decalId = `death_gore_${message.userId}_${Date.now()}_${index}`;
-
-                            this.stampGore(goreDecal);
-
-                            this.decals.set(decalId, {
-                                x: goreDecal.x,
-                                y: goreDecal.y,
-                                params: null
-                            });
-                        });
-
-                        console.log(`Stamped ${gameData.gore.length} gore decals for ${message.userId}`);
-                    }
+                    this.generateGore(message.userId, gameData.x, gameData.y, gameData.size); // Spawn gore
+                    console.log(`Generated gore for ${message.userId}`);
                     break;
                 case 'player-pause':
                     this.pausedPlayers.add(gameData.userId);
@@ -958,6 +973,13 @@ class GameClient {
                         box.lid = gameData.boxState.lid;
 
                         console.log(`Ammo box opened by ${gameData.playerId}`);
+                    }
+                    break;
+                case 'weapon-change':
+                    if (message.userId !== this.userId && this.players.has(message.userId)) {
+                        const player = this.players.get(message.userId)!;
+                        player.rig.weapon = gameData.weapon;
+                        console.log(`${message.userId} switched to ${gameData.weapon}`);
                     }
                     break;
                 //
@@ -1008,7 +1030,7 @@ class GameClient {
                     setSlider('healthBar', this.myPlayer.stats.health.value, this.myPlayer.stats.health.max);
                     setSlider('staminaBar', this.myPlayer.stats.stamina.value, this.myPlayer.stats.stamina.max);
 
-                    // TODO: Keep full track of Player object here
+                    // [ IMPORTANT ] Keep full track of Player object here
                     if (this.players.has(message.userId)) { // Respawn other players
                         const player = this.players.get(message.userId)!;
 
@@ -1020,6 +1042,11 @@ class GameClient {
                         player.actions.dash.drain = gameData.actions.dash.drain;
                         player.actions.dash.multiplier = gameData.actions.dash.multiplier;
                         player.actions.dash.time = gameData.actions.dash.time;
+                        player.actions.melee.cooldown = gameData.actions.melee.cooldown;
+                        player.actions.melee.damage = gameData.actions.melee.damage;
+                        player.actions.melee.duration = gameData.actions.melee.duration;
+                        player.actions.melee.range = gameData.actions.melee.range;
+                        player.actions.melee.size = gameData.actions.melee.size;
                         player.actions.primary.buffer = gameData.actions.primary.buffer;
                         player.actions.primary.burst.amount = gameData.actions.primary.burst.amount;
                         player.actions.primary.burst.delay = gameData.actions.primary.burst.delay;
@@ -1043,6 +1070,10 @@ class GameClient {
                         player.equipment.crosshair = gameData.equipment.crosshair;
                         player.physics.acceleration = gameData.physics.acceleration;
                         player.physics.friction = gameData.physics.friction;
+                        player.rig.body = gameData.rig.body;
+                        player.rig.head = gameData.rig.head;
+                        player.rig.headwear = gameData.rig.headwear;
+                        player.rig.weapon = gameData.rig.weapon;
                         player.stats.health.max = gameData.stats.health.max;
                         player.stats.health.value = gameData.stats.health.max;
                         player.stats.luck = gameData.stats.luck;
@@ -1116,14 +1147,8 @@ class GameClient {
                     }
                     break;
                 case 'character-animation':
-                    if (gameData.playerId !== this.userId) { // Only apply animations from other players
-                        this.animateCharacterPart(
-                            gameData.playerId,
-                            gameData.part,
-                            gameData.frames,
-                            gameData.duration,
-                            gameData.partIndex
-                        );
+                    if (gameData.params.playerId !== this.userId) {
+                        this.animateCharacterPartNetwork(gameData.params);
                     }
                     break;
                 //
@@ -1332,7 +1357,7 @@ class GameClient {
             id: this.userId,
             color: this.myPlayer.color,
             isHost: this.isHost
-        }); // TODO: Consider sending the full player object here
+        });
 
         this.setupLobbyOptions();
 
@@ -1340,7 +1365,7 @@ class GameClient {
         updateToggle('upgradesToggle', this.isUpgradesEnabled)
         updateInput('winsInput', this.gameMaxWins);
 
-        this.updateLobbyPlayersList();
+        this.displayLobbyPlayers();
         this.updateHostDisplay();
     }
 
@@ -1390,10 +1415,8 @@ class GameClient {
             console.log(`${messageKey} changed to: ${newValue}`);
         };
 
-        // Store handler for later removal
+        // Store handler for later removal & add listener
         (this as any)[handlerKey] = handler;
-
-        // Add the listener
         element.addEventListener('click', handler);
     }
 
@@ -1438,10 +1461,8 @@ class GameClient {
             console.log(`${messageKey} changed to: ${newValue}`);
         };
 
-        // Store handler for later removal
+        // Store handler for later removal & setup listener
         (this as any)[handlerKey] = handler;
-
-        // Add the listener
         element.addEventListener('change', handler);
     }
 
@@ -1607,13 +1628,18 @@ class GameClient {
         setSlider('staminaBar', this.myPlayer.stats.stamina.value, this.myPlayer.stats.stamina.max);
 
         // Locally update all other players
-        // TODO: Keep full track of Player object here
+        // [ IMPORTANT ] Keep full track of Player object here
         this.players.forEach(player => {
             player.timestamp = player.timestamp || Date.now();
             player.actions.dash.cooldown = player.actions.dash.cooldown || PLAYER_DEFAULTS.ACTIONS.DASH.COOLDOWN;
             player.actions.dash.drain = player.actions.dash.drain || PLAYER_DEFAULTS.ACTIONS.DASH.DRAIN;
             player.actions.dash.multiplier = player.actions.dash.multiplier || PLAYER_DEFAULTS.ACTIONS.DASH.MULTIPLIER;
             player.actions.dash.time = player.actions.dash.time || PLAYER_DEFAULTS.ACTIONS.DASH.TIME;
+            player.actions.melee.cooldown = player.actions.melee.cooldown || PLAYER_DEFAULTS.ACTIONS.MELEE.COOLDOWN;
+            player.actions.melee.damage = player.actions.melee.damage || PLAYER_DEFAULTS.ACTIONS.MELEE.DAMAGE;
+            player.actions.melee.duration = player.actions.melee.duration || PLAYER_DEFAULTS.ACTIONS.MELEE.DURATION;
+            player.actions.melee.range = player.actions.melee.range || PLAYER_DEFAULTS.ACTIONS.MELEE.RANGE;
+            player.actions.melee.size = player.actions.melee.size || PLAYER_DEFAULTS.ACTIONS.MELEE.SIZE;
             player.actions.primary.buffer = player.actions.primary.buffer || PLAYER_DEFAULTS.ACTIONS.PRIMARY.BUFFER;
             player.actions.primary.burst.amount = player.actions.primary.burst.amount || PLAYER_DEFAULTS.ACTIONS.PRIMARY.BURST.AMOUNT;
             player.actions.primary.burst.delay = player.actions.primary.burst.delay || PLAYER_DEFAULTS.ACTIONS.PRIMARY.BURST.DELAY;
@@ -1637,6 +1663,10 @@ class GameClient {
             player.equipment.crosshair = player.equipment.crosshair || PLAYER_DEFAULTS.EQUIPMENT.CROSSHAIR;
             player.physics.acceleration = player.physics.acceleration || PLAYER_DEFAULTS.PHYSICS.ACCELERATION;
             player.physics.friction = player.physics.friction || PLAYER_DEFAULTS.PHYSICS.FRICTION;
+            player.rig.body = player.rig.body || PLAYER_DEFAULTS.RIG.BODY;
+            player.rig.head = player.rig.head || PLAYER_DEFAULTS.RIG.HEAD;
+            player.rig.headwear = player.rig.headwear || PLAYER_DEFAULTS.RIG.HEADWEAR;
+            player.rig.weapon = player.rig.weapon || PLAYER_DEFAULTS.RIG.WEAPON;
             player.stats.health.max = player.stats.health.max || PLAYER_DEFAULTS.STATS.HEALTH.MAX;
             player.stats.health.value = player.stats.health.max || PLAYER_DEFAULTS.STATS.HEALTH.MAX;
             player.stats.luck = player.stats.luck || PLAYER_DEFAULTS.STATS.LUCK;
@@ -1652,7 +1682,7 @@ class GameClient {
         this.roundWinner = null;
 
         // Notify others of new round with my spawn position
-        // TODO: Keep full track of Player object here
+        // [ IMPORTANT ] Keep full track of Player object here
         this.roomManager.sendMessage(JSON.stringify({
             type: 'new-round',
             transform: {
@@ -1669,6 +1699,13 @@ class GameClient {
                     drain: this.myPlayer.actions.dash.drain,
                     multiplier: this.myPlayer.actions.dash.multiplier,
                     time: this.myPlayer.actions.dash.time
+                },
+                melee: {
+                    cooldown: this.myPlayer.actions.melee.cooldown,
+                    damage: this.myPlayer.actions.melee.damage,
+                    duration: this.myPlayer.actions.melee.duration,
+                    range: this.myPlayer.actions.melee.range,
+                    size: this.myPlayer.actions.melee.size
                 },
                 primary: {
                     buffer: this.myPlayer.actions.primary.buffer,
@@ -1709,6 +1746,12 @@ class GameClient {
             physics: {
                 acceleration: this.myPlayer.physics.acceleration,
                 friction: this.myPlayer.physics.friction
+            },
+            rig: {
+                body: this.myPlayer.rig.body,
+                head: this.myPlayer.rig.head,
+                headwear: this.myPlayer.rig.headwear,
+                weapon: this.myPlayer.rig.weapon
             },
             stats: {
                 health: {
@@ -1806,97 +1849,6 @@ class GameClient {
     // #endregion
 
     // #region [ Attack ]
-    //
-
-
-
-
-    private canMelee(): boolean {
-        const now = Date.now();
-        return (
-            !this.isMelee &&
-            now >= this.lastMeleeTime + PLAYER_DEFAULTS.ACTIONS.MELEE.COOLDOWN &&
-            this.myPlayer.stats.health.value > 0 &&
-            !this.isBurstActive &&
-            !this.isReloading
-        );
-    }
-
-    private startMelee(): void {
-        this.isMelee = true;
-        this.lastMeleeTime = Date.now();
-
-        // Calculate melee direction (use current rotation)
-        const angle = this.myPlayer.transform.rot;
-        const range = PLAYER_DEFAULTS.ACTIONS.MELEE.RANGE;
-        const size = PLAYER_DEFAULTS.ACTIONS.MELEE.SIZE;
-
-        // Use the same spawn offset as normal projectiles
-        const spawnOffset = (this.myPlayer.stats.size / 4) +
-            this.myPlayer.actions.primary.projectile.size +
-            this.myPlayer.actions.primary.offset;
-
-        // Calculate spawn position at the tip of the weapon
-        const spawnX = this.myPlayer.transform.pos.x + Math.cos(angle - Math.PI / 2) * spawnOffset;
-        const spawnY = this.myPlayer.transform.pos.y + Math.sin(angle - Math.PI / 2) * spawnOffset;
-
-        const velocity = {
-            x: Math.cos(angle - Math.PI / 2) * range,
-            y: Math.sin(angle - Math.PI / 2) * range
-        };
-
-        const meleeProjectile = {
-            id: generateUID(),
-            transform: {
-                pos: { x: spawnX, y: spawnY },
-                rot: angle
-            },
-            timestamp: Date.now(),
-            color: 'rgba(255, 255, 255, 0)',
-            damage: PLAYER_DEFAULTS.ACTIONS.MELEE.DAMAGE,
-            distanceTraveled: 0,
-            length: size,
-            ownerId: this.userId,
-            range: range,
-            size: size,
-            velocity: velocity
-        };
-
-        this.projectiles.set(meleeProjectile.id, meleeProjectile);
-
-        this.roomManager.sendMessage(JSON.stringify({
-            type: 'projectile-launch',
-            projectile: meleeProjectile
-        }));
-
-        // Remove melee projectile after it has traveled its range (simulate a short-lived projectile)
-        setTimeout(() => {
-            this.projectiles.delete(meleeProjectile.id);
-            this.isMelee = false;
-        }, 100); // Adjust duration to match how long you want the melee to last
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     /**
      * Responsible for what happens during attack actions.
      */
@@ -1936,7 +1888,105 @@ class GameClient {
             }
         }
     }
+    //
+    // #endregion
 
+    // #region [ Melee ]
+    //
+    /**
+     * Checks if the player can melee or not.
+     */
+    private canMelee(): boolean {
+        const now = Date.now(); 1
+        return (
+            !this.isMelee &&
+            now >= this.lastMeleeTime + this.myPlayer.actions.melee.cooldown &&
+            this.myPlayer.stats.health.value > 0 &&
+            !this.isBurstActive &&
+            !this.isReloading
+        );
+    }
+
+    /**
+     * Triggers a melee attack, using standard projectiles with special params.
+     */
+    private startMelee(): void {
+        this.isMelee = true;
+        this.lastMeleeTime = Date.now();
+
+        this.myPlayer.rig.weapon = 'KNIFE'; //TODO: Use whatever currently unlocked melee weapon is equipped
+
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'weapon-change',
+            playerId: this.userId,
+            weapon: 'KNIFE' //TODO: Use whatever currently unlocked melee weapon is equipped
+        }));
+
+        // Calculate melee direction (use current rotation)
+        const angle = this.myPlayer.transform.rot;
+        const range = this.myPlayer.actions.melee.range;
+        const size = this.myPlayer.actions.melee.size;
+
+        // Use the same spawn offset as normal projectiles
+        const spawnOffset = this.getPlayerCollider(this.myPlayer) +
+            this.myPlayer.actions.primary.projectile.size +
+            this.myPlayer.actions.primary.offset;
+
+        // Calculate spawn position at the tip of the weapon
+        const spawnX = this.myPlayer.transform.pos.x + Math.cos(angle - Math.PI / 2) * spawnOffset;
+        const spawnY = this.myPlayer.transform.pos.y + Math.sin(angle - Math.PI / 2) * spawnOffset;
+
+        const velocity = {
+            x: Math.cos(angle - Math.PI / 2) * range,
+            y: Math.sin(angle - Math.PI / 2) * range
+        };
+
+        const meleeProjectile = {
+            id: generateUID(),
+            transform: {
+                pos: { x: spawnX, y: spawnY },
+                rot: angle
+            },
+            timestamp: Date.now(),
+            color: 'rgba(255, 255, 255, 0)',
+            damage: this.myPlayer.actions.melee.damage,
+            distanceTraveled: 0,
+            length: size,
+            ownerId: this.userId,
+            range: range,
+            size: size,
+            velocity: velocity
+        };
+
+        this.projectiles.set(meleeProjectile.id, meleeProjectile);
+
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'projectile-launch',
+            projectile: meleeProjectile
+        }));
+
+        // Remove melee projectile after it has traveled its duration
+        setTimeout(() => {
+            this.projectiles.delete(meleeProjectile.id);
+            this.isMelee = false;
+
+            this.myPlayer.rig.weapon = 'GLOCK'; //TODO: Use whatever currently unlocked ranged primary is equipped
+
+            this.roomManager.sendMessage(JSON.stringify({
+                type: 'weapon-change',
+                playerId: this.userId,
+                weapon: 'GLOCK' //TODO: Use whatever currently unlocked ranged primary is equipped
+            }));
+        }, this.myPlayer.actions.melee.duration);
+    }
+    //
+    // #endregion
+
+    // #region [ Ranged ]
+    //
+    /**
+     * Entrypoint for ranged attacks. When this is called, it starts the primary attack flow.
+     */
     private startBurst(): void {
         if (this.isBurstActive || this.myPlayer.stats.health.value <= 0 || this.isReloading) return;
 
@@ -1952,9 +2002,15 @@ class GameClient {
         if (ammoToUse === 0) {
             console.log('Out of ammo! Magazine empty.');
 
-            this.animateCharacterPart(this.userId, 'WEAPON', {
-                0: { x: 0, y: 8 } // Slide held back
-            }, 0, 1); // duration=0 means infinite/held
+            this.animateCharacterPart({
+                playerId: this.userId,
+                part: 'WEAPON',
+                frames: {
+                    0: { x: 0, y: 8 } // Slide held back
+                },
+                duration: 0,
+                partIndex: 1
+            }); // duration=0 means infinite/held
 
             // TODO: Play empty magazine sound
             return;
@@ -1968,7 +2024,7 @@ class GameClient {
         this.currentBurstShot++;
         this.myPlayer.actions.primary.magazine.currentAmmo--; // Use 1 ammo per shot in burst
 
-        // If burst has more shots and we have ammo, schedule the next ones
+        // If burst has more shots and we have ammo, schedule the next one
         if (this.myPlayer.actions.primary.burst.amount > 1 && this.myPlayer.actions.primary.magazine.currentAmmo > 0 && this.currentBurstShot < ammoToUse) {
             this.nextBurstShotTime = Date.now() + this.myPlayer.actions.primary.burst.delay;
         } else { // Burst complete
@@ -1976,16 +2032,25 @@ class GameClient {
             this.currentBurstShot = 0;
 
             if (this.myPlayer.actions.primary.magazine.currentAmmo === 0) {
-                this.animateCharacterPart(this.userId, 'WEAPON', {
-                    0: { x: 0, y: 8 } // Slide held back
-                }, 0, 1); // duration=0 means infinite/held
+                this.animateCharacterPart({
+                    playerId: this.userId,
+                    part: 'WEAPON',
+                    frames: {
+                        0: { x: 0, y: 8 } // Slide held back
+                    },
+                    duration: 0,
+                    partIndex: 1
+                }); // duration=0 means infinite/held
             }
         }
-
-        console.log(`Fired shot! Magazine: ${this.myPlayer.actions.primary.magazine.currentAmmo}/${this.myPlayer.actions.primary.magazine.size}, Inventory: ${this.myPlayer.actions.primary.magazine.currentReserve}/${this.myPlayer.actions.primary.magazine.maxReserve}`);
     }
 
+    /**
+     * Calculates physics for projectile and adds them to mapping.
+     */
     private launchProjectile(): void {
+        console.log(`Fired shot!`);
+
         const dx = this.mouseX - this.myPlayer.transform.pos.x;
         const dy = this.mouseY - this.myPlayer.transform.pos.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
@@ -1996,14 +2061,20 @@ class GameClient {
         const dirY = dy / distance;
 
         // Animate weapon slide (glock_slide.png is index 1 in the WEAPON.GLOCK array)
-        this.animateCharacterPart(this.userId, 'WEAPON', {
-            0: { x: 0, y: 0 },    // Start position
-            0.5: { x: 0, y: 20 }, // Pull back slide
-            1: { x: 0, y: 0 }     // Return to start
-        }, 175, 1);
+        this.animateCharacterPart({
+            playerId: this.userId,
+            part: 'WEAPON',
+            frames: {
+                0: { x: 0, y: 0 },    // Start position
+                0.5: { x: 0, y: 20 }, // Pull back slide
+                1: { x: 0, y: 0 }     // Return to start
+            },
+            duration: 175,
+            partIndex: 1
+        });
 
         // Calculate spawn offset
-        const spawnOffset = (this.myPlayer.stats.size / 4) + this.myPlayer.actions.primary.projectile.size + this.myPlayer.actions.primary.offset;
+        const spawnOffset = this.getPlayerCollider(this.myPlayer) + this.myPlayer.actions.primary.projectile.size + this.myPlayer.actions.primary.offset;
         const bulletSpawnX = this.myPlayer.transform.pos.x + dirX * spawnOffset;
         const bulletSpawnY = this.myPlayer.transform.pos.y + dirY * spawnOffset;
         const rightX = -dirY;
@@ -2064,6 +2135,9 @@ class GameClient {
         }
     }
 
+    /**
+     * Updates all projectiles in the game locally.
+     */
     private updateProjectiles(delta: number): void {
         const projectilesToRemove: string[] = [];
 
@@ -2083,23 +2157,13 @@ class GameClient {
                 const dx = projectile.transform.pos.x - this.myPlayer.transform.pos.x;
                 const dy = projectile.transform.pos.y - this.myPlayer.transform.pos.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
-                const col = this.myPlayer.stats.size / 4;
 
-                if (distance <= col + projectile.size) {
-                    this.myPlayer.stats.health.value -= projectile.damage;
-                    setSlider('healthBar', this.myPlayer.stats.health.value, this.myPlayer.stats.health.max);
-
+                if (distance <= this.getPlayerCollider(this.myPlayer) + projectile.size) { // Projectile collided with my player
                     projectilesToRemove.push(id);
 
-                    this.createDecal(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, DECALS.BLOOD);
+                    this.myPlayer.stats.health.value -= projectile.damage;
 
-                    // Create directional blood spray - spray backwards from projectile direction
-                    const bloodDirection = {
-                        x: -projectile.velocity.x / Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2),
-                        y: -projectile.velocity.y / Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2)
-                    };
-                    this.createParticles(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
-                    this.createEmitter(this.userId, projectile.transform.pos.x, projectile.transform.pos.y, this.myPlayer.transform.pos.x, this.myPlayer.transform.pos.y);
+                    setSlider('healthBar', this.myPlayer.stats.health.value, this.myPlayer.stats.health.max);
 
                     // Notify everyone I was hit
                     this.roomManager.sendMessage(JSON.stringify({
@@ -2120,28 +2184,24 @@ class GameClient {
                         const dx2 = projectile.transform.pos.x - player.transform.pos.x;
                         const dy2 = projectile.transform.pos.y - player.transform.pos.y;
                         const distance2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-                        const col = player.stats.size / 4;
 
-                        if (distance2 <= col + projectile.size) { // Calculate hit based on MY projectile size
-                            // Hit another player!
+                        if (distance2 <= this.getPlayerCollider(player) + projectile.size) { // My projectile hit another player!
                             projectilesToRemove.push(id);
 
-                            // Calculate their new health / use MY damage
                             const newHealth = Math.max(0, player.stats.health.value - projectile.damage);
                             player.stats.health.value = newHealth;
-
-                            this.createDecal(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, DECALS.BLOOD);
 
                             // Create directional blood spray - spray backwards from projectile direction
                             const bloodDirection = {
                                 x: -projectile.velocity.x / Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2),
                                 y: -projectile.velocity.y / Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2)
                             };
+
+                            this.createDecal(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, DECALS.BLOOD);
                             this.createParticles(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
                             this.createEmitter(playerId, projectile.transform.pos.x, projectile.transform.pos.y, player.transform.pos.x, player.transform.pos.y);
 
-                            // If they died, I get a kill
-                            if (newHealth <= 0) {
+                            if (newHealth <= 0) { // If they died, I get a kill
                                 console.log(`I killed ${playerId}!`);
 
                                 const me = this.leaderboard.get(this.userId);
@@ -2208,14 +2268,20 @@ class GameClient {
 
     // #region [ Reload ]
     //
+    /**
+     * Checks if the player can reload or not.
+     */
     private canReload(): boolean {
         return (
             !this.isReloading &&
             this.myPlayer.actions.primary.magazine.currentAmmo < this.myPlayer.actions.primary.magazine.size &&
-            this.myPlayer.actions.primary.magazine.currentReserve > 0
+            this.myPlayer.actions.primary.magazine.currentReserve > 0 && !this.isMelee
         );
     }
 
+    /**
+     * Manual trigger for reload. Called when pressing the assigned keybind.
+     */
     private startReload(): void {
         if (!this.canReload()) return;
         console.log(`Reloading...`);
@@ -2227,11 +2293,20 @@ class GameClient {
         this.isBurstActive = false;
         this.currentBurstShot = 0;
 
-        this.animateCharacterPart(this.userId, 'WEAPON', {
-            0: { x: 0, y: 8 } // Slide held back
-        }, 0, 1); // duration=0 means infinite/held
+        this.animateCharacterPart({
+            playerId: this.userId,
+            part: 'WEAPON',
+            frames: {
+                0: { x: 0, y: 8 } // Slide held back
+            },
+            duration: 0,
+            partIndex: 1
+        }); // duration=0 means infinite/held
     }
 
+    /**
+     * Ends the reload loop, and updates visual state.
+     */
     private finishReload(): void {
         const magazineSpace = this.myPlayer.actions.primary.magazine.size - this.myPlayer.actions.primary.magazine.currentAmmo;
         const ammoToReload = Math.min(magazineSpace, this.myPlayer.actions.primary.magazine.currentReserve);
@@ -2240,12 +2315,18 @@ class GameClient {
         this.myPlayer.actions.primary.magazine.currentReserve -= ammoToReload;
         this.isReloading = false;
 
-        this.removeBullet(ammoToReload);
+        this.removeAmmoFromReserveUI(ammoToReload);
 
-        this.animateCharacterPart(this.userId, 'WEAPON', {
-            0: { x: 0, y: 20 }, // Start with slide back
-            1: { x: 0, y: 0 } // Return to start
-        }, 175, 1);
+        this.animateCharacterPart({
+            playerId: this.userId,
+            part: 'WEAPON',
+            frames: {
+                0: { x: 0, y: 20 }, // Start with slide back
+                1: { x: 0, y: 0 } // Return to start
+            },
+            duration: 175,
+            partIndex: 1
+        });
 
         console.log(`Reload complete...`);
     }
@@ -2254,7 +2335,10 @@ class GameClient {
 
     // #region [ Player ]
     //
-    // TODO: Keep full track of Player object here
+    // [ IMPORTANT ] Keep full track of Player object here
+    /**
+     * Initializes the default player object using the PLAYER_DEFAULTS defined in the config.
+     */
     private initializePlayer(): Player {
         return this.myPlayer = {
             id: this.userId,
@@ -2266,13 +2350,20 @@ class GameClient {
                 rot: 0
             },
             timestamp: Date.now(),
-            color: getRandomColor(),
+            color: getRandomColor(), // TODO: Replace with char customization
             actions: {
                 dash: {
                     cooldown: PLAYER_DEFAULTS.ACTIONS.DASH.COOLDOWN,
                     drain: PLAYER_DEFAULTS.ACTIONS.DASH.DRAIN,
                     multiplier: PLAYER_DEFAULTS.ACTIONS.DASH.MULTIPLIER,
                     time: PLAYER_DEFAULTS.ACTIONS.DASH.TIME
+                },
+                melee: {
+                    cooldown: PLAYER_DEFAULTS.ACTIONS.MELEE.COOLDOWN,
+                    damage: PLAYER_DEFAULTS.ACTIONS.MELEE.DAMAGE,
+                    duration: PLAYER_DEFAULTS.ACTIONS.MELEE.DURATION,
+                    range: PLAYER_DEFAULTS.ACTIONS.MELEE.RANGE,
+                    size: PLAYER_DEFAULTS.ACTIONS.MELEE.SIZE
                 },
                 primary: {
                     buffer: PLAYER_DEFAULTS.ACTIONS.PRIMARY.BUFFER,
@@ -2314,6 +2405,12 @@ class GameClient {
                 acceleration: PLAYER_DEFAULTS.PHYSICS.ACCELERATION,
                 friction: PLAYER_DEFAULTS.PHYSICS.FRICTION
             },
+            rig: {
+                body: PLAYER_DEFAULTS.RIG.BODY,
+                head: PLAYER_DEFAULTS.RIG.HEAD,
+                headwear: PLAYER_DEFAULTS.RIG.HEADWEAR,
+                weapon: PLAYER_DEFAULTS.RIG.WEAPON
+            },
             stats: {
                 health: {
                     max: PLAYER_DEFAULTS.STATS.HEALTH.MAX,
@@ -2333,74 +2430,48 @@ class GameClient {
             }
         };
     }
+
+    /**
+     * Resets the current player state stored in memory to default.
+     */
+    private resetPlayerState(): void {
+        this.canShoot = true;
+        this.isBurstActive = false;
+        this.isReloading = false;
+        this.isSprinting = false;
+        this.isDashing = false;
+        this.isStaminaRecoveryBlocked = false;
+
+        this.playerVelocityX = 0;
+        this.playerVelocityY = 0;
+
+        this.dashStartTime = 0;
+        this.lastDashTime = 0;
+        this.reloadStartTime = 0;
+        this.lastShotTime = 0;
+        this.nextBurstShotTime = 0;
+        this.currentBurstShot = 0;
+        this.lastStaminaDrainTime = 0;
+        this.staminaRecoveryBlockedUntil = 0;
+    }
+
+    /**
+     * Processes player movements and desired velocity. 
+     */
     private updatePlayerPosition(delta: number): void {
-        if (!this.gameRunning || this.myPlayer.stats.health.value <= 0) return;
+        if (!this.gameRunning || this.myPlayer.stats.health.value <= 0 || this.isDashing) return;
+
         const now = Date.now();
+        const { inputX, inputY } = this.getMoveInput();
 
-        // If dashing, skip normal movement logic
-        if (this.isDashing) {
-            // Calculate new position using current dash velocity
-            let newX = this.myPlayer.transform.pos.x + this.playerVelocityX * delta;
-            let newY = this.myPlayer.transform.pos.y + this.playerVelocityY * delta;
-
-            let moved = false;
-
-            // Check boundaries
-            if (newX >= CANVAS.BORDER_MARGIN && newX <= CANVAS.WIDTH - CANVAS.BORDER_MARGIN) {
-                this.myPlayer.transform.pos.x = newX;
-                moved = true;
-            } else {
-                // Stop dash if hitting wall
-                this.isDashing = false;
-                this.playerVelocityX = 0;
-            }
-
-            if (newY >= CANVAS.BORDER_MARGIN && newY <= CANVAS.HEIGHT - CANVAS.BORDER_MARGIN) {
-                this.myPlayer.transform.pos.y = newY;
-                moved = true;
-            } else {
-                // Stop dash if hitting wall
-                this.isDashing = false;
-                this.playerVelocityY = 0;
-            }
-
-            // Send position update if moved
-            const distanceFromLastSent = Math.sqrt(
-                (this.myPlayer.transform.pos.x - this.lastSentX) ** 2 +
-                (this.myPlayer.transform.pos.y - this.lastSentY) ** 2
-            );
-
-            if (moved && distanceFromLastSent > 2 && now - this.lastSentMoveTime >= NETWORK.MOVE_INTERVAL) {
-                this.roomManager.sendMessage(JSON.stringify({
-                    type: 'player-move',
-                    transform: {
-                        pos: {
-                            x: this.myPlayer.transform.pos.x,
-                            y: this.myPlayer.transform.pos.y
-                        }
-                    }
-                }));
-
-                this.lastSentX = this.myPlayer.transform.pos.x;
-                this.lastSentY = this.myPlayer.transform.pos.y;
-                this.lastSentMoveTime = now;
-            }
-
-            return; // Exit early, skip normal movement
-        }
-
-        // Normal movement logic
-        const { inputX, inputY } = this.getInput();
-
-        // Only allow sprinting if we have stamina
+        // [ Sprinting ]
         const canSprint = this.isSprinting && this.myPlayer.stats.stamina.value > 0 && this.isMoving();
         const currentSpeed = canSprint ? this.myPlayer.stats.speed * this.myPlayer.actions.sprint.multiplier : this.myPlayer.stats.speed;
-
-        // Stop sprinting if out of stamina
-        if (this.isSprinting && this.myPlayer.stats.stamina.value <= 0) {
+        if (this.isSprinting && this.myPlayer.stats.stamina.value <= 0) { // Stop sprinting if out of stamina
             this.isSprinting = false;
             console.log('Out of stamina, stopped sprinting');
         }
+        //
 
         const targetVelocityX = inputX * currentSpeed;
         const targetVelocityY = inputY * currentSpeed;
@@ -2416,21 +2487,10 @@ class GameClient {
         let newX = this.myPlayer.transform.pos.x + this.playerVelocityX * delta;
         let newY = this.myPlayer.transform.pos.y + this.playerVelocityY * delta;
 
-        let moved = false;
+        this.myPlayer.transform.pos.x = newX;
+        this.myPlayer.transform.pos.y = newY;
 
-        if (newX >= CANVAS.BORDER_MARGIN && newX <= CANVAS.WIDTH - CANVAS.BORDER_MARGIN) {
-            this.myPlayer.transform.pos.x = newX;
-            moved = true;
-        } else {
-            this.playerVelocityX = 0;
-        }
-
-        if (newY >= CANVAS.BORDER_MARGIN && newY <= CANVAS.HEIGHT - CANVAS.BORDER_MARGIN) {
-            this.myPlayer.transform.pos.y = newY;
-            moved = true;
-        } else {
-            this.playerVelocityY = 0;
-        }
+        let moved = (this.playerVelocityX !== 0 || this.playerVelocityY !== 0);
 
         const distanceFromLastSent = Math.sqrt(
             (this.myPlayer.transform.pos.x - this.lastSentX) ** 2 +
@@ -2457,16 +2517,9 @@ class GameClient {
         if (Math.abs(this.playerVelocityY) < 0.01) this.playerVelocityY = 0;
     }
 
-    private rotateCharacterPart(playerId: string, rotation: number): void {
-        if (playerId === this.userId) {
-            this.myPlayer.transform.rot = rotation;
-        } else {
-            const player = this.players.get(playerId);
-            if (!player) return;
-            player.transform.rot = rotation;
-        }
-    }
-
+    /**
+     * Record the player's own death when they are the targetId of a player-hit message and their health reaches 0.
+     */
     private recordDeath(): void {
         console.log('I died! Waiting for round to end...');
 
@@ -2475,70 +2528,41 @@ class GameClient {
         const ammoBox = this.spawnAmmoBox(10);
         this.ammoBoxes.set(ammoBox.id, ammoBox);
 
-        const gore = this.spawnGore(this.myPlayer.transform.pos.x, this.myPlayer.transform.pos.y);
-        gore.forEach((goreDecal: any, index: number) => {
-            const decalId = `death_gore_${this.userId}_${Date.now()}_${index}`;
-            this.stampGore(goreDecal);
-            this.decals.set(decalId, {
-                x: goreDecal.x,
-                y: goreDecal.y,
-                params: null
-            });
-        });
+        this.generateGore(this.userId, this.myPlayer.transform.pos.x, this.myPlayer.transform.pos.y, this.myPlayer.stats.size);
 
         this.roomManager.sendMessage(JSON.stringify({
             type: 'player-death',
             playerId: this.userId,
-            ammoBox: ammoBox,
-            gore: gore
+            x: this.myPlayer.transform.pos.x,
+            y: this.myPlayer.transform.pos.y,
+            size: this.myPlayer.stats.size,
+            ammoBox: ammoBox
         }));
     }
 
-    private requestStamina(amount: number): boolean {
-        if (this.myPlayer.stats.stamina.value < amount) {
-            console.log(`Insufficient stamina! Need: ${amount}, Have: ${this.myPlayer.stats.stamina}`);
-            return false;
-        }
-
-        this.myPlayer.stats.stamina.value -= amount;
-
-        // Block stamina recovery for the delay period
-        this.isStaminaRecoveryBlocked = true;
-        this.staminaRecoveryBlockedUntil = Date.now() + this.myPlayer.stats.stamina.recovery.delay;
-
-        console.log(`Stamina drained: -${amount}, Remaining: ${this.myPlayer.stats.stamina}`);
-        return true;
-    }
-
-    private updateStamina(delta: number): void {
-        const currentTime = Date.now();
-
-        // Handle sprint stamina drain (every second while sprinting)
-        if (this.isSprinting && currentTime >= this.lastStaminaDrainTime + 100) {
-            if (!this.requestStamina(this.myPlayer.actions.sprint.drain)) {
-                // Out of stamina, stop sprinting
-                this.isSprinting = false;
-                console.log('Out of stamina, stopped sprinting');
-            }
-            this.lastStaminaDrainTime = currentTime;
-        }
-
-        // Handle stamina recovery
-        if (!this.isStaminaRecoveryBlocked || currentTime >= this.staminaRecoveryBlockedUntil) {
-            this.isStaminaRecoveryBlocked = false;
-
-            // Recover stamina if not at max and not sprinting
-            if (this.myPlayer.stats.stamina.value < this.myPlayer.stats.stamina.max && !this.isSprinting) {
-                const staminaRecoveryPerFrame = (this.myPlayer.stats.stamina.recovery.rate / 1000) * 16.67 * delta;
-                this.myPlayer.stats.stamina.value = Math.min(this.myPlayer.stats.stamina.max, this.myPlayer.stats.stamina.value + staminaRecoveryPerFrame);
-            }
-        }
-    }
-
+    /**
+     * Responsible for handling all collisions in the game. Routes to other collision functions.
+     */
     private checkCollisions(delta: number): void {
+        const minX = CANVAS.BORDER_MARGIN;
+        const maxX = CANVAS.WIDTH - CANVAS.BORDER_MARGIN;
+        const minY = CANVAS.BORDER_MARGIN;
+        const maxY = CANVAS.HEIGHT - CANVAS.BORDER_MARGIN;
+
+        this.myPlayer.transform.pos.x = Math.max(minX, Math.min(maxX, this.myPlayer.transform.pos.x));
+        this.myPlayer.transform.pos.y = Math.max(minY, Math.min(maxY, this.myPlayer.transform.pos.y));
+
+        this.checkObjectCollisions(delta);
+        this.checkPlayersCollisions(delta);
+    }
+
+    /**
+     * Checks for my player colliding with objects in the game. 
+     */
+    private checkObjectCollisions(delta: number): void {
         if (this.myPlayer.stats.health.value <= 0) return;
 
-        const collisionRadius = (this.myPlayer.stats.size / 4) + 5;
+        const collisionRadius = this.getPlayerCollider(this.myPlayer, 5);
 
         this.ammoBoxes.forEach((ammoBox, boxId) => {
             if (ammoBox.isOpen) return;
@@ -2548,21 +2572,12 @@ class GameClient {
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             if (distance <= collisionRadius) {
-                // Pick up ammo
-                this.myPlayer.actions.primary.magazine.currentReserve = Math.min(
+                this.myPlayer.actions.primary.magazine.currentReserve = Math.min( // Pick up ammo
                     this.myPlayer.actions.primary.magazine.maxReserve,
                     this.myPlayer.actions.primary.magazine.currentReserve + ammoBox.ammoAmount
                 );
 
-                const collisionWidth = 63;
-                const collisionHeight = 27;
-                const collisionX = (this.ammoReservesCanvas!.width - collisionWidth) / 2 - 3;
-                const collisionY = (this.ammoReservesCanvas!.height - collisionHeight) / 2 - 1;
-
-                const spawnX = collisionX + collisionWidth;
-                const spawnY = collisionY + collisionHeight / 2;
-
-                this.spawnBullet(spawnX, spawnY, ammoBox.ammoAmount)
+                this.spawnAmmoInReserveUI(ammoBox.ammoAmount)
 
                 console.log(`Picked up ammo box! +${ammoBox.ammoAmount} bullets. Inventory: ${this.myPlayer.actions.primary.magazine.currentReserve}/${this.myPlayer.actions.primary.magazine.maxReserve}`);
 
@@ -2588,18 +2603,58 @@ class GameClient {
                     }
                 }));
             }
+        })
+    }
+
+    /**
+     * Checks for collisions with other players, blocking movement.
+     */
+    private checkPlayersCollisions(delta: number): void {
+        if (this.myPlayer.stats.health.value <= 0) return;
+
+        this.players.forEach((player) => {
+            if (player.stats.health.value <= 0) return;
+
+            const dx = this.myPlayer.transform.pos.x - player.transform.pos.x;
+            const dy = this.myPlayer.transform.pos.y - player.transform.pos.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const minDist = this.getPlayerCollider(this.myPlayer) + this.getPlayerCollider(player);
+
+            if (dist < minDist && dist > 0.01) { // Push myself away from the other player
+                const overlap = minDist - dist;
+                const pushX = (dx / dist) * overlap;
+                const pushY = (dy / dist) * overlap;
+
+                this.myPlayer.transform.pos.x += pushX;
+                this.myPlayer.transform.pos.y += pushY;
+            }
         });
     }
 
-    private getInput(): { inputX: number; inputY: number; inputLength: number } {
-        const keybinds = GAME.KEYBINDS;
+    /**
+     * Returns the player collider, with padding if needed.
+     */
+    private getPlayerCollider(player: Player, padding?: number): number {
+        let col = player.stats.size / 4
+
+        if (padding && padding > 0) {
+            col = (player.stats.size / 4) + padding
+        }
+
+        return col;
+    }
+
+    /**
+     * Detects and returns the Vec2 movement input from the assigned keybinds.
+     */
+    private getMoveInput(): { inputX: number; inputY: number; inputLength: number } {
         let inputX = 0;
         let inputY = 0;
 
-        if (this.keys.has(keybinds.MOVE_UP)) inputY -= 1;
-        if (this.keys.has(keybinds.MOVE_DOWN)) inputY += 1;
-        if (this.keys.has(keybinds.MOVE_LEFT)) inputX -= 1;
-        if (this.keys.has(keybinds.MOVE_RIGHT)) inputX += 1;
+        if (this.keys.has(this.myGameOptions.controls.keybinds.moveUp)) inputY -= 1;
+        if (this.keys.has(this.myGameOptions.controls.keybinds.moveDown)) inputY += 1;
+        if (this.keys.has(this.myGameOptions.controls.keybinds.moveLeft)) inputX -= 1;
+        if (this.keys.has(this.myGameOptions.controls.keybinds.moveRight)) inputX += 1;
 
         const inputLength = Math.sqrt(inputX * inputX + inputY * inputY);
 
@@ -2611,121 +2666,84 @@ class GameClient {
         return { inputX, inputY, inputLength };
     }
 
+    /**
+     * Returns state based on if the player is currently moving or not.
+     */
     private isMoving(): boolean {
-        return this.getInput().inputLength > 0;
+        return this.getMoveInput().inputLength > 0;
+    }
+    //
+    // #endregion
+
+
+    private rotateCharacterPart(playerId: string, rotation: number): void {
+        if (playerId === this.userId) {
+            this.myPlayer.transform.rot = rotation;
+        } else {
+            const player = this.players.get(playerId);
+            if (!player) return;
+            player.transform.rot = rotation;
+        }
     }
 
-    private spawnGore(centerX: number, centerY: number): any[] {
-        const goreDecals = [];
-
-        // Sample unique gore assets
-        const goreCount = 2 + Math.floor(Math.random() * 4); // 2-5 pieces
-        const gorePool = [...CHARACTER_DECALS.GORE];
-        for (let i = 0; i < goreCount && gorePool.length > 0; i++) {
-            // Pick a random index and remove it from the pool
-            const idx = Math.floor(Math.random() * gorePool.length);
-            const goreAsset = gorePool.splice(idx, 1)[0];
-            const angle = Math.random() * Math.PI * 2;
-            const distance = Math.random() * this.myPlayer.stats.size;
-
-            goreDecals.push({
-                type: 'gore',
-                assetPath: goreAsset,
-                x: centerX + Math.cos(angle) * distance,
-                y: centerY + Math.sin(angle) * distance,
-                rotation: Math.random() * Math.PI * 2,
-                scale: 0.65 + Math.random() * 0.4
-            });
+    // #region [ Stamina ]
+    //
+    /**
+     * Requests stamina from my pool for actions that require it.
+     * 
+     * If there is enough, drain the needed stamina and return true.
+     */
+    private requestStamina(amount: number): boolean {
+        if (this.myPlayer.stats.stamina.value < amount) {
+            console.log(`Insufficient stamina! Need: ${amount}, Have: ${this.myPlayer.stats.stamina}`);
+            return false;
         }
 
-        // Sample unique blood assets
-        const bloodCount = 1 + Math.floor(Math.random() * 2); // 1-2 pieces
-        const bloodPool = [...CHARACTER_DECALS.BLOOD];
-        for (let i = 0; i < bloodCount && bloodPool.length > 0; i++) {
-            const idx = Math.floor(Math.random() * bloodPool.length);
-            const bloodAsset = bloodPool.splice(idx, 1)[0];
-            const angle = Math.random() * Math.PI * 2;
-            const distance = Math.random() * (this.myPlayer.stats.size * 0.7);
+        this.myPlayer.stats.stamina.value -= amount;
 
-            goreDecals.push({
-                type: 'blood',
-                assetPath: bloodAsset,
-                x: centerX + Math.cos(angle) * distance,
-                y: centerY + Math.sin(angle) * distance,
-                rotation: Math.random() * Math.PI * 2,
-                scale: 1.25 + Math.random() * 0.2
-            });
-        }
+        // Block stamina recovery for the delay period
+        this.isStaminaRecoveryBlocked = true;
+        this.staminaRecoveryBlockedUntil = Date.now() + this.myPlayer.stats.stamina.recovery.delay;
 
-        return goreDecals;
+        console.log(`Stamina drained: -${amount}, Remaining: ${this.myPlayer.stats.stamina}`);
+        return true;
     }
 
-    private stampGore(decalData: any): void { // TODO: Type protect
-        if (!this.decalCtx) return;
+    /**
+     * Process stamina requests and recovery.
+     */
+    private updateStamina(delta: number): void {
+        const currentTime = Date.now();
 
-        // Load and cache the image
-        let image = this.characterImages.get(decalData.assetPath);
+        // Handle sprint stamina drain (every second while sprinting)
+        if (this.isSprinting && currentTime >= this.lastStaminaDrainTime + 100) {
+            if (!this.requestStamina(this.myPlayer.actions.sprint.drain)) {
+                // Out of stamina, stop sprinting
+                this.isSprinting = false;
+                console.log('Out of stamina, stopped sprinting');
+            }
+            this.lastStaminaDrainTime = currentTime;
+        }
 
-        if (!image) {
-            image = new Image();
-            image.src = decalData.assetPath;
-            this.characterImages.set(decalData.assetPath, image);
+        // Handle stamina recovery
+        if (!this.isStaminaRecoveryBlocked || currentTime >= this.staminaRecoveryBlockedUntil) {
+            this.isStaminaRecoveryBlocked = false;
 
-            // If image isn't loaded yet, try again later
-            if (!image.complete) {
-                image.onload = () => {
-                    this.stampGore(decalData);
-                };
-                return;
+            // Recover stamina if not at max and not sprinting
+            if (this.myPlayer.stats.stamina.value < this.myPlayer.stats.stamina.max && !this.isSprinting) {
+                const staminaRecoveryPerFrame = (this.myPlayer.stats.stamina.recovery.rate / 1000) * 16.67 * delta;
+                this.myPlayer.stats.stamina.value = Math.min(this.myPlayer.stats.stamina.max, this.myPlayer.stats.stamina.value + staminaRecoveryPerFrame);
             }
         }
-
-        if (!image.complete || image.naturalWidth === 0) return;
-
-        this.decalCtx.save();
-
-        // Apply position and rotation
-        this.decalCtx.translate(decalData.x, decalData.y);
-        this.decalCtx.rotate(decalData.rotation);
-
-        // Apply scale and draw
-        const drawSize = 32 * decalData.scale; // Base size 32px
-        this.decalCtx.drawImage(
-            image,
-            -drawSize / 2,
-            -drawSize / 2,
-            drawSize,
-            drawSize
-        );
-
-        this.decalCtx.restore();
-    }
-
-    private resetPlayerState(): void {
-        this.canShoot = true;
-        this.isBurstActive = false;
-        this.isReloading = false;
-        this.isSprinting = false;
-        this.isDashing = false;
-        this.isStaminaRecoveryBlocked = false;
-
-        this.playerVelocityX = 0;
-        this.playerVelocityY = 0;
-
-        this.dashStartTime = 0;
-        this.lastDashTime = 0;
-        this.reloadStartTime = 0;
-        this.lastShotTime = 0;
-        this.nextBurstShotTime = 0;
-        this.currentBurstShot = 0;
-        this.lastStaminaDrainTime = 0;
-        this.staminaRecoveryBlockedUntil = 0;
     }
     //
     // #endregion
 
     // #region [ Dash ]
     //
+    /**
+     * Start a dash when the assigned keybind is pressed.
+     */
     private startDash(): void {
         if (this.isDashing || this.myPlayer.stats.health.value <= 0 || !this.isMoving()) return;
 
@@ -2736,7 +2754,7 @@ class GameClient {
         }
 
         // Input check
-        let { inputX, inputY, inputLength } = this.getInput();
+        let { inputX, inputY, inputLength } = this.getMoveInput();
 
         // Normalize input
         if (!this.isMoving()) {
@@ -2765,10 +2783,43 @@ class GameClient {
         console.log(`Dashing! Speed: ${dashSpeed}`);
     }
 
+    /**
+     * Process dash update loop when isDashing.
+     */
     private updateDash(delta: number): void {
         if (!this.isDashing) return;
 
         const currentTime = Date.now();
+
+        let newX = this.myPlayer.transform.pos.x + this.playerVelocityX * delta;
+        let newY = this.myPlayer.transform.pos.y + this.playerVelocityY * delta;
+
+        this.myPlayer.transform.pos.x = newX;
+        this.myPlayer.transform.pos.y = newY;
+
+        let moved = (this.playerVelocityX !== 0 || this.playerVelocityY !== 0);
+
+        // Send position update if moved
+        const distanceFromLastSent = Math.sqrt(
+            (this.myPlayer.transform.pos.x - this.lastSentX) ** 2 +
+            (this.myPlayer.transform.pos.y - this.lastSentY) ** 2
+        );
+
+        if (moved && distanceFromLastSent > 2 && currentTime - this.lastSentMoveTime >= NETWORK.MOVE_INTERVAL) {
+            this.roomManager.sendMessage(JSON.stringify({
+                type: 'player-move',
+                transform: {
+                    pos: {
+                        x: this.myPlayer.transform.pos.x,
+                        y: this.myPlayer.transform.pos.y
+                    }
+                }
+            }));
+
+            this.lastSentX = this.myPlayer.transform.pos.x;
+            this.lastSentY = this.myPlayer.transform.pos.y;
+            this.lastSentMoveTime = currentTime;
+        }
 
         // Check if dash time is over
         if (currentTime >= this.dashStartTime + this.myPlayer.actions.dash.time) {
@@ -2779,12 +2830,89 @@ class GameClient {
     //
     // #endregion
 
+    // #region [ Objects ]
+    //
+    /**
+     * Spawns a GameObject in the scene, returning it's properties for the construction.
+     */
+    private spawnObject(params: SpawnObjectParams): GameObject {
+        const baseObject: GameObject = {
+            id: generateUID(),
+            transform: params.transform,
+            timestamp: Date.now()
+        };
+
+        switch (params.type) { //TODO: Spawn the player, projectiles and any other GameObject types here
+            case 'AmmoBox':
+                return {
+                    id: baseObject.id,
+                    transform: baseObject.transform,
+                    timestamp: baseObject.timestamp,
+                    ammoAmount: params.data?.amount || 10,
+                    isOpen: false,
+                    lid: {
+                        pos: { x: 0, y: 0 },
+                        rot: 0,
+                        velocity: { x: 0, y: 0 },
+                        torque: 0
+                    }
+                } as AmmoBox;
+
+            default:
+                throw new Error(`Unknown object type: ${params.type}`);
+        }
+    }
+
+    private spawnAmmoBox(amount: number): AmmoBox {
+        return this.spawnObject({
+            type: 'AmmoBox',
+            transform: {
+                pos: {
+                    x: this.myPlayer.transform.pos.x,
+                    y: this.myPlayer.transform.pos.y
+                },
+                rot: this.myPlayer.transform.rot
+            },
+            data: { amount }
+        }) as AmmoBox;
+    }
+    //
+    // #endregion
+
     // #region [ Game ]
     //
+    /**
+     * Initializes default options when the game starts.
+     */
+    private initializeGameOptions(): GameOptions { // TODO: Add ability to save/load to cache
+        return this.myGameOptions = { // [ IMPORTANT ] Keep track of the default game options here
+            controls: {
+                keybinds: {
+                    dash: GAME.CONTROLS.KEYBINDS.DASH,
+                    melee: GAME.CONTROLS.KEYBINDS.MELEE,
+                    moveDown: GAME.CONTROLS.KEYBINDS.MOVE_DOWN,
+                    moveLeft: GAME.CONTROLS.KEYBINDS.MOVE_LEFT,
+                    moveRight: GAME.CONTROLS.KEYBINDS.MOVE_RIGHT,
+                    moveUp: GAME.CONTROLS.KEYBINDS.MOVE_UP,
+                    reload: GAME.CONTROLS.KEYBINDS.RELOAD,
+                    sprint: GAME.CONTROLS.KEYBINDS.SPRINT,
+                }
+            }
+        };
+    }
+
+    /**
+     * Update the display with the game canvas via updateDisplay.
+     */
     private showGameControls(roomId: string): void {
         this.updateDisplay("game", roomId);
     }
 
+    /**
+     * Called by the host to start game when the start button is pressed in the lobby.
+     * 
+     * Broadcasts to all lobbyPlayers to start game and sync player states.
+     */
     private startGame(): void {
         if (!this.isHost) return;
 
@@ -2798,6 +2926,9 @@ class GameClient {
         this.startGameLoop();
     }
 
+    /**
+     * Kicks of the game loop and initializes values to clean slate.
+     */
     private startGameLoop(): void {
         this.gameRunning = true;
         this.isRoundInProgress = true;
@@ -2812,12 +2943,12 @@ class GameClient {
         resetUpgrades();
 
         if (this.crosshair) {
-            this.toggleCrosshair(); // TODO: Create a function to toggle off all equipment
+            this.toggleEquipment('crosshair');
         }
 
         // Send my player data
         // TODO: You can maybe just call this.initializePlayer and use the returned player object, unsure yet.
-        // TODO: Keep full track of Player object here
+        // [ IMPORTANT ] Keep full track of Player object here
         this.roomManager.sendMessage(JSON.stringify({
             type: 'player-state',
             id: this.myPlayer.id,
@@ -2836,6 +2967,13 @@ class GameClient {
                     drain: this.myPlayer.actions.dash.drain,
                     multiplier: this.myPlayer.actions.dash.multiplier,
                     time: this.myPlayer.actions.dash.time
+                },
+                melee: {
+                    cooldown: this.myPlayer.actions.melee.cooldown,
+                    damage: this.myPlayer.actions.melee.damage,
+                    duration: this.myPlayer.actions.melee.duration,
+                    range: this.myPlayer.actions.melee.range,
+                    size: this.myPlayer.actions.melee.size
                 },
                 primary: {
                     buffer: this.myPlayer.actions.primary.buffer,
@@ -2877,6 +3015,12 @@ class GameClient {
                 acceleration: this.myPlayer.physics.acceleration,
                 friction: this.myPlayer.physics.friction
             },
+            rig: {
+                body: this.myPlayer.rig.body,
+                head: this.myPlayer.rig.head,
+                headwear: this.myPlayer.rig.headwear,
+                weapon: this.myPlayer.rig.weapon
+            },
             stats: {
                 health: {
                     max: this.myPlayer.stats.health.max,
@@ -2902,6 +3046,11 @@ class GameClient {
         setSlider('staminaBar', this.myPlayer.stats.stamina.value, this.myPlayer.stats.stamina.max);
     }
 
+    /**
+     * Core game processing function.
+     * 
+     * Handles animation frame requests, update loops for all systems, and drawing functions.
+     */
     private gameLoop(): void {
         if (!this.gameRunning || !this.ctx || !this.canvas || !this.decalCtx || !this.decalCanvas) return;
 
@@ -2930,12 +3079,7 @@ class GameClient {
 
         this.ctx.drawImage(this.decalCanvas, 0, 0)
 
-        // Draw border
-        this.ctx.strokeStyle = CANVAS.BORDER_COLOR;
-        this.ctx.lineWidth = CANVAS.BORDER_WIDTH;
-        this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
-
-        this.drawAmmoBoxes();
+        this.drawObjects();
 
         // Draw projectiles
         this.projectiles.forEach(projectile => {
@@ -2954,6 +3098,38 @@ class GameClient {
         requestAnimationFrame(() => this.gameLoop());
     }
 
+    /**
+     * Call this function to toggle the pause state.
+     * 
+     * Uses consensus among players to pause the game rendering loop, or unpause it.
+     */
+    public togglePause(): void {
+        if (!this.gameRunning) return;
+
+        const isPaused = this.pausedPlayers.has(this.userId);
+
+        if (isPaused) { // I want to unpause
+            this.pausedPlayers.delete(this.userId);
+            this.roomManager.sendMessage(JSON.stringify({
+                type: 'player-unpause',
+                userId: this.userId
+            }));
+            console.log('Requesting unpause...');
+        } else { // I want to pause
+            this.pausedPlayers.add(this.userId);
+            this.roomManager.sendMessage(JSON.stringify({
+                type: 'player-pause',
+                userId: this.userId
+            }));
+            console.log('Requesting pause...');
+        }
+
+        this.updatePauseState(); // Check if game should be paused
+    }
+
+    /**
+     * Pauses the game when called. Triggered through togglePause when state is correct.
+     */
     public pauseGame(): void {
         if (!this.gameRunning) return;
 
@@ -2967,6 +3143,9 @@ class GameClient {
         this.currentBurstShot = 0;
     }
 
+    /**
+     * Resumes the game when called. Triggered through togglePause when state is correct.
+     */
     public resumeGame(): void {
         if (!this.gameRunning) return;
 
@@ -2974,35 +3153,8 @@ class GameClient {
         console.log('Game resumed');
     }
 
-    public togglePause(): void {
-        if (!this.gameRunning) return;
-
-        const isPaused = this.pausedPlayers.has(this.userId);
-
-        if (isPaused) {
-            // I want to unpause
-            this.pausedPlayers.delete(this.userId);
-            this.roomManager.sendMessage(JSON.stringify({
-                type: 'player-unpause',
-                userId: this.userId
-            }));
-            console.log('Requesting unpause...');
-        } else {
-            // I want to pause
-            this.pausedPlayers.add(this.userId);
-            this.roomManager.sendMessage(JSON.stringify({
-                type: 'player-pause',
-                userId: this.userId
-            }));
-            console.log('Requesting pause...');
-        }
-
-        // Check if game should be paused
-        this.updatePauseState();
-    }
-
     /**
-     * DO NOT CALL THIS FUNCTION - CALL togglePause();
+     * Updates the pause state. Triggered through flow stated in togglePause.
      */
     private updatePauseState(): void {
         const shouldPause = this.pausedPlayers.size > 0;
@@ -3016,6 +3168,9 @@ class GameClient {
         }
     }
 
+    /**
+     * Resets the game state to default.
+     */
     private resetGameState(resetType: ResetType): void {
         // Clear game flags
         this.gameRunning = false;
@@ -3050,8 +3205,9 @@ class GameClient {
 
         // Reset upgrades and equipment
         resetUpgrades();
+
         if (this.crosshair) {
-            this.toggleCrosshair(); // TODO: Create a function to toggle off all equipment
+            this.toggleEquipment('crosshair');
         }
     }
     //
@@ -3059,6 +3215,9 @@ class GameClient {
 
     // #region [ Upgrade ]
     //
+    /**
+     * Start the upgrade phase by showing the relative UI for winners/losers.
+     */
     private startUpgradePhase(winnerId: string | null): void {
         console.log('Starting upgrade phase...');
         this.togglePause();
@@ -3071,6 +3230,13 @@ class GameClient {
         }
     }
 
+    // [ Winner ]
+    //
+    /**
+     * Show the winner waiting screen.
+     * 
+     * This screen will persist until all losers in the game finish picking upgrades.
+     */
     private showWinnerWaitScreen(): void {
         if (!this.upgradeContainer) return;
 
@@ -3084,10 +3250,11 @@ class GameClient {
         this.upgradeContainer.style.display = 'flex';
     }
 
+    /**
+     * Update winner waiting screen to show the continue button, which will conclude the round-end upgrade process.
+     */
     private showWinnerContinueButton(): void {
         if (!this.upgradeContainer) return;
-
-        // Clear existing content
         this.upgradeContainer.innerHTML = '';
 
         const waitingDiv = document.createElement('div');
@@ -3112,12 +3279,18 @@ class GameClient {
         this.upgradeContainer.style.display = 'flex';
     }
 
+    // [ Losers ]
+    //
+    /**
+     * Displays the upgrade selection screen for losers during the upgrade phase.
+     */
     private showUpgradeSelection(): void {
         if (!this.upgradeContainer) return;
 
         this.upgradeContainer.innerHTML = '';
 
         // Get 3 random upgrades
+        // TODO: Test this, seems to not be working, might actual be upgrade rolls not having enough in pool right now.
         const availableUpgrades = getUpgrades(3);
 
         availableUpgrades.forEach(upgrade => {
@@ -3148,6 +3321,11 @@ class GameClient {
         this.upgradeContainer.style.display = 'flex';
     }
 
+    /**
+     * Triggers on click when a loser selects an upgrade from their displayed options.
+     * 
+     * Processes selection upgrade and sends a network message to inform others of the action.
+     */
     private selectUpgrade(upgradeId: string): void {
         const success = applyUpgrade(upgradeId);
         if (!success) {
@@ -3156,7 +3334,7 @@ class GameClient {
         }
 
         if (upgradeId === 'neural_target_interface') {
-            this.toggleCrosshair();
+            this.toggleEquipment('crosshair');
         }
 
         // Notify others about upgrade taken
@@ -3167,13 +3345,18 @@ class GameClient {
             isUnique: UPGRADES.find(u => u.id === upgradeId)?.unique || false
         }));
 
-        // Hide upgrade UI
-        if (this.upgradeContainer) {
+        this.finishUpgrade();
+    }
+
+    /**
+     * Closes upgrade loop for loser once they have selected an upgrade.
+     */
+    private finishUpgrade(): void {
+        if (this.upgradeContainer) { // Hide upgrade UI
             this.upgradeContainer.style.display = 'none';
         }
 
-        // Signal I'm done with upgrades
-        this.roomManager.sendMessage(JSON.stringify({
+        this.roomManager.sendMessage(JSON.stringify({ // Signal I'm done with upgrades
             type: 'upgrade-complete',
             userId: this.userId
         }));
@@ -3181,60 +3364,51 @@ class GameClient {
         console.log('Upgrade selected, waiting for others...');
     }
 
-    public toggleCrosshair(): void { // TODO: Expand this to be something like "toggleEquipment" - pass the equipment, then case switch
-        if (!this.crosshair) return;
+    /**
+     * Toggle all equipment based on player state.
+     */
+    public toggleEquipment(equipmentType: keyof Player['equipment']): void {
+        // Read the current state from myPlayer.equipment
+        const isEnabled = this.myPlayer.equipment[equipmentType];
 
-        if (this.myPlayer.equipment.crosshair) {
-            this.crosshair.style.display = 'block';
-            console.log('Crosshair enabled');
-        } else {
-            this.crosshair.style.display = 'none';
-            console.log('Crosshair disabled');
+        switch (equipmentType) {
+            case 'crosshair':
+                if (!this.crosshair) return;
+
+                if (isEnabled) {
+                    this.crosshair.style.display = 'block';
+                    console.log('Crosshair enabled');
+                } else {
+                    this.crosshair.style.display = 'none';
+                    console.log('Crosshair disabled');
+                }
+                break;
+
+            // case '':
+            //     // TODO: Add more equipment types here
+            //     break;
+
+            default:
+                console.warn(`Unknown equipment type: ${equipmentType}`);
         }
-    }
-
-    private spawnAmmoBox(amount: number): AmmoBox { // TODO: Expand this "spawnObject" - this should be able to spawn any game object type
-        const ammoBox: AmmoBox = {
-            id: generateUID(),
-            transform: {
-                pos: {
-                    x: this.myPlayer.transform.pos.x,
-                    y: this.myPlayer.transform.pos.y
-                },
-                rot: this.myPlayer.transform.rot
-            },
-            timestamp: Date.now(),
-            ammoAmount: amount,
-            isOpen: false,
-            lid: {
-                pos: { x: 0, y: 0 },
-                rot: 0,
-                velocity: { x: 0, y: 0 },
-                torque: 0
-            }
-        };
-        return ammoBox;
     }
     //
     // #endregion
 
     // #region [ Leaderboard ]
     //
+    /**
+     * Initialize the leaderboard, or update it if it already exists.
+     */
     private createLeaderboard(): void {
         console.log('Creating/updating leaderboard for all players');
 
-        // Get all current players (from game or lobby)
+        // Create a set of all players
         const allPlayers = new Set<string>();
-
-        // Add myself
         allPlayers.add(this.userId);
-
-        // Add players from game
         this.players.forEach((_, playerId) => {
             allPlayers.add(playerId);
         });
-
-        // Add players from lobby
         this.lobbyPlayers.forEach((_, playerId) => {
             allPlayers.add(playerId);
         });
@@ -3242,8 +3416,7 @@ class GameClient {
         // Create/update leaderboard entries for all players
         allPlayers.forEach(playerId => {
             if (!this.leaderboard.has(playerId)) {
-                // Create new entry with 0 stats
-                this.leaderboard.set(playerId, {
+                this.leaderboard.set(playerId, { // Create new entry with 0 stats
                     playerId: playerId,
                     wins: 0,
                     kills: 0,
@@ -3254,12 +3427,13 @@ class GameClient {
             // If entry already exists, leave it alone (preserves existing stats)
         });
 
-        // Update the visual display
         this.updateLeaderboardDisplay();
-
         console.log('Leaderboard created/updated:', Array.from(this.leaderboard.entries()));
     }
 
+    /**
+     * Update the table for the leaderboard to display the current game status.
+     */
     private updateLeaderboardDisplay(): void {
         if (!this.leaderboardBody) return;
 
@@ -3319,6 +3493,9 @@ class GameClient {
         });
     }
 
+    /**
+     * Reset the leaderboard to default state.
+     */
     private clearLeaderboard(): void {
         this.leaderboard.clear();
         if (this.leaderboardBody) {
@@ -3330,23 +3507,39 @@ class GameClient {
 
     // #region [ Rendering ]
     //
+    /**
+     * Clear all canvas rendering context in the game.
+     * 
+     * / OR /
+     * 
+     * Pass the specific CanvasRenderingContext2D to clear.
+     */
+    private clearCtx(customCtx?: CanvasRenderingContext2D): void {
+        if (customCtx) {
+            customCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+            return;
+        }
+
+        if (!this.decalCtx || !this.ctx) return;
+
+        this.ctx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+        this.decalCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+    }
+
+    // [ Character ]
+    //
+    /**
+     * Draws the corresponding character layers defined in the rig to create the player character.
+     */
     private drawCharacter(player: Player, isMe: boolean = false): void {
         if (!this.ctx) return;
         if (player.stats.health.value <= 0) return;
 
-        // For now, use default character config - later this will be per-player
-        const characterConfig = { ...CHARACTER };
-
-        // If this is me and I'm meleeing, swap weapon to knife
-        if (isMe && this.isMelee) {
-            characterConfig.weapon = 'KNIFE';
-        }
-
         // Render layers in order: BODY → WEAPON → HEAD → HEADWEAR
-        this.drawCharacterLayer(player, 'BODY', characterConfig.body);
-        this.drawCharacterLayer(player, 'WEAPON', characterConfig.weapon);
-        this.drawCharacterLayer(player, 'HEAD', characterConfig.head);
-        this.drawCharacterLayer(player, 'HEADWEAR', characterConfig.headwear);
+        this.drawCharacterLayer(player, 'BODY', player.rig.body);
+        this.drawCharacterLayer(player, 'WEAPON', player.rig.weapon);
+        this.drawCharacterLayer(player, 'HEAD', player.rig.head);
+        this.drawCharacterLayer(player, 'HEADWEAR', player.rig.headwear);
 
         // Draw player name/info (existing code)
         this.ctx.fillStyle = UI.TEXT_COLOR;
@@ -3361,6 +3554,9 @@ class GameClient {
         );
     }
 
+    /**
+     * Retrieves character assets and draws each layer using drawCharacterPart.
+     */
     private drawCharacterLayer(player: Player, layer: CharacterLayer, variant: string): void {
         if (!this.ctx) return;
 
@@ -3376,6 +3572,9 @@ class GameClient {
         }
     }
 
+    /**
+     * Handles the actual rendering for all player parts on each layer.
+     */
     private drawCharacterPart(player: Player, assetPath: string, partType: CharacterLayer, partIndex?: number): void {
         if (!this.ctx) return;
 
@@ -3425,62 +3624,17 @@ class GameClient {
 
         this.ctx.restore();
     }
+    //
 
-    private drawProjectile(projectile: Projectile): void {
+    /**
+     * Draws object entities on the canvas.
+     */
+    private drawObjects(): void {
         if (!this.ctx) return;
 
-        // Calculate projectile direction
-        const speed = Math.sqrt(projectile.velocity.x * projectile.velocity.x + projectile.velocity.y * projectile.velocity.y);
-        const dirX = projectile.velocity.x / speed;
-        const dirY = projectile.velocity.y / speed;
+        //TODO: Use this function to draw all 'objects' in the scene.
 
-        // Calculate front and back points
-        const frontX = projectile.transform.pos.x + dirX * (projectile.length / 2);
-        const frontY = projectile.transform.pos.y + dirY * (projectile.length / 2);
-        const backX = projectile.transform.pos.x - dirX * (projectile.length / 2);
-        const backY = projectile.transform.pos.y - dirY * (projectile.length / 2);
-
-        // Draw the capsule body (rectangle)
-        this.ctx.fillStyle = projectile.color;
-        this.ctx.strokeStyle = projectile.color;
-        this.ctx.lineWidth = projectile.size;
-        this.ctx.lineCap = 'round';
-
-        this.ctx.beginPath();
-        this.ctx.moveTo(backX, backY);
-        this.ctx.lineTo(frontX, frontY);
-        this.ctx.stroke();
-    }
-
-    private drawParticles(): void {
-        if (!this.ctx) return;
-
-        this.particles.forEach(particle => {
-            const rgb = hexToRgb(particle.color);
-            if (!rgb) return;
-
-            if (!this.ctx) return;
-            this.ctx.save();
-            this.ctx.globalAlpha = particle.opacity;
-
-            // Apply rotation if torque exists
-            if (particle.torque !== 0) {
-                this.ctx.translate(particle.x + particle.size / 2, particle.y + particle.size / 2);
-                this.ctx.rotate(particle.rotation);
-                this.ctx.fillStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-                this.ctx.fillRect(-particle.size / 2, -particle.size / 2, particle.size, particle.size);
-            } else {
-                this.ctx.fillStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-                this.ctx.fillRect(Math.floor(particle.x), Math.floor(particle.y), particle.size, particle.size);
-            }
-
-            this.ctx.restore();
-        });
-    }
-
-    private drawAmmoBoxes(): void {
-        if (!this.ctx) return;
-
+        // Ammo Boxes
         this.ammoBoxes.forEach(ammoBox => {
             if (!this.ctx) return;
 
@@ -3539,7 +3693,70 @@ class GameClient {
         });
     }
 
-    private initializeAmmoReserveCanvas(): void {
+    /**
+     * Draws the rect of the projectile and renders it on the main canvas.
+     */
+    private drawProjectile(projectile: Projectile): void {
+        if (!this.ctx) return;
+
+        // Calculate projectile direction
+        const speed = Math.sqrt(projectile.velocity.x * projectile.velocity.x + projectile.velocity.y * projectile.velocity.y);
+        const dirX = projectile.velocity.x / speed;
+        const dirY = projectile.velocity.y / speed;
+
+        // Calculate front and back points
+        const frontX = projectile.transform.pos.x + dirX * (projectile.length / 2);
+        const frontY = projectile.transform.pos.y + dirY * (projectile.length / 2);
+        const backX = projectile.transform.pos.x - dirX * (projectile.length / 2);
+        const backY = projectile.transform.pos.y - dirY * (projectile.length / 2);
+
+        // Draw the capsule body (rectangle)
+        this.ctx.fillStyle = projectile.color;
+        this.ctx.strokeStyle = projectile.color;
+        this.ctx.lineWidth = projectile.size;
+        this.ctx.lineCap = 'round';
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(backX, backY);
+        this.ctx.lineTo(frontX, frontY);
+        this.ctx.stroke();
+    }
+
+    /**
+     * Responsible for the actual rendering of particles spawned via emitters and particle functions.
+     */
+    private drawParticles(): void {
+        if (!this.ctx) return;
+
+        this.particles.forEach(particle => {
+            const rgb = hexToRgb(particle.color);
+            if (!rgb) return;
+
+            if (!this.ctx) return;
+            this.ctx.save();
+            this.ctx.globalAlpha = particle.opacity;
+
+            // Apply rotation if torque exists
+            if (particle.torque !== 0) {
+                this.ctx.translate(particle.x + particle.size / 2, particle.y + particle.size / 2);
+                this.ctx.rotate(particle.rotation);
+                this.ctx.fillStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+                this.ctx.fillRect(-particle.size / 2, -particle.size / 2, particle.size, particle.size);
+            } else {
+                this.ctx.fillStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+                this.ctx.fillRect(Math.floor(particle.x), Math.floor(particle.y), particle.size, particle.size);
+            }
+
+            this.ctx.restore();
+        });
+    }
+
+    // [ Ammo Reserve Canvas ]
+    //
+    /**
+     * Initializes the ammo reserve canvas in the HUD.
+     */
+    private initializeAmmoReserveCanvas(): void { // TODO: Unify where UI element references are stored
         this.ammoReserveIcon = new Image();
         this.ammoReserveIcon.src = '/assets/img/icon/inventory/ammobox.png';
         this.ammoReserveIcon.onload = () => {
@@ -3553,10 +3770,19 @@ class GameClient {
         requestAnimationFrame(() => this.updateAmmoReservePhysics());
     }
 
-    private spawnBullet(x: number, y: number, amount: number = 1): void {
+    /**
+     * When picking up ammo, this function spawns the casings in the player's ammo reserve UI.
+     */
+    private spawnAmmoInReserveUI(amount: number = 1): void {
         if (!this.ammoReservesCtx || !this.projectileIcon) return;
 
+        // Time between spawn for visual effect
         const spawnDelay = 100; // ms
+
+        const { collisionHeight, collisionWidth, collisionX, collisionY } = this.getAmmoReserveCollisionZone();
+
+        const x = collisionX + collisionWidth;
+        const y = collisionY + collisionHeight / 2;
 
         for (let i = 0; i < amount; i++) {
             setTimeout(() => {
@@ -3581,7 +3807,10 @@ class GameClient {
         }
     }
 
-    private removeBullet(amount: number = 1): void {
+    /**
+     * Removes ammo from the reserves UI when ammo is taken from the player's reserves.
+     */
+    private removeAmmoFromReserveUI(amount: number = 1): void {
         const removeDelay = 100; // ms, match spawnBullet
         for (let i = 0; i < amount; i++) {
             setTimeout(() => {
@@ -3592,6 +3821,9 @@ class GameClient {
         }
     }
 
+    /**
+     * Processes ammo reserve physics for the projectiles in the ammo reserve UI.
+     */
     private updateAmmoReservePhysics(): void {
         if (!this.ammoReservesCtx || !this.ammoReserveIcon) return;
 
@@ -3601,11 +3833,7 @@ class GameClient {
         const friction = 0.9;
         const bounce = 0.5;
 
-        // Collision zone
-        const collisionWidth = 63;
-        const collisionHeight = 27;
-        const collisionX = (this.ammoReservesCanvas!.width - collisionWidth) / 2 - 3;
-        const collisionY = (this.ammoReservesCanvas!.height - collisionHeight) / 2 - 1;
+        const { collisionHeight, collisionWidth, collisionX, collisionY } = this.getAmmoReserveCollisionZone();
 
         // Clear
         this.ammoReservesCtx.clearRect(0, 0, this.ammoReservesCanvas!.width, this.ammoReservesCanvas!.height);
@@ -3699,6 +3927,9 @@ class GameClient {
         requestAnimationFrame(() => this.updateAmmoReservePhysics());
     }
 
+    /**
+     * Renders the ammo reserves canvas.
+     */
     private renderAmmoReserves(): void {
         if (!this.ammoReservesCtx || !this.ammoReserveIcon || !this.ammoReserveIcon.complete) return;
 
@@ -3713,41 +3944,51 @@ class GameClient {
             this.ammoReservesCanvas!.height
         );
 
+        // Spawn bullet at materializer position
+        this.spawnAmmoInReserveUI(this.myPlayer.actions.primary.magazine.currentReserve);
+    }
+
+    /**
+     * Returns the ammo reserves collision zone to help with physics calculations for rendered projectiles.
+     */
+    private getAmmoReserveCollisionZone(): { collisionHeight: number; collisionWidth: number; collisionX: number; collisionY: number } {
         const collisionWidth = 63;
         const collisionHeight = 27;
         const collisionX = (this.ammoReservesCanvas!.width - collisionWidth) / 2 - 3;
         const collisionY = (this.ammoReservesCanvas!.height - collisionHeight) / 2 - 1;
 
-        const spawnX = collisionX + collisionWidth;
-        const spawnY = collisionY + collisionHeight / 2;
+        const params = { collisionHeight, collisionWidth, collisionX, collisionY };
 
-        // Spawn bullet at materializer position
-        this.spawnBullet(spawnX, spawnY, this.myPlayer.actions.primary.magazine.currentReserve);
-    }
-    /**
-     * Clear all canvas rendering context in the game.
-     * 
-     * / OR /
-     * 
-     * Pass the specific CanvasRenderingContext2D to clear.
-     */
-    private clearCtx(customCtx?: CanvasRenderingContext2D): void {
-        if (customCtx) {
-            customCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
-            return;
-        }
-
-        if (!this.decalCtx || !this.ctx) return;
-
-        this.ctx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
-        this.decalCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+        return params;
     }
     //
     // #endregion
 
     // #region [ Animation ]
-    //
-    private animateCharacterPart(playerId: string, part: string, frames: { [key: number]: { x: number, y: number } }, duration: number, partIndex?: number): void {
+    /**
+     * Animates a specific character part locally with generateCharacterAnimation and broadcasts for other clients to sync animations.
+     */
+    private animateCharacterPart(params: AnimationParams): void {
+        this.generateCharacterAnimation(params);
+
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'character-animation',
+            params: params
+        }));
+    }
+
+    /**
+     * Responds to a network request to process a character animation.
+     */
+    private animateCharacterPartNetwork(params: AnimationParams): void {
+        this.generateCharacterAnimation(params);
+    }
+
+    /**
+     * Assembles the character animation and adds it to the characterAnimations mapping for playback during update processing.
+     */
+    private generateCharacterAnimation(params: AnimationParams): void {
+        const { playerId, part, frames, duration, partIndex } = params;
         const animationId = `${playerId}_${part}_${partIndex || 0}`;
 
         this.characterAnimations.set(animationId, {
@@ -3759,18 +4000,11 @@ class GameClient {
             startTime: Date.now(),
             originalOffset: { x: 0, y: 0 }
         });
-
-        this.roomManager.sendMessage(JSON.stringify({
-            type: 'character-animation',
-            playerId: playerId,
-            part: part,
-            partIndex: partIndex,
-            frames: frames,
-            duration: duration
-        }));
     }
 
-    // Add to gameLoop update section (around line 1925, after updateParticles)
+    /**
+     * Process visual character animations by updating part positions.
+     */
     private updateCharacterAnimations(delta: number): void {
         const animationsToRemove: string[] = [];
         const currentTime = Date.now();
@@ -3800,13 +4034,11 @@ class GameClient {
             }
 
             let lerpedX, lerpedY;
-            if (progress >= 1) {
-                // Hold at last keyframe for infinite animation
+            if (progress >= 1) { // Hold at last keyframe for infinite animation
                 const lastFrame = animation.frames[frameKeys[frameKeys.length - 1]];
                 lerpedX = lastFrame.x;
                 lerpedY = lastFrame.y;
-            } else {
-                // Normal lerp
+            } else { // Normal animation with no lerp
                 const currentFrame = animation.frames[frameKeys[currentFrameIndex]];
                 const nextFrame = animation.frames[frameKeys[currentFrameIndex + 1]] || currentFrame;
                 const frameProgress = (progress - frameKeys[currentFrameIndex]) / (frameKeys[currentFrameIndex + 1] - frameKeys[currentFrameIndex]) || 0;
@@ -3825,12 +4057,14 @@ class GameClient {
             }
         });
     }
-
     //
     // #endregion
 
     // #region [ Decals ]
     //
+    /**
+     * Create a decal and broadcast over the network.
+     */
     private createDecal(x: number, y: number, decalId: string, params: typeof DECALS[keyof typeof DECALS] = DECALS.PROJECTILE): void {
         this.generateDecal(x, y, decalId, params);
 
@@ -3843,12 +4077,18 @@ class GameClient {
         }));
     }
 
+    /**
+     * Create a decal locally when receiving a decal network message.
+     */
     private createDecalNetwork(x: number, y: number, decalId: string, params: typeof DECALS[keyof typeof DECALS]): void {
         if (this.decals.has(decalId)) return; // Don't create duplicate decals
 
         this.generateDecal(x, y, decalId, params);
     }
 
+    /**
+     * Locally generate the decal and stamp it to the decal canvas.
+     */
     private generateDecal(x: number, y: number, decalId: string, params: typeof DECALS[keyof typeof DECALS]): void {
         if (!this.decalCtx) return;
 
@@ -3904,7 +4144,7 @@ class GameClient {
     // [ Basic Particles ]
     //
     /**
-     * Creates particles with params. Entrypoint for all particle creations. [ CALL THIS FUNCTION ]
+     * Creates particles with params. Entrypoint for all particle creations.
      */
     private createParticles(x: number, y: number, particleId: string, params: typeof PARTICLES[keyof typeof PARTICLES], direction?: { x: number, y: number }): void {
         this.generateParticles(x, y, particleId, params, direction);
@@ -3919,6 +4159,9 @@ class GameClient {
         }));
     }
 
+    /**
+     * Responsible for actual generation of particles locally.
+     */
     private generateParticles(x: number, y: number, particleId: string, params: typeof PARTICLES[keyof typeof PARTICLES], direction?: { x: number, y: number }): void {
         const count = Math.floor(params.COUNT.MIN + Math.random() * (params.COUNT.MAX - params.COUNT.MIN));
 
@@ -4075,7 +4318,6 @@ class GameClient {
     //
 
     // [ Particle Emitters ]
-    // TODO: Obfuscate the emitters for more general use than just blood gushing. Add emitter types in config.
     //
     /**
      * Creates a particle emitter in the game, and syncs this action via websocket message "particle-emitter".
@@ -4101,6 +4343,9 @@ class GameClient {
         console.log(`Emitter created on ${playerId} for ${emitterLifetime}ms`);
     }
 
+    /**
+     * Actual generation of the emitter object into the emitter mapping.
+     */
     private generateEmitter(emitterId: string, playerId: string, hitX: number, hitY: number, centerX: number, centerY: number, lifetime: number): void {
         // Calculate offset from center
         const offsetX = hitX - centerX;
@@ -4153,7 +4398,7 @@ class GameClient {
                 this.generateParticles( // Create particles locally
                     worldX + (Math.random() - 0.5) * 8,
                     worldY + (Math.random() - 0.5) * 8,
-                    `blood_splatter_${emitterId}_${emitter.age}`,
+                    `emitter_particles_${emitterId}_${emitter.age}`,
                     PARTICLES.BLOOD_DRIP,
                     {
                         x: Math.cos(angle) * finalSpeed,
@@ -4166,27 +4411,170 @@ class GameClient {
             }
 
             // Remove expired emitters
-            if (emitter.age >= emitter.lifetime) { //TODO: Make decals local
-                this.createDecal(worldX, worldY, `emitter_decal_${emitterId}`, DECALS.BLOOD); // Create permanent decal on ground
+            if (emitter.age >= emitter.lifetime) {
+                this.generateDecal(worldX, worldY, `emitter_decal_${emitterId}`, DECALS.BLOOD);
                 emittersToRemove.push(emitterId);
             }
         });
 
         emittersToRemove.forEach(id => this.emitters.delete(id));
     }
+    // [ Gore ]
+    //
+    /**
+     * Generates gore particles using the decals for the character object.
+     */
+    private generateGore(playerId: string, centerX: number, centerY: number, playerSize: number): void {
+        // Sample unique gore assets
+        const goreCount = 2 + Math.floor(Math.random() * 4); // 2-5 pieces
+        const gorePool = [...CHARACTER_DECALS.GORE];
+        for (let i = 0; i < goreCount && gorePool.length > 0; i++) {
+            const idx = Math.floor(Math.random() * gorePool.length);
+            const goreAsset = gorePool.splice(idx, 1)[0];
+            const angle = Math.random() * Math.PI * 2;
+            const distance = Math.random() * playerSize;
+
+            const goreDecal = {
+                type: 'gore',
+                assetPath: goreAsset,
+                x: centerX + Math.cos(angle) * distance,
+                y: centerY + Math.sin(angle) * distance,
+                rotation: Math.random() * Math.PI * 2,
+                scale: 0.65 + Math.random() * 0.4
+            };
+
+            const decalId = `death_gore_${playerId}_${Date.now()}_${i}`;
+            this.stampGore(goreDecal);
+            this.decals.set(decalId, {
+                x: goreDecal.x,
+                y: goreDecal.y,
+                params: null
+            });
+        }
+
+        // Sample unique blood assets
+        const bloodCount = 1 + Math.floor(Math.random() * 2); // 1-2 pieces
+        const bloodPool = [...CHARACTER_DECALS.BLOOD];
+        for (let i = 0; i < bloodCount && bloodPool.length > 0; i++) {
+            const idx = Math.floor(Math.random() * bloodPool.length);
+            const bloodAsset = bloodPool.splice(idx, 1)[0];
+            const angle = Math.random() * Math.PI * 2;
+            const distance = Math.random() * (playerSize * 0.7);
+
+            const bloodDecal = {
+                type: 'blood',
+                assetPath: bloodAsset,
+                x: centerX + Math.cos(angle) * distance,
+                y: centerY + Math.sin(angle) * distance,
+                rotation: Math.random() * Math.PI * 2,
+                scale: 1.25 + Math.random() * 0.2
+            };
+
+            const decalId = `death_blood_${playerId}_${Date.now()}_${i}`;
+            this.stampGore(bloodDecal);
+            this.decals.set(decalId, {
+                x: bloodDecal.x,
+                y: bloodDecal.y,
+                params: null
+            });
+        }
+    }
+
+    /**
+     * Persists gore on the decal canvas.
+     */
+    private stampGore(decalData: any): void { // TODO: Type protect
+        if (!this.decalCtx) return;
+
+        let image = this.characterImages.get(decalData.assetPath);
+
+        if (!image) {
+            image = new Image();
+            image.src = decalData.assetPath;
+            this.characterImages.set(decalData.assetPath, image);
+
+            if (!image.complete) {
+                image.onload = () => {
+                    this.stampGore(decalData);
+                };
+                return;
+            }
+        }
+
+        if (!image.complete || image.naturalWidth === 0) return;
+
+        this.decalCtx.save();
+        this.decalCtx.translate(decalData.x, decalData.y);
+        this.decalCtx.rotate(decalData.rotation);
+
+        const drawSize = 32 * decalData.scale;
+        this.decalCtx.drawImage(
+            image,
+            -drawSize / 2,
+            -drawSize / 2,
+            drawSize,
+            drawSize
+        );
+
+        this.decalCtx.restore();
+    }
     //
     // #endregion
 
     // #region [ UI ]
     //
+    /**
+     * Updates the display based on the current state.
+     */
+    private updateDisplay(target: "lobby" | "room" | "game", roomId?: string): void {
+        if (!this.roomControls || !this.lobbyContainer || !this.gameContainer ||
+            !this.chatContainer || !this.leaderboardContainer) return;
 
 
+        this.clearDisplay();
 
+        switch (target) {
+            case "lobby":
+                this.lobbyContainer.style.display = "flex";
+                this.chatContainer.style.display = "flex";
+                if (roomId && this.roomIdDisplay) {
+                    this.roomIdDisplay.textContent = roomId;
+                }
+                this.inLobby = true;
+                break;
 
+            case "room":
+                this.roomControls.style.display = "flex";
+                break;
 
+            case "game":
+                this.gameContainer.style.display = "flex";
+                this.chatContainer.style.display = "flex";
+                this.leaderboardContainer.style.display = "flex";
+                if (roomId) {
+                    const gameRoomId = this.gameRoomIdDisplay;
+                    if (gameRoomId) gameRoomId.textContent = roomId;
+                }
+                this.inLobby = false;
+                break;
+        }
+    }
 
+    /**
+     * Shows host controls when called.
+     */
+    private updateHostDisplay(): void {
+        if (!this.startGameBtn || !this.gameOptionsContainer) return;
 
+        this.startGameBtn.style.display = this.isHost ? 'block' : 'none';
+        this.startGameBtn.disabled = this.lobbyPlayers.size < 1;
 
+        this.gameOptionsContainer.style.display = this.isHost ? 'flex' : 'none';
+    }
+
+    /**
+     * Shows the join room modal for pasting room codes.
+     */
     private showJoinRoomModal(): void {
         if (!this.modal || !this.modalInput || !this.modalConfirmButton ||
             !this.modalCancelButton || !this.modalErrorDiv) return;
@@ -4244,9 +4632,10 @@ class GameClient {
         };
     }
 
-
-
-    private updateLobbyPlayersList(): void {
+    /**
+     * Displays connected players in the lobby interface.
+     */
+    private displayLobbyPlayers(): void {
         if (!this.lobbyPlayersList) return;
 
         this.lobbyPlayersList.innerHTML = '';
@@ -4298,58 +4687,6 @@ class GameClient {
         });
     }
 
-
-
-
-    /**
-     * Updates the display based on the current state.
-     */
-    private updateDisplay(target: "lobby" | "room" | "game", roomId?: string): void {
-        if (!this.roomControls || !this.lobbyContainer || !this.gameContainer ||
-            !this.chatContainer || !this.leaderboardContainer) return;
-
-
-        this.clearDisplay();
-
-        switch (target) {
-            case "lobby":
-                this.lobbyContainer.style.display = "flex";
-                this.chatContainer.style.display = "flex";
-                if (roomId && this.roomIdDisplay) {
-                    this.roomIdDisplay.textContent = roomId;
-                }
-                this.inLobby = true;
-                break;
-
-            case "room":
-                this.roomControls.style.display = "flex";
-                break;
-
-            case "game":
-                this.gameContainer.style.display = "flex";
-                this.chatContainer.style.display = "flex";
-                this.leaderboardContainer.style.display = "flex";
-                if (roomId) {
-                    const gameRoomId = this.gameRoomIdDisplay;
-                    if (gameRoomId) gameRoomId.textContent = roomId;
-                }
-                this.inLobby = false;
-                break;
-        }
-    }
-
-    /**
-     * Shows host controls when called.
-     */
-    private updateHostDisplay(): void {
-        if (!this.startGameBtn || !this.gameOptionsContainer) return;
-
-        this.startGameBtn.style.display = this.isHost ? 'block' : 'none';
-        this.startGameBtn.disabled = this.lobbyPlayers.size < 1;
-
-        this.gameOptionsContainer.style.display = this.isHost ? 'flex' : 'none';
-    }
-
     /**
      * Refreshes the display to a blank slate.
      */
@@ -4369,6 +4706,9 @@ class GameClient {
 
     // #region [ Utility ]
     //
+    /**
+     * Calculates and returns delta time.
+     */
     private deltaTime(): number {
         const now = performance.now();
         const delta = now - this.lastFrameTime;
