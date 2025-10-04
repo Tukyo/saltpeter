@@ -1087,21 +1087,17 @@ class GameClient {
                 //
                 case 'add-decal':
                     if (message.userId !== this.userId) {
-                        this.applyDecal(gameData.x, gameData.y, gameData.decalId, gameData.params);
+                        this.createDecalNetwork(gameData.x, gameData.y, gameData.decalId, gameData.params);
                     }
                     break;
                 case 'add-particles':
                     if (message.userId !== this.userId) {
-                        this.applyParticles(
+                        this.generateParticles(
                             gameData.x,
                             gameData.y,
                             gameData.particleId,
-                            gameData.particleData,
-                            gameData.color,
-                            gameData.collide,
-                            gameData.fade,
-                            gameData.paint,
-                            gameData.stain
+                            gameData.params,
+                            gameData.direction
                         );
                     }
                     break;
@@ -1370,7 +1366,16 @@ class GameClient {
         const element = this[elementProp];
         if (!element) return;
 
-        element.addEventListener('click', () => {
+        // Store the handler so we can remove it later
+        const handlerKey = `${elementProp}Handler` as keyof this;
+
+        // Remove existing listener if it exists
+        if (this[handlerKey]) {
+            element.removeEventListener('click', this[handlerKey] as EventListener);
+        }
+
+        // Create and store the new handler
+        const handler = () => {
             if (!this.isHost) return;
 
             const newValue = !getter();
@@ -1383,7 +1388,13 @@ class GameClient {
             }));
 
             console.log(`${messageKey} changed to: ${newValue}`);
-        });
+        };
+
+        // Store handler for later removal
+        (this as any)[handlerKey] = handler;
+
+        // Add the listener
+        element.addEventListener('click', handler);
     }
 
     /**
@@ -1398,7 +1409,16 @@ class GameClient {
         const element = this[elementProp];
         if (!element) return;
 
-        element.addEventListener('change', () => {
+        // Store the handler so we can remove it later
+        const handlerKey = `${elementProp}Handler` as keyof this;
+
+        // Remove existing listener if it exists
+        if (this[handlerKey]) {
+            element.removeEventListener('change', this[handlerKey] as EventListener);
+        }
+
+        // Create and store the new handler
+        const handler = () => {
             if (!this.isHost) return;
 
             const newValue = parseInt(element.value);
@@ -1416,7 +1436,13 @@ class GameClient {
             }));
 
             console.log(`${messageKey} changed to: ${newValue}`);
-        });
+        };
+
+        // Store handler for later removal
+        (this as any)[handlerKey] = handler;
+
+        // Add the listener
+        element.addEventListener('change', handler);
     }
 
     /**
@@ -1781,6 +1807,10 @@ class GameClient {
 
     // #region [ Attack ]
     //
+
+
+
+
     private canMelee(): boolean {
         const now = Date.now();
         return (
@@ -1795,26 +1825,26 @@ class GameClient {
     private startMelee(): void {
         this.isMelee = true;
         this.lastMeleeTime = Date.now();
-    
+
         // Calculate melee direction (use current rotation)
         const angle = this.myPlayer.transform.rot;
         const range = PLAYER_DEFAULTS.ACTIONS.MELEE.RANGE;
         const size = PLAYER_DEFAULTS.ACTIONS.MELEE.SIZE;
-    
+
         // Use the same spawn offset as normal projectiles
         const spawnOffset = (this.myPlayer.stats.size / 4) +
             this.myPlayer.actions.primary.projectile.size +
             this.myPlayer.actions.primary.offset;
-    
+
         // Calculate spawn position at the tip of the weapon
         const spawnX = this.myPlayer.transform.pos.x + Math.cos(angle - Math.PI / 2) * spawnOffset;
         const spawnY = this.myPlayer.transform.pos.y + Math.sin(angle - Math.PI / 2) * spawnOffset;
-    
+
         const velocity = {
             x: Math.cos(angle - Math.PI / 2) * range,
             y: Math.sin(angle - Math.PI / 2) * range
         };
-    
+
         const meleeProjectile = {
             id: generateUID(),
             transform: {
@@ -1831,14 +1861,14 @@ class GameClient {
             size: size,
             velocity: velocity
         };
-    
+
         this.projectiles.set(meleeProjectile.id, meleeProjectile);
-    
+
         this.roomManager.sendMessage(JSON.stringify({
             type: 'projectile-launch',
             projectile: meleeProjectile
         }));
-    
+
         // Remove melee projectile after it has traveled its range (simulate a short-lived projectile)
         setTimeout(() => {
             this.projectiles.delete(meleeProjectile.id);
@@ -2069,7 +2099,7 @@ class GameClient {
                         y: -projectile.velocity.y / Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2)
                     };
                     this.createParticles(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
-                    this.createEmitter(this.userId, projectile.transform.pos.x, projectile.transform.pos.y);
+                    this.createEmitter(this.userId, projectile.transform.pos.x, projectile.transform.pos.y, this.myPlayer.transform.pos.x, this.myPlayer.transform.pos.y);
 
                     // Notify everyone I was hit
                     this.roomManager.sendMessage(JSON.stringify({
@@ -2108,7 +2138,7 @@ class GameClient {
                                 y: -projectile.velocity.y / Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2)
                             };
                             this.createParticles(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
-                            this.createEmitter(playerId, projectile.transform.pos.x, projectile.transform.pos.y);
+                            this.createEmitter(playerId, projectile.transform.pos.x, projectile.transform.pos.y, player.transform.pos.x, player.transform.pos.y);
 
                             // If they died, I get a kill
                             if (newHealth <= 0) {
@@ -3303,26 +3333,26 @@ class GameClient {
     private drawCharacter(player: Player, isMe: boolean = false): void {
         if (!this.ctx) return;
         if (player.stats.health.value <= 0) return;
-    
+
         // For now, use default character config - later this will be per-player
         const characterConfig = { ...CHARACTER };
-    
+
         // If this is me and I'm meleeing, swap weapon to knife
         if (isMe && this.isMelee) {
             characterConfig.weapon = 'KNIFE';
         }
-    
+
         // Render layers in order: BODY → WEAPON → HEAD → HEADWEAR
         this.drawCharacterLayer(player, 'BODY', characterConfig.body);
         this.drawCharacterLayer(player, 'WEAPON', characterConfig.weapon);
         this.drawCharacterLayer(player, 'HEAD', characterConfig.head);
         this.drawCharacterLayer(player, 'HEADWEAR', characterConfig.headwear);
-    
+
         // Draw player name/info (existing code)
         this.ctx.fillStyle = UI.TEXT_COLOR;
         this.ctx.font = UI.FONT;
         this.ctx.textAlign = 'center';
-    
+
         const displayName = isMe ? 'You' : player.id.substring(0, 6);
         this.ctx.fillText(
             displayName,
@@ -3802,53 +3832,8 @@ class GameClient {
     // #region [ Decals ]
     //
     private createDecal(x: number, y: number, decalId: string, params: typeof DECALS[keyof typeof DECALS] = DECALS.PROJECTILE): void {
-        if (!this.decalCtx) return;
+        this.generateDecal(x, y, decalId, params);
 
-        // Don't create decals outside canvas bounds
-        if (x < 0 || x > CANVAS.WIDTH || y < 0 || y > CANVAS.HEIGHT) return;
-
-        // Use random values within MIN/MAX ranges
-        const radius = params.RADIUS.MIN + Math.random() * (params.RADIUS.MAX - params.RADIUS.MIN);
-        const density = params.DENSITY.MIN + Math.random() * (params.DENSITY.MAX - params.DENSITY.MIN);
-        const opacity = params.OPACITY.MIN + Math.random() * (params.OPACITY.MAX - params.OPACITY.MIN);
-
-        const numPixels = Math.floor((radius * radius * Math.PI) * density);
-
-        const rgb = hexToRgb(params.COLOR);
-        if (!rgb) {
-            console.error(`Invalid hex color: ${params.COLOR}`);
-            return;
-        }
-
-        this.decalCtx.save();
-        this.decalCtx.globalCompositeOperation = 'source-over';
-
-        // Create scattered decal pixels around impact point
-        for (let i = 0; i < numPixels; i++) {
-            // Random position within decal radius
-            const angle = Math.random() * Math.PI * 2;
-            const distance = Math.random() * radius;
-            const pixelX = x + Math.cos(angle) * distance;
-            const pixelY = y + Math.sin(angle) * distance;
-
-            // Skip if outside canvas
-            if (pixelX < 0 || pixelX >= CANVAS.WIDTH || pixelY < 0 || pixelY >= CANVAS.HEIGHT) continue;
-
-            // Random opacity with variation
-            const pixelOpacity = opacity + (Math.random() - 0.5) * params.VARIATION;
-            const clampedOpacity = Math.max(0.05, Math.min(0.6, pixelOpacity));
-
-            // Use custom color from params
-            this.decalCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clampedOpacity})`;
-            this.decalCtx.fillRect(Math.floor(pixelX), Math.floor(pixelY), 1, 1);
-        }
-
-        this.decalCtx.restore();
-
-        // Store decal with params for network sync
-        this.decals.set(decalId, { x, y, params });
-
-        // Send decal to other clients with params
         this.roomManager.sendMessage(JSON.stringify({
             type: 'add-decal',
             decalId: decalId,
@@ -3858,11 +3843,14 @@ class GameClient {
         }));
     }
 
-    private applyDecal(x: number, y: number, decalId: string, params: typeof DECALS[keyof typeof DECALS]): void {
-        if (!this.decalCtx) return;
+    private createDecalNetwork(x: number, y: number, decalId: string, params: typeof DECALS[keyof typeof DECALS]): void {
+        if (this.decals.has(decalId)) return; // Don't create duplicate decals
 
-        // Don't create duplicate decals
-        if (this.decals.has(decalId)) return;
+        this.generateDecal(x, y, decalId, params);
+    }
+
+    private generateDecal(x: number, y: number, decalId: string, params: typeof DECALS[keyof typeof DECALS]): void {
+        if (!this.decalCtx) return;
 
         // Don't create decals outside canvas bounds
         if (x < 0 || x > CANVAS.WIDTH || y < 0 || y > CANVAS.HEIGHT) return;
@@ -3919,8 +3907,20 @@ class GameClient {
      * Creates particles with params. Entrypoint for all particle creations. [ CALL THIS FUNCTION ]
      */
     private createParticles(x: number, y: number, particleId: string, params: typeof PARTICLES[keyof typeof PARTICLES], direction?: { x: number, y: number }): void {
+        this.generateParticles(x, y, particleId, params, direction);
+
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'add-particles',
+            particleId: particleId,
+            x: x,
+            y: y,
+            params: params,
+            direction: direction
+        }));
+    }
+
+    private generateParticles(x: number, y: number, particleId: string, params: typeof PARTICLES[keyof typeof PARTICLES], direction?: { x: number, y: number }): void {
         const count = Math.floor(params.COUNT.MIN + Math.random() * (params.COUNT.MAX - params.COUNT.MIN));
-        const particleData: any[] = []; // Store the actual particle data to send
 
         for (let i = 0; i < count; i++) {
             const lifetime = params.LIFETIME.MIN + Math.random() * (params.LIFETIME.MAX - params.LIFETIME.MIN);
@@ -3936,87 +3936,29 @@ class GameClient {
                 angle = Math.random() * Math.PI * 2;
             }
 
-            const particleInfo = {
-                lifetime,
-                speed,
-                size,
-                opacity,
-                torque,
-                angle,
-                velocityX: Math.cos(angle) * speed,
-                velocityY: Math.sin(angle) * speed,
-                rotation: Math.random() * Math.PI * 2
-            };
-
-            // Create local particle
             const particle = {
                 id: `${particleId}_${i}`,
                 x: x,
                 y: y,
-                velocityX: particleInfo.velocityX,
-                velocityY: particleInfo.velocityY,
-                size: particleInfo.size,
-                opacity: particleInfo.opacity,
-                maxOpacity: particleInfo.opacity,
+                velocityX: Math.cos(angle) * speed,
+                velocityY: Math.sin(angle) * speed,
+                size: size,
+                opacity: opacity,
+                maxOpacity: opacity,
                 color: params.COLOR,
-                lifetime: particleInfo.lifetime,
+                lifetime: lifetime,
                 age: 0,
                 collide: params.COLLIDE,
                 fade: params.FADE,
                 paint: params.PAINT,
                 stain: params.STAIN,
-                torque: particleInfo.torque,
-                rotation: particleInfo.rotation,
+                torque: torque,
+                rotation: Math.random() * Math.PI * 2,
                 hasCollided: false
             };
 
             this.particles.set(particle.id, particle);
-            particleData.push(particleInfo); // Store for network sync
         }
-
-        // Send the computed particle data
-        this.roomManager.sendMessage(JSON.stringify({
-            type: 'add-particles',
-            particleId: particleId,
-            x: x,
-            y: y,
-            particleData: particleData,
-            color: params.COLOR,
-            collide: params.COLLIDE,
-            fade: params.FADE,
-            paint: params.PAINT,
-            stain: params.STAIN
-        }));
-    }
-
-    /**
-     * Network creation of particles, responds to websocket message "add-particles".
-     */
-    private applyParticles(x: number, y: number, particleId: string, particleData: any[], color: string, collide: boolean, fade: boolean, paint: boolean, stain: boolean): void {
-        particleData.forEach((data, i) => {
-            const particle = {
-                id: `${particleId}_${i}`,
-                x: x,
-                y: y,
-                velocityX: data.velocityX,
-                velocityY: data.velocityY,
-                size: data.size,
-                opacity: data.opacity,
-                maxOpacity: data.opacity,
-                color: color,
-                lifetime: data.lifetime,
-                age: 0,
-                collide: collide,
-                fade: fade,
-                paint: paint,
-                stain: stain,
-                torque: data.torque,
-                rotation: data.rotation,
-                hasCollided: false
-            };
-
-            this.particles.set(particle.id, particle);
-        });
     }
 
     /**
@@ -4040,7 +3982,7 @@ class GameClient {
             // Handle staining during extended collision life
             if (particle.hasCollided && particle.stain) {
                 // Paint every frame during extended life
-                this.stampParticle(particle.x, particle.y, `stain_${id}_${Date.now()}`, particle);
+                this.stampParticle(`stain_${id}_${Date.now()}`, particle);
 
                 // Calculate how far we are through the extended life
                 const extendedLifeRatio = (particle.age - (particle.lifetime - particle.lifetime * 0.5)) / (particle.lifetime * 0.5);
@@ -4086,7 +4028,7 @@ class GameClient {
                     particle.x >= 0 && particle.x <= CANVAS.WIDTH &&
                     particle.y >= 0 && particle.y <= CANVAS.HEIGHT) {
 
-                    this.stampParticle(particle.x, particle.y, `stamp_${id}`, particle);
+                    this.stampParticle(`stamp_${id}`, particle);
                 }
 
                 particlesToRemove.push(id);
@@ -4100,9 +4042,9 @@ class GameClient {
     // [ Particle Persistence ]
     //
     /**
-     * Stamps persistent particles onto the decal canvas. [ CALL THIS FUNCTION ]
+     * Stamps local particles onto the decal canvas.
      */
-    private stampParticle(x: number, y: number, stampId: string, particle: any): void {
+    private stampParticle(stampId: string, particle: any): void {
         if (!this.decalCtx) return;
 
         const rgb = hexToRgb(particle.color);
@@ -4130,33 +4072,6 @@ class GameClient {
             params: null
         });
     }
-
-    /**
-     * Responsible for persisting particles.
-     */
-    private applyParticleStamp(x: number, y: number, stampId: string, color: string, opacity: number, size: number, rotation?: number, torque?: number): void {
-        if (!this.decalCtx) return;
-        if (this.decals.has(stampId)) return;
-
-        const rgb = hexToRgb(color);
-        if (!rgb) return;
-
-        this.decalCtx.save();
-        this.decalCtx.globalCompositeOperation = 'source-over';
-
-        if (rotation !== undefined && torque !== undefined && torque !== 0) {
-            this.decalCtx.translate(x + size / 2, y + size / 2);
-            this.decalCtx.rotate(rotation);
-            this.decalCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`;
-            this.decalCtx.fillRect(-size / 2, -size / 2, size, size);
-        } else {
-            this.decalCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`;
-            this.decalCtx.fillRect(Math.floor(x), Math.floor(y), size, size);
-        }
-
-        this.decalCtx.restore();
-        this.decals.set(stampId, { x, y, params: null });
-    }
     //
 
     // [ Particle Emitters ]
@@ -4165,45 +4080,46 @@ class GameClient {
     /**
      * Creates a particle emitter in the game, and syncs this action via websocket message "particle-emitter".
      */
-    private createEmitter(playerId: string, hitX: number, hitY: number): void {
-        const player = playerId === this.userId ? this.myPlayer : this.players.get(playerId);
-        if (!player) return;
-
-        // Calculate offset from player center
-        const offsetX = hitX - player.transform.pos.x;
-        const offsetY = hitY - player.transform.pos.y;
-
-        // Calculate direction (away from player center towards hit point)
-        const angle = Math.atan2(offsetY, offsetX);
-
+    private createEmitter(playerId: string, hitX: number, hitY: number, centerX: number, centerY: number): void {
         const emitterId = `particle_emitter_${playerId}_${Date.now()}`;
         const emitterLifetime = 1000 + Math.random() * 2000;
 
-        this.emitters.set(emitterId, {
-            playerId: playerId,
-            offsetX: offsetX,
-            offsetY: offsetY,
-            direction: angle,
-            lifetime: emitterLifetime,
-            age: 0,
-            lastEmission: 0,
-            emissionInterval: 200 + Math.random() * 300
-        });
+        this.generateEmitter(emitterId, playerId, hitX, hitY, centerX, centerY, emitterLifetime);
 
         // Broadcast to other clients
         this.roomManager.sendMessage(JSON.stringify({
             type: 'particle-emitter',
             emitterId: emitterId,
             playerId: playerId,
-            offsetX: offsetX,
-            offsetY: offsetY,
-            direction: angle,
+            hitX: hitX,
+            hitY: hitY,
+            centerX: centerX,
+            centerY: centerY,
             lifetime: emitterLifetime
         }));
 
         console.log(`Emitter created on ${playerId} for ${emitterLifetime}ms`);
     }
 
+    private generateEmitter(emitterId: string, playerId: string, hitX: number, hitY: number, centerX: number, centerY: number, lifetime: number): void {
+        // Calculate offset from center
+        const offsetX = hitX - centerX;
+        const offsetY = hitY - centerY;
+
+        // Calculate direction (away from center towards hit point)
+        const angle = Math.atan2(offsetY, offsetX);
+
+        this.emitters.set(emitterId, {
+            playerId: playerId,
+            offsetX: offsetX,
+            offsetY: offsetY,
+            direction: angle,
+            lifetime: lifetime,
+            age: 0,
+            lastEmission: 0,
+            emissionInterval: 200 + Math.random() * 300
+        });
+    }
     /**
      * Process all particle emitters in the game during the update loop.
      */
@@ -4234,8 +4150,8 @@ class GameClient {
                 const speedVariation = (Math.random() - 0.5) * 4; // -2 to +2
                 const finalSpeed = Math.max(0.5, baseSpeed + speedVariation);
 
-                this.createParticles(
-                    worldX + (Math.random() - 0.5) * 8, // Small random spawn offset
+                this.generateParticles( // Create particles locally
+                    worldX + (Math.random() - 0.5) * 8,
                     worldY + (Math.random() - 0.5) * 8,
                     `blood_splatter_${emitterId}_${emitter.age}`,
                     PARTICLES.BLOOD_DRIP,
@@ -4250,7 +4166,7 @@ class GameClient {
             }
 
             // Remove expired emitters
-            if (emitter.age >= emitter.lifetime) {
+            if (emitter.age >= emitter.lifetime) { //TODO: Make decals local
                 this.createDecal(worldX, worldY, `emitter_decal_${emitterId}`, DECALS.BLOOD); // Create permanent decal on ground
                 emittersToRemove.push(emitterId);
             }
