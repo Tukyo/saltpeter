@@ -1,7 +1,7 @@
 import { generateUID, getRandomColor, hexToRgb, setSlider, updateToggle, updateInput, forward } from './utils';
 import { RoomManager } from './roomManager';
 import { Player, RoomMessage, Projectile, LobbyPlayer, Leaderboard, LeaderboardEntry, AmmoBox, ResetType } from './defs';
-import { PLAYER_DEFAULTS, CANVAS, GAME, UI, CHAT, DECALS, PARTICLES, AMMO_BOX } from './config';
+import { PLAYER_DEFAULTS, CANVAS, GAME, UI, CHAT, DECALS, PARTICLES, AMMO_BOX, NETWORK } from './config';
 import { applyUpgrade, getUpgrades, removeUpgradeFromPool, resetUpgrades, UPGRADES } from './upgrades';
 import { CHARACTER, CHARACTER_DECALS, CharacterLayer, getCharacterAsset } from './char';
 
@@ -155,6 +155,7 @@ class GameClient {
     private canShoot = true;
     private isBurstActive = false;
     private isReloading = false;
+    private isMelee = false;
     private isSprinting = false;
     private isDashing = false;
     private isStaminaRecoveryBlocked = false;
@@ -165,6 +166,8 @@ class GameClient {
     private lastSentX = 0;
     private lastSentY = 0;
     private lastSentRotation = 0;
+    private lastSentRotationTime = 0;
+    private lastSentMoveTime = 0;
 
     private playerVelocityX = 0;
     private playerVelocityY = 0;
@@ -173,6 +176,7 @@ class GameClient {
     private lastDashTime = 0;
     private reloadStartTime = 0;
     private lastShotTime = 0;
+    private lastMeleeTime = 0;
     private nextBurstShotTime = 0;
     private currentBurstShot = 0;
     private lastStaminaDrainTime = 0;
@@ -274,7 +278,7 @@ class GameClient {
         this.decalCanvas.width = CANVAS.WIDTH;
         this.decalCanvas.height = CANVAS.HEIGHT;
         this.ammoReservesCanvas.width = 100;
-        this.ammoReservesCanvas.height = 60;
+        this.ammoReservesCanvas.height = 64;
 
         this.ctx = this.canvas.getContext('2d');
         this.decalCtx = this.decalCanvas.getContext('2d');
@@ -399,16 +403,20 @@ class GameClient {
             e.preventDefault();
             this.keys.add(key);
 
+            if (key === keybinds.DASH) {
+                this.startDash();
+            }
+
+            if (key === GAME.KEYBINDS.MELEE && this.canMelee()) {
+                this.startMelee();
+            }
+
             if (key === keybinds.RELOAD) {
                 this.startReload();
             }
 
             if (key === keybinds.SPRINT && this.isMoving()) {
                 this.isSprinting = true;
-            }
-
-            if (key === keybinds.DASH) {
-                this.startDash();
             }
         }
     }
@@ -440,7 +448,7 @@ class GameClient {
         if (this.chatInput === document.activeElement) return;
         if (!this.gameRunning || this.gamePaused || !this.canvas) return;
 
-        if (e.button === 0 && this.canShoot && !this.isBurstActive) { // Left mouse button
+        if (e.button === 0 && this.canShoot && !this.isBurstActive && !this.isMelee) { // Left mouse button
             this.updateMouse(e);
             this.startBurst(); // Trigger burst on click
             this.canShoot = false; // Prevent shooting until mouse up
@@ -476,22 +484,18 @@ class GameClient {
         // Rotate my character
         this.rotateCharacterPart(this.userId, rotation);
 
-        // Send rotation update if it changed significantly (avoid spamming)
-        // TODO: Throttle the network updates for rotations
+        const now = Date.now();
         const rotationDiff = Math.abs(rotation - this.lastSentRotation);
-        if (rotationDiff > 0.1) {
+        if (rotationDiff > 0.1 && now - this.lastSentRotationTime >= NETWORK.ROTATE_INTERVAL) {
             this.roomManager.sendMessage(JSON.stringify({
                 type: 'player-move',
                 transform: {
-                    pos: {
-                        x: this.myPlayer.transform.pos.x,
-                        y: this.myPlayer.transform.pos.y
-                    },
                     rot: this.myPlayer.transform.rot
                 }
             }));
 
             this.lastSentRotation = rotation;
+            this.lastSentRotationTime = now;
         }
 
         // TODO: Create a global equipment function that can be called when you need to check for specific upgrades
@@ -862,9 +866,15 @@ class GameClient {
                 case 'player-move':
                     if (!this.inLobby && this.players.has(message.userId)) {
                         const player = this.players.get(message.userId)!;
-                        player.transform.pos.x = gameData.transform.pos.x;
-                        player.transform.pos.y = gameData.transform.pos.y;
-                        player.transform.rot = gameData.transform.rot;
+
+                        if (gameData.transform.pos) {
+                            player.transform.pos.x = gameData.transform.pos.x;
+                            player.transform.pos.y = gameData.transform.pos.y;
+                        }
+
+                        if (gameData.transform.rot !== undefined) {
+                            player.transform.rot = gameData.transform.rot;
+                        }
                     }
                     break;
                 case 'player-hit':
@@ -1089,21 +1099,9 @@ class GameClient {
                             gameData.particleData,
                             gameData.color,
                             gameData.collide,
-                            gameData.fade
-                        );
-                    }
-                    break;
-                case 'particle-stamp':
-                    if (message.userId !== this.userId) {
-                        this.applyParticleStamp( // TODO: pass ParticleStamp type params object instead
-                            gameData.x,
-                            gameData.y,
-                            gameData.stampId,
-                            gameData.color,
-                            gameData.opacity,
-                            gameData.size,
-                            gameData.rotation,
-                            gameData.torque
+                            gameData.fade,
+                            gameData.paint,
+                            gameData.stain
                         );
                     }
                     break;
@@ -1783,30 +1781,104 @@ class GameClient {
 
     // #region [ Attack ]
     //
+    private canMelee(): boolean {
+        const now = Date.now();
+        return (
+            !this.isMelee &&
+            now >= this.lastMeleeTime + PLAYER_DEFAULTS.ACTIONS.MELEE.COOLDOWN &&
+            this.myPlayer.stats.health.value > 0 &&
+            !this.isBurstActive &&
+            !this.isReloading
+        );
+    }
+
+    private startMelee(): void {
+        this.isMelee = true;
+        this.lastMeleeTime = Date.now();
+    
+        // Calculate melee direction (use current rotation)
+        const angle = this.myPlayer.transform.rot;
+        const range = PLAYER_DEFAULTS.ACTIONS.MELEE.RANGE;
+        const size = PLAYER_DEFAULTS.ACTIONS.MELEE.SIZE;
+    
+        // Use the same spawn offset as normal projectiles
+        const spawnOffset = (this.myPlayer.stats.size / 4) +
+            this.myPlayer.actions.primary.projectile.size +
+            this.myPlayer.actions.primary.offset;
+    
+        // Calculate spawn position at the tip of the weapon
+        const spawnX = this.myPlayer.transform.pos.x + Math.cos(angle - Math.PI / 2) * spawnOffset;
+        const spawnY = this.myPlayer.transform.pos.y + Math.sin(angle - Math.PI / 2) * spawnOffset;
+    
+        const velocity = {
+            x: Math.cos(angle - Math.PI / 2) * range,
+            y: Math.sin(angle - Math.PI / 2) * range
+        };
+    
+        const meleeProjectile = {
+            id: generateUID(),
+            transform: {
+                pos: { x: spawnX, y: spawnY },
+                rot: angle
+            },
+            timestamp: Date.now(),
+            color: 'rgba(255, 255, 255, 0)',
+            damage: PLAYER_DEFAULTS.ACTIONS.MELEE.DAMAGE,
+            distanceTraveled: 0,
+            length: size,
+            ownerId: this.userId,
+            range: range,
+            size: size,
+            velocity: velocity
+        };
+    
+        this.projectiles.set(meleeProjectile.id, meleeProjectile);
+    
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'projectile-launch',
+            projectile: meleeProjectile
+        }));
+    
+        // Remove melee projectile after it has traveled its range (simulate a short-lived projectile)
+        setTimeout(() => {
+            this.projectiles.delete(meleeProjectile.id);
+            this.isMelee = false;
+        }, 100); // Adjust duration to match how long you want the melee to last
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    /**
+     * Responsible for what happens during attack actions.
+     */
     private updateAttack(delta: number): void {
         if (!this.gameRunning || this.myPlayer.stats.health.value <= 0) return;
 
         const currentTime = Date.now();
 
         // Handle reload
-        if (this.isReloading) { // TODO: Put this into a reload function
-            if (currentTime >= this.reloadStartTime + this.myPlayer.actions.primary.reload.time) {
-                // Reload complete - calculate how much to reload
-                const magazineSpace = this.myPlayer.actions.primary.magazine.size - this.myPlayer.actions.primary.magazine.currentAmmo;
-                const ammoToReload = Math.min(magazineSpace, this.myPlayer.actions.primary.magazine.currentReserve);
-
-                this.myPlayer.actions.primary.magazine.currentAmmo += ammoToReload;
-                this.myPlayer.actions.primary.magazine.currentReserve -= ammoToReload;
-                this.isReloading = false;
-
-                this.removeBullet(ammoToReload);
-
-                this.animateCharacterPart(this.userId, 'WEAPON', {
-                    0: { x: 0, y: 20 }, // Start with slide back
-                    1: { x: 0, y: 0 } // Return to start
-                }, 175, 1);
-
-                console.log(`Reload complete! Magazine: ${this.myPlayer.actions.primary.magazine.currentAmmo}/${this.myPlayer.actions.primary.magazine.size}, Inventory: ${this.myPlayer.actions.primary.magazine.currentReserve}/${this.myPlayer.actions.primary.magazine.maxReserve}`);
+        if (this.isReloading) {
+            if (currentTime >= this.reloadStartTime + this.myPlayer.actions.primary.reload.time) { // Reload complete
+                this.finishReload();
             }
             return; // Can't shoot while reloading
         }
@@ -1822,17 +1894,13 @@ class GameClient {
 
                 console.log(`Burst shot ${this.currentBurstShot}! Magazine: ${this.myPlayer.actions.primary.magazine.currentAmmo}/${this.myPlayer.actions.primary.magazine.size}, Inventory: ${this.myPlayer.actions.primary.magazine.currentReserve}/${this.myPlayer.actions.primary.magazine.maxReserve}`);
 
-                // Check if we should continue the burst
-                if (this.currentBurstShot >= ammoNeeded || this.myPlayer.actions.primary.magazine.currentAmmo === 0) {
-                    // Burst complete (reached intended amount or out of ammo)
+                if (this.currentBurstShot >= ammoNeeded || this.myPlayer.actions.primary.magazine.currentAmmo === 0) { // Burst complete (reached burst amount or out of ammo)
                     this.isBurstActive = false;
                     this.currentBurstShot = 0;
-                } else {
-                    // Schedule next shot in burst
+                } else { // Schedule next shot in burst
                     this.nextBurstShotTime = currentTime + this.myPlayer.actions.primary.burst.delay;
                 }
-            } else {
-                // Out of ammo or reached burst limit
+            } else { // Out of ammo or reached burst limit
                 this.isBurstActive = false;
                 this.currentBurstShot = 0;
             }
@@ -2012,12 +2080,6 @@ class GameClient {
                         newHealth: this.myPlayer.stats.health.value,
                         projectileId: id
                     }));
-
-                    // Check if I died
-                    if (this.myPlayer.stats.health.value <= 0) {
-                        // this.recordDeath();
-                        // this.checkRoundEnd(); // Calling in 'player-death' message handler
-                    }
                 }
             }
 
@@ -2111,10 +2173,22 @@ class GameClient {
             this.projectiles.delete(id);
         });
     }
+    //
+    // #endregion
+
+    // #region [ Reload ]
+    //
+    private canReload(): boolean {
+        return (
+            !this.isReloading &&
+            this.myPlayer.actions.primary.magazine.currentAmmo < this.myPlayer.actions.primary.magazine.size &&
+            this.myPlayer.actions.primary.magazine.currentReserve > 0
+        );
+    }
 
     private startReload(): void {
         if (!this.canReload()) return;
-        console.log(`Ammo: ${this.myPlayer.actions.primary.magazine.currentAmmo}, Inventory: ${this.myPlayer.actions.primary.magazine.currentReserve}`);
+        console.log(`Reloading...`);
 
         this.isReloading = true;
         this.reloadStartTime = Date.now();
@@ -2128,12 +2202,22 @@ class GameClient {
         }, 0, 1); // duration=0 means infinite/held
     }
 
-    private canReload(): boolean {
-        return (
-            !this.isReloading &&
-            this.myPlayer.actions.primary.magazine.currentAmmo < this.myPlayer.actions.primary.magazine.size &&
-            this.myPlayer.actions.primary.magazine.currentReserve > 0
-        );
+    private finishReload(): void {
+        const magazineSpace = this.myPlayer.actions.primary.magazine.size - this.myPlayer.actions.primary.magazine.currentAmmo;
+        const ammoToReload = Math.min(magazineSpace, this.myPlayer.actions.primary.magazine.currentReserve);
+
+        this.myPlayer.actions.primary.magazine.currentAmmo += ammoToReload;
+        this.myPlayer.actions.primary.magazine.currentReserve -= ammoToReload;
+        this.isReloading = false;
+
+        this.removeBullet(ammoToReload);
+
+        this.animateCharacterPart(this.userId, 'WEAPON', {
+            0: { x: 0, y: 20 }, // Start with slide back
+            1: { x: 0, y: 0 } // Return to start
+        }, 175, 1);
+
+        console.log(`Reload complete...`);
     }
     //
     // #endregion
@@ -2221,6 +2305,7 @@ class GameClient {
     }
     private updatePlayerPosition(delta: number): void {
         if (!this.gameRunning || this.myPlayer.stats.health.value <= 0) return;
+        const now = Date.now();
 
         // If dashing, skip normal movement logic
         if (this.isDashing) {
@@ -2255,21 +2340,20 @@ class GameClient {
                 (this.myPlayer.transform.pos.y - this.lastSentY) ** 2
             );
 
-            if (moved && distanceFromLastSent > 2) {
+            if (moved && distanceFromLastSent > 2 && now - this.lastSentMoveTime >= NETWORK.MOVE_INTERVAL) {
                 this.roomManager.sendMessage(JSON.stringify({
                     type: 'player-move',
                     transform: {
                         pos: {
                             x: this.myPlayer.transform.pos.x,
                             y: this.myPlayer.transform.pos.y
-                        },
-                        rot: this.myPlayer.transform.rot
+                        }
                     }
                 }));
 
                 this.lastSentX = this.myPlayer.transform.pos.x;
                 this.lastSentY = this.myPlayer.transform.pos.y;
-                this.lastSentRotation = this.myPlayer.transform.rot || 0;
+                this.lastSentMoveTime = now;
             }
 
             return; // Exit early, skip normal movement
@@ -2323,21 +2407,20 @@ class GameClient {
             (this.myPlayer.transform.pos.y - this.lastSentY) ** 2
         );
 
-        if (moved && distanceFromLastSent > 2) {
+        if (moved && distanceFromLastSent > 2 && now - this.lastSentMoveTime >= NETWORK.MOVE_INTERVAL) {
             this.roomManager.sendMessage(JSON.stringify({
                 type: 'player-move',
                 transform: {
                     pos: {
                         x: this.myPlayer.transform.pos.x,
                         y: this.myPlayer.transform.pos.y
-                    },
-                    rot: this.myPlayer.transform.rot
+                    }
                 }
             }));
 
             this.lastSentX = this.myPlayer.transform.pos.x;
             this.lastSentY = this.myPlayer.transform.pos.y;
-            this.lastSentRotation = this.myPlayer.transform.rot || 0;
+            this.lastSentMoveTime = now;
         }
 
         if (Math.abs(this.playerVelocityX) < 0.01) this.playerVelocityX = 0;
@@ -2423,6 +2506,8 @@ class GameClient {
     }
 
     private checkCollisions(delta: number): void {
+        if (this.myPlayer.stats.health.value <= 0) return;
+
         const collisionRadius = (this.myPlayer.stats.size / 4) + 5;
 
         this.ammoBoxes.forEach((ammoBox, boxId) => {
@@ -2438,6 +2523,16 @@ class GameClient {
                     this.myPlayer.actions.primary.magazine.maxReserve,
                     this.myPlayer.actions.primary.magazine.currentReserve + ammoBox.ammoAmount
                 );
+
+                const collisionWidth = 63;
+                const collisionHeight = 27;
+                const collisionX = (this.ammoReservesCanvas!.width - collisionWidth) / 2 - 3;
+                const collisionY = (this.ammoReservesCanvas!.height - collisionHeight) / 2 - 1;
+
+                const spawnX = collisionX + collisionWidth;
+                const spawnY = collisionY + collisionHeight / 2;
+
+                this.spawnBullet(spawnX, spawnY, ammoBox.ammoAmount)
 
                 console.log(`Picked up ammo box! +${ammoBox.ammoAmount} bullets. Inventory: ${this.myPlayer.actions.primary.magazine.currentReserve}/${this.myPlayer.actions.primary.magazine.maxReserve}`);
 
@@ -3208,21 +3303,26 @@ class GameClient {
     private drawCharacter(player: Player, isMe: boolean = false): void {
         if (!this.ctx) return;
         if (player.stats.health.value <= 0) return;
-
+    
         // For now, use default character config - later this will be per-player
-        const characterConfig = CHARACTER;
-
+        const characterConfig = { ...CHARACTER };
+    
+        // If this is me and I'm meleeing, swap weapon to knife
+        if (isMe && this.isMelee) {
+            characterConfig.weapon = 'KNIFE';
+        }
+    
         // Render layers in order: BODY → WEAPON → HEAD → HEADWEAR
         this.drawCharacterLayer(player, 'BODY', characterConfig.body);
         this.drawCharacterLayer(player, 'WEAPON', characterConfig.weapon);
         this.drawCharacterLayer(player, 'HEAD', characterConfig.head);
         this.drawCharacterLayer(player, 'HEADWEAR', characterConfig.headwear);
-
+    
         // Draw player name/info (existing code)
         this.ctx.fillStyle = UI.TEXT_COLOR;
         this.ctx.font = UI.FONT;
         this.ctx.textAlign = 'center';
-
+    
         const displayName = isMe ? 'You' : player.id.substring(0, 6);
         this.ctx.fillText(
             displayName,
@@ -3419,39 +3519,8 @@ class GameClient {
         this.projectileIcon = new Image();
         this.projectileIcon.src = '/assets/img/icon/inventory/9mm.png';
 
-        this.ammoReservesCanvas!.addEventListener('click', (e) => {
-            this.handleAmmoCanvasClick(e);
-        });
-
         // Start physics loop
         requestAnimationFrame(() => this.updateAmmoReservePhysics());
-    }
-
-    private handleAmmoCanvasClick(e: MouseEvent): void {
-        if (!this.ammoReservesCanvas || !this.projectileIcon || !this.projectileIcon.complete) return;
-
-        // Get click position relative to canvas
-        const rect = this.ammoReservesCanvas.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const clickY = e.clientY - rect.top;
-
-        // Define collision zone (same as your visual box)
-        const collisionWidth = 63;
-        const collisionHeight = 27;
-        const collisionX = (this.ammoReservesCanvas.width - collisionWidth) / 2 - 3;
-        const collisionY = (this.ammoReservesCanvas.height - collisionHeight) / 2 - 1;
-
-        // Check if click is within collision zone
-        if (clickX >= collisionX && clickX <= collisionX + collisionWidth &&
-            clickY >= collisionY && clickY <= collisionY + collisionHeight) {
-
-            // Calculate spawn position: right border of collision zone, centered vertically
-            const spawnX = collisionX + collisionWidth;
-            const spawnY = collisionY + collisionHeight / 2;
-
-            // Spawn bullet at materializer position
-            this.spawnBullet(spawnX, spawnY);
-        }
     }
 
     private spawnBullet(x: number, y: number, amount: number = 1): void {
@@ -3483,7 +3552,14 @@ class GameClient {
     }
 
     private removeBullet(amount: number = 1): void {
-        this.reserveBullets.splice(0, amount);
+        const removeDelay = 100; // ms, match spawnBullet
+        for (let i = 0; i < amount; i++) {
+            setTimeout(() => {
+                if (this.reserveBullets.length > 0) {
+                    this.reserveBullets.shift();
+                }
+            }, i * removeDelay);
+        }
     }
 
     private updateAmmoReservePhysics(): void {
@@ -3907,14 +3983,16 @@ class GameClient {
             particleData: particleData,
             color: params.COLOR,
             collide: params.COLLIDE,
-            fade: params.FADE
+            fade: params.FADE,
+            paint: params.PAINT,
+            stain: params.STAIN
         }));
     }
 
     /**
      * Network creation of particles, responds to websocket message "add-particles".
      */
-    private applyParticles(x: number, y: number, particleId: string, particleData: any[], color: string, collide: boolean, fade: boolean): void {
+    private applyParticles(x: number, y: number, particleId: string, particleData: any[], color: string, collide: boolean, fade: boolean, paint: boolean, stain: boolean): void {
         particleData.forEach((data, i) => {
             const particle = {
                 id: `${particleId}_${i}`,
@@ -3930,8 +4008,8 @@ class GameClient {
                 age: 0,
                 collide: collide,
                 fade: fade,
-                paint: false,
-                stain: data.stain,
+                paint: paint,
+                stain: stain,
                 torque: data.torque,
                 rotation: data.rotation,
                 hasCollided: false
@@ -4051,23 +4129,10 @@ class GameClient {
             y: particle.y,
             params: null
         });
-
-        // Send stamp with rotation info
-        this.roomManager.sendMessage(JSON.stringify({
-            type: 'particle-stamp',
-            stampId: stampId,
-            x: particle.x,
-            y: particle.y,
-            color: particle.color,
-            opacity: particle.opacity,
-            size: particle.size,
-            rotation: particle.rotation,
-            torque: particle.torque
-        }));
     }
 
     /**
-     * Responsible for persisting particles over the network, responds to websocket message  "particle-stamp".
+     * Responsible for persisting particles.
      */
     private applyParticleStamp(x: number, y: number, stampId: string, color: string, opacity: number, size: number, rotation?: number, torque?: number): void {
         if (!this.decalCtx) return;

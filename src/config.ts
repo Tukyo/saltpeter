@@ -6,6 +6,12 @@ export const PLAYER_DEFAULTS = {
             MULTIPLIER: 3,
             TIME: 150 // ms
         },
+        MELEE: {
+            COOLDOWN: 600, // ms
+            RANGE: 40, // px
+            DAMAGE: 35,
+            SIZE: 18, // px^2 area at tip
+        },
         PRIMARY: {
             BUFFER: 100, // ms
             BURST: {
@@ -268,6 +274,7 @@ export const GAME = {
     RECONNECT_DELAY: 3000,
     CONNECTION_TIMEOUT: 1000,
     KEYBINDS: {
+        MELEE: 'f',
         MOVE_UP: 'w',
         MOVE_LEFT: 'a',
         MOVE_DOWN: 's',
@@ -299,3 +306,8 @@ export const CHAT = {
     MAX_MESSAGES: 100,
     MAX_MESSAGE_LENGTH: 200
 };
+
+export const NETWORK = {
+    MOVE_INTERVAL: 10, //ms
+    ROTATE_INTERVAL: 25 //ms
+}

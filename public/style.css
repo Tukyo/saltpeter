@@ -478,35 +478,6 @@ toggle:hover {
     background: linear-gradient(90deg, #44ff47, #82e449);
 }
 
-/* Health/Stamina bar labels (optional) */
-#healthBar::before {
-    content: 'HP';
-    position: absolute;
-    left: 6px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: bold;
-    color: var(--primary-color);
-    z-index: 1;
-    pointer-events: none;
-}
-
-#staminaBar::before {
-    content: 'SP';
-    position: absolute;
-    left: 6px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-family: var(--font-mono);
-    font-size: 9px;
-    font-weight: bold;
-    color: var(--primary-color);
-    z-index: 1;
-    pointer-events: none;
-}
-
 #crosshair {
     position: fixed;
     width: 20px;
