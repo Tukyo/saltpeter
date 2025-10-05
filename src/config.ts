@@ -278,7 +278,7 @@ export const CANVAS = {
 };
 
 export const GAME = {
-    RECONNECT_DELAY: 3000,
+    CHARACTER_SIZE: 650,
     CONNECTION_TIMEOUT: 1000,
     CONTROLS: {
         KEYBINDS: {
@@ -293,11 +293,12 @@ export const GAME = {
             DASH: ' '
         },
     },
+    GAME_END_DELAY: 5000,
     MAX_PLAYERS: 4,
     MAX_WINS: 5,
+    RECONNECT_DELAY: 3000,
     ROUND_END_DELAY: 3000,
-    GAME_END_DELAY: 5000,
-    CHARACTER_SIZE: 650
+    NEW_ROUND_DELAY: 500
 };
 
 export const UI = {

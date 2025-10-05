@@ -1,6 +1,6 @@
 import { generateUID, getRandomColor, hexToRgb, setSlider, updateToggle, updateInput, forward } from './utils';
 import { RoomManager } from './roomManager';
-import { Player, RoomMessage, Projectile, LobbyPlayer, Leaderboard, LeaderboardEntry, AmmoBox, ResetType, GameOptions, AnimationParams, GameObject, SpawnObjectParams } from './defs';
+import { Player, RoomMessage, Projectile, LobbyPlayer, Leaderboard, LeaderboardEntry, AmmoBox, ResetType, GameOptions, AnimationParams, GameObject, SpawnObjectParams, Vec2 } from './defs';
 import { PLAYER_DEFAULTS, CANVAS, GAME, UI, CHAT, DECALS, PARTICLES, AMMO_BOX, NETWORK } from './config';
 import { applyUpgrade, getUpgrades, removeUpgradeFromPool, resetUpgrades, UPGRADES } from './upgrades';
 import { CHARACTER_DECALS, CharacterLayer, getCharacterAsset } from './char';
@@ -142,14 +142,12 @@ class GameClient {
     private gameMaxWins = GAME.MAX_WINS;
     private gameMaxPlayers = GAME.MAX_PLAYERS;
 
-    private alivePlayersCount = 0;
-
     private roundWinner: string | null = null;
-    private gameWinner: string | null = null;
+    private gameWinner: string | null = null; // TODO: Use the game winner to display lobby historical wins
 
     private leaderboard: Leaderboard = new Map();
 
-    private pausedPlayers = new Set<string>(); // Tracks which players are paused for consensus
+    private upgradesCompleted = new Set<string>();
 
     private keys: Set<string> = new Set();
 
@@ -556,112 +554,6 @@ class GameClient {
                     console.log('I am the only player in the room...');
                 }
                 break;
-            case 'user-joined':
-                console.log(`User ${message.userId} joined`);
-
-                // If I'm in an active game, send my current state to the new player
-                // [ IMPORTANT ] Keep full track of Player object here
-                if (this.gameRunning && !this.inLobby) {
-                    this.roomManager.sendMessage(JSON.stringify({
-                        type: 'player-state',
-                        id: this.myPlayer.id,
-                        transform: {
-                            pos: {
-                                x: this.myPlayer.transform.pos.x,
-                                y: this.myPlayer.transform.pos.y
-                            },
-                            rot: this.myPlayer.transform.rot
-                        },
-                        timestamp: this.myPlayer.timestamp,
-                        color: this.myPlayer.color,
-                        actions: {
-                            dash: {
-                                cooldown: this.myPlayer.actions.dash.cooldown,
-                                drain: this.myPlayer.actions.dash.drain,
-                                multiplier: this.myPlayer.actions.dash.multiplier,
-                                time: this.myPlayer.actions.dash.time
-                            },
-                            melee: {
-                                cooldown: this.myPlayer.actions.melee.cooldown,
-                                damage: this.myPlayer.actions.melee.damage,
-                                duration: this.myPlayer.actions.melee.duration,
-                                range: this.myPlayer.actions.melee.range,
-                                size: this.myPlayer.actions.melee.size
-                            },
-                            primary: {
-                                buffer: this.myPlayer.actions.primary.buffer,
-                                burst: {
-                                    amount: this.myPlayer.actions.primary.burst.amount,
-                                    delay: this.myPlayer.actions.primary.burst.delay
-                                },
-                                magazine: {
-                                    currentAmmo: this.myPlayer.actions.primary.magazine.currentAmmo,
-                                    currentReserve: this.myPlayer.actions.primary.magazine.currentReserve,
-                                    maxReserve: this.myPlayer.actions.primary.magazine.maxReserve,
-                                    size: this.myPlayer.actions.primary.magazine.size
-                                },
-                                offset: this.myPlayer.actions.primary.offset,
-                                projectile: {
-                                    amount: this.myPlayer.actions.primary.projectile.amount,
-                                    color: this.myPlayer.actions.primary.projectile.color,
-                                    damage: this.myPlayer.actions.primary.projectile.damage,
-                                    length: this.myPlayer.actions.primary.projectile.length,
-                                    range: this.myPlayer.actions.primary.projectile.range,
-                                    size: this.myPlayer.actions.primary.projectile.size,
-                                    speed: this.myPlayer.actions.primary.projectile.speed,
-                                    spread: this.myPlayer.actions.primary.projectile.spread,
-                                    unique: this.myPlayer.actions.primary.projectile.unique
-                                },
-                                reload: {
-                                    time: this.myPlayer.actions.primary.reload.time
-                                }
-                            },
-                            sprint: {
-                                drain: this.myPlayer.actions.sprint.drain,
-                                multiplier: this.myPlayer.actions.sprint.multiplier
-                            }
-                        },
-                        equipment: {
-                            crosshair: this.myPlayer.equipment.crosshair
-                        },
-                        physics: {
-                            acceleration: this.myPlayer.physics.acceleration,
-                            friction: this.myPlayer.physics.friction
-                        },
-                        rig: {
-                            body: this.myPlayer.rig.body,
-                            head: this.myPlayer.rig.head,
-                            headwear: this.myPlayer.rig.headwear,
-                            weapon: this.myPlayer.rig.weapon
-                        },
-                        stats: {
-                            health: {
-                                max: this.myPlayer.stats.health.max,
-                                value: this.myPlayer.stats.health.value,
-                            },
-                            luck: this.myPlayer.stats.luck,
-                            size: this.myPlayer.stats.size,
-                            speed: this.myPlayer.stats.speed,
-                            stamina: {
-                                max: this.myPlayer.stats.stamina.max,
-                                recovery: {
-                                    delay: this.myPlayer.stats.stamina.recovery.delay,
-                                    rate: this.myPlayer.stats.stamina.recovery.rate
-                                },
-                                value: this.myPlayer.stats.stamina.value
-                            },
-                        },
-                        leaderboard: Array.from(this.leaderboard.entries())
-                    }));
-                }
-                break;
-
-            case 'room-joined-game': // New message type for joining active games
-                console.log('Joined room - game in progress');
-                this.isHost = false;
-                this.showGameControls(message.roomId || '');
-                this.startGameLoop();
-                break;
             case 'user-left':
                 console.log(`User ${message.userId} left`);
                 this.lobbyPlayers.delete(message.userId);
@@ -792,6 +684,8 @@ class GameClient {
                 //
                 // [ IMPORTANT ] Keep full track of Player object here
                 case 'player-state':
+                    console.log('Player State for player', gameData.id, ':', gameData);
+
                     if (!this.inLobby) {
                         this.players.set(message.userId, {
                             id: message.userId,
@@ -952,16 +846,6 @@ class GameClient {
                     this.generateGore(message.userId, gameData.x, gameData.y, gameData.size); // Spawn gore
                     console.log(`Generated gore for ${message.userId}`);
                     break;
-                case 'player-pause':
-                    this.pausedPlayers.add(gameData.userId);
-                    this.updatePauseState();
-                    console.log(`${gameData.userId} paused the game`);
-                    break;
-                case 'player-unpause':
-                    this.pausedPlayers.delete(gameData.userId);
-                    this.updatePauseState();
-                    console.log(`${gameData.userId} unpaused`);
-                    break;
                 case 'ammo-pickup':
                     if (gameData.playerId === this.userId) break;
 
@@ -1004,6 +888,22 @@ class GameClient {
                 // #region [ Game ]
                 //
                 case 'start-game':
+                    if (gameData.spawnMap && gameData.spawnMap[this.userId]) {
+                        this.myPlayer.transform.pos.x = gameData.spawnMap[this.userId].x;
+                        this.myPlayer.transform.pos.y = gameData.spawnMap[this.userId].y;
+                        console.log("My Player Spawn:", gameData.spawnMap[this.userId].x, gameData.spawnMap[this.userId].y)
+                    }
+                    // For other players
+                    if (gameData.spawnMap) {
+                        this.players.forEach((player, id) => {
+                            if (gameData.spawnMap[id]) {
+                                player.transform.pos.x = gameData.spawnMap[id].x;
+                                player.transform.pos.y = gameData.spawnMap[id].y;
+                                console.log(`Player ${id} spawn:`, gameData.spawnMap[id].x, gameData.spawnMap[id].y)
+                            }
+                        });
+                    }
+
                     this.showGameControls(this.roomManager.getCurrentRoom() || '');
                     this.startGameLoop();
                     break;
@@ -1022,6 +922,14 @@ class GameClient {
                     this.roundWinner = gameData.winnerId;
                     break;
                 case 'new-round':
+                    if (!gameData.spawnMap) return;
+                    console.log(gameData.spawnMap);
+
+                    // Hide upgrade UI
+                    if (this.upgradeContainer) {
+                        this.upgradeContainer.style.display = 'none';
+                    }
+
                     console.log('New round started! Everyone respawning...');
                     this.isRoundInProgress = true;
                     this.roundWinner = null;
@@ -1030,85 +938,38 @@ class GameClient {
                     setSlider('healthBar', this.myPlayer.stats.health.value, this.myPlayer.stats.health.max);
                     setSlider('staminaBar', this.myPlayer.stats.stamina.value, this.myPlayer.stats.stamina.max);
 
-                    // [ IMPORTANT ] Keep full track of Player object here
-                    if (this.players.has(message.userId)) { // Respawn other players
-                        const player = this.players.get(message.userId)!;
+                    this.myPlayer.transform.pos.x = gameData.spawnMap[this.userId].x;
+                    this.myPlayer.transform.pos.y = gameData.spawnMap[this.userId].y;
 
-                        player.transform.pos.x = gameData.transform.pos.x;
-                        player.transform.pos.y = gameData.transform.pos.y;
-                        player.transform.rot = gameData.transform.rot;
-                        player.timestamp = gameData.timestamp;
-                        player.actions.dash.cooldown = gameData.actions.dash.cooldown;
-                        player.actions.dash.drain = gameData.actions.dash.drain;
-                        player.actions.dash.multiplier = gameData.actions.dash.multiplier;
-                        player.actions.dash.time = gameData.actions.dash.time;
-                        player.actions.melee.cooldown = gameData.actions.melee.cooldown;
-                        player.actions.melee.damage = gameData.actions.melee.damage;
-                        player.actions.melee.duration = gameData.actions.melee.duration;
-                        player.actions.melee.range = gameData.actions.melee.range;
-                        player.actions.melee.size = gameData.actions.melee.size;
-                        player.actions.primary.buffer = gameData.actions.primary.buffer;
-                        player.actions.primary.burst.amount = gameData.actions.primary.burst.amount;
-                        player.actions.primary.burst.delay = gameData.actions.primary.burst.delay;
-                        player.actions.primary.magazine.currentAmmo = gameData.actions.primary.magazine.currentAmmo;
-                        player.actions.primary.magazine.currentReserve = gameData.actions.primary.magazine.currentReserve;
-                        player.actions.primary.magazine.maxReserve = gameData.actions.primary.magazine.maxReserve;
-                        player.actions.primary.magazine.size = gameData.actions.primary.magazine.size;
-                        player.actions.primary.offset = gameData.actions.primary.offset;
-                        player.actions.primary.projectile.amount = gameData.actions.primary.projectile.amount;
-                        player.actions.primary.projectile.color = gameData.actions.primary.projectile.color;
-                        player.actions.primary.projectile.damage = gameData.actions.primary.projectile.damage;
-                        player.actions.primary.projectile.length = gameData.actions.primary.projectile.length;
-                        player.actions.primary.projectile.range = gameData.actions.primary.projectile.range;
-                        player.actions.primary.projectile.size = gameData.actions.primary.projectile.size;
-                        player.actions.primary.projectile.speed = gameData.actions.primary.projectile.speed;
-                        player.actions.primary.projectile.spread = gameData.actions.primary.projectile.spread;
-                        player.actions.primary.projectile.unique = gameData.actions.primary.projectile.unique;
-                        player.actions.primary.reload.time = gameData.actions.primary.reload.time;
-                        player.actions.sprint.drain = gameData.actions.sprint.drain;
-                        player.actions.sprint.multiplier = gameData.actions.sprint.multiplier;
-                        player.equipment.crosshair = gameData.equipment.crosshair;
-                        player.physics.acceleration = gameData.physics.acceleration;
-                        player.physics.friction = gameData.physics.friction;
-                        player.rig.body = gameData.rig.body;
-                        player.rig.head = gameData.rig.head;
-                        player.rig.headwear = gameData.rig.headwear;
-                        player.rig.weapon = gameData.rig.weapon;
-                        player.stats.health.max = gameData.stats.health.max;
-                        player.stats.health.value = gameData.stats.health.max;
-                        player.stats.luck = gameData.stats.luck;
-                        player.stats.size = gameData.stats.size;
-                        player.stats.speed = gameData.stats.speed;
-                        player.stats.stamina.max = gameData.stats.stamina.max;
-                        player.stats.stamina.recovery.delay = gameData.stats.stamina.recovery.delay;
-                        player.stats.stamina.recovery.rate = gameData.stats.stamina.recovery.rate;
-                        player.stats.stamina.value = gameData.stats.stamina.value;
-                    }
+                    this.resumeGame(); // Unpause locally
+
+                    // Receive all player's spawn locations and reset their health
+                    this.players.forEach((player, playerId) => { // Respawn other players
+                        if (gameData.spawnMap[playerId]) {
+                            player.transform.pos.x = gameData.spawnMap[player.id].x;
+                            player.transform.pos.y = gameData.spawnMap[player.id].y;
+                            player.transform.rot = 0;
+
+                            // Reset vitals for good measure lol
+                            player.stats.health.value = player.stats.health.max;
+                            player.stats.stamina.value = player.stats.stamina.max;
+                        }
+                    });
                     break;
-                case 'upgrade-taken':
-                    if (gameData.upgradeId && gameData.isUnique) {
+                case 'upgrade-taken': // Someone else took an upgrade
+                    if (gameData.upgradeId && gameData.isUnique) { // That upgrade is unique - remove it from my local uniques pool
                         removeUpgradeFromPool(gameData.upgradeId);
                         console.log(`Unique upgrade ${gameData.upgradeId} taken by ${message.userId}`);
                     }
-                    break;
-                //
-                // #endregion
-                //
-                // #region [ Upgrade ]
-                //
-                case 'upgrade-complete':
-                    this.togglePause();
 
-                    // Winner is last paused player
-                    if (this.roundWinner === this.userId && this.pausedPlayers.size === 1) {
-                        this.showWinnerContinueButton();
-                    }
+                    if (this.roundWinner === this.userId) { // I am the round winner - how many players have taken upgrades?
+                        this.upgradesCompleted.add(message.userId);
+                        console.log(`${message.userId} completed upgrade. ${this.upgradesCompleted.size}/${this.players.size} done`);
 
-                    // If no one is paused anymore, everyone is done - start new round
-                    if (this.pausedPlayers.size === 0) {
-                        setTimeout(() => {
-                            this.startNewRound();
-                        }, 500);
+                        // Check if all losers are done
+                        if (this.upgradesCompleted.size >= this.players.size) {
+                            this.showWinnerContinueButton();
+                        }
                     }
                     break;
                 //
@@ -1566,7 +1427,7 @@ class GameClient {
         if (!winnerId) { // Everyone died somehow
             console.log('Round ended with no survivors!');
             setTimeout(() => {
-                this.startNewRound();
+                this.startNewRound(); //TODO Might need to adjust this because normally only the winner calls this
             }, GAME.ROUND_END_DELAY);
             return;
         }
@@ -1586,6 +1447,10 @@ class GameClient {
             // Update display to show new win count
             this.updateLeaderboardDisplay();
         }
+
+        setTimeout(() => {
+            this.pauseGame(); // Everybody pause locally
+        }, GAME.ROUND_END_DELAY / 6 ); // TODO: 500ms for testing
 
         // We have a winner, start the upgrade phase after a delay
         setTimeout(() => {
@@ -1618,18 +1483,32 @@ class GameClient {
     private startNewRound(): void {
         console.log('Starting new round...');
 
+        this.resumeGame(); // Unpause myself locally
+
+        this.isRoundInProgress = true;
+        this.roundWinner = null;
+
         // Reset myself
         this.myPlayer.stats.health.value = this.myPlayer.stats.health.max;
-        //TODO: Update spawning so it is not random
-        this.myPlayer.transform.pos.x = Math.random() * (CANVAS.WIDTH - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN;
-        this.myPlayer.transform.pos.y = Math.random() * (CANVAS.HEIGHT - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN;
 
         setSlider('healthBar', this.myPlayer.stats.health.value, this.myPlayer.stats.health.max);
         setSlider('staminaBar', this.myPlayer.stats.stamina.value, this.myPlayer.stats.stamina.max);
 
-        // Locally update all other players
+        // Generate a random position for the winner, and reserve in the new-round message
+        this.myPlayer.transform.pos.x = Math.random() * (CANVAS.WIDTH - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN;
+        this.myPlayer.transform.pos.y = Math.random() * (CANVAS.HEIGHT - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN;
+
+        const spawnDistance = 120; // How far away each player must spawn from each other (px)
+        const spawnMap = this.getSpawnMap(spawnDistance);
+
+        // Locally update all other players for the winner, their state should already be updated after taking upgrades
         // [ IMPORTANT ] Keep full track of Player object here
         this.players.forEach(player => {
+            const spawn = spawnMap[player.id];
+
+            player.transform.pos.x = spawn.x;
+            player.transform.pos.y = spawn.y;
+            player.transform.rot = player.transform.rot || 0;
             player.timestamp = player.timestamp || Date.now();
             player.actions.dash.cooldown = player.actions.dash.cooldown || PLAYER_DEFAULTS.ACTIONS.DASH.COOLDOWN;
             player.actions.dash.drain = player.actions.dash.drain || PLAYER_DEFAULTS.ACTIONS.DASH.DRAIN;
@@ -1678,100 +1557,51 @@ class GameClient {
             player.stats.stamina.value = player.stats.stamina.value || PLAYER_DEFAULTS.STATS.STAMINA.MAX;
         });
 
-        this.isRoundInProgress = true;
-        this.roundWinner = null;
-
-        // Notify others of new round with my spawn position
-        // [ IMPORTANT ] Keep full track of Player object here
+        // Send the spawn map to all other players
         this.roomManager.sendMessage(JSON.stringify({
             type: 'new-round',
-            transform: {
-                pos: {
-                    x: this.myPlayer.transform.pos.x,
-                    y: this.myPlayer.transform.pos.y
-                },
-                rot: this.myPlayer.transform.rot
-            },
-            timestamp: this.myPlayer.timestamp,
-            actions: {
-                dash: {
-                    cooldown: this.myPlayer.actions.dash.cooldown,
-                    drain: this.myPlayer.actions.dash.drain,
-                    multiplier: this.myPlayer.actions.dash.multiplier,
-                    time: this.myPlayer.actions.dash.time
-                },
-                melee: {
-                    cooldown: this.myPlayer.actions.melee.cooldown,
-                    damage: this.myPlayer.actions.melee.damage,
-                    duration: this.myPlayer.actions.melee.duration,
-                    range: this.myPlayer.actions.melee.range,
-                    size: this.myPlayer.actions.melee.size
-                },
-                primary: {
-                    buffer: this.myPlayer.actions.primary.buffer,
-                    burst: {
-                        amount: this.myPlayer.actions.primary.burst.amount,
-                        delay: this.myPlayer.actions.primary.burst.delay
-                    },
-                    magazine: {
-                        currentAmmo: this.myPlayer.actions.primary.magazine.currentAmmo,
-                        currentReserve: this.myPlayer.actions.primary.magazine.currentReserve,
-                        maxReserve: this.myPlayer.actions.primary.magazine.maxReserve,
-                        size: this.myPlayer.actions.primary.magazine.size
-                    },
-                    offset: this.myPlayer.actions.primary.offset,
-                    projectile: {
-                        amount: this.myPlayer.actions.primary.projectile.amount,
-                        color: this.myPlayer.actions.primary.projectile.color,
-                        damage: this.myPlayer.actions.primary.projectile.damage,
-                        length: this.myPlayer.actions.primary.projectile.length,
-                        range: this.myPlayer.actions.primary.projectile.range,
-                        size: this.myPlayer.actions.primary.projectile.size,
-                        speed: this.myPlayer.actions.primary.projectile.speed,
-                        spread: this.myPlayer.actions.primary.projectile.spread,
-                        unique: this.myPlayer.actions.primary.projectile.unique
-                    },
-                    reload: {
-                        time: this.myPlayer.actions.primary.reload.time
-                    }
-                },
-                sprint: {
-                    drain: this.myPlayer.actions.sprint.drain,
-                    multiplier: this.myPlayer.actions.sprint.multiplier
-                }
-            },
-            equipment: {
-                crosshair: this.myPlayer.equipment.crosshair
-            },
-            physics: {
-                acceleration: this.myPlayer.physics.acceleration,
-                friction: this.myPlayer.physics.friction
-            },
-            rig: {
-                body: this.myPlayer.rig.body,
-                head: this.myPlayer.rig.head,
-                headwear: this.myPlayer.rig.headwear,
-                weapon: this.myPlayer.rig.weapon
-            },
-            stats: {
-                health: {
-                    max: this.myPlayer.stats.health.max,
-                    value: this.myPlayer.stats.health.max,
-                },
-                luck: this.myPlayer.stats.luck,
-                size: this.myPlayer.stats.size,
-                speed: this.myPlayer.stats.speed,
-                stamina: {
-                    max: this.myPlayer.stats.stamina.max,
-                    recovery: {
-                        delay: this.myPlayer.stats.stamina.recovery.delay,
-                        rate: this.myPlayer.stats.stamina.recovery.rate
-                    },
-                    value: this.myPlayer.stats.stamina.max
-                },
-            }
+            spawnMap: spawnMap,
         }));
     }
+
+
+
+
+
+    private getSpawnMap(distance: number): { [playerId: string]: { x: number, y: number } } {
+        const spawnMap: { [playerId: string]: { x: number, y: number } } = {};
+        const usedSpawns: { x: number, y: number }[] = [];
+
+        spawnMap[this.userId] = {
+            x: this.myPlayer.transform.pos.x,
+            y: this.myPlayer.transform.pos.y
+        };
+        usedSpawns.push(spawnMap[this.userId]);
+
+        this.players.forEach(player => {
+            let spawn: { x: number, y: number };
+            let tries = 0;
+            do {
+                spawn = {
+                    x: Math.random() * (CANVAS.WIDTH - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN,
+                    y: Math.random() * (CANVAS.HEIGHT - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN
+                };
+                tries++;
+            } while (
+                usedSpawns.some(s => Math.hypot(s.x - spawn.x, s.y - spawn.y) < distance) &&
+                tries < 1000
+            );
+            usedSpawns.push(spawn);
+            spawnMap[player.id] = spawn;
+        });
+
+        return spawnMap;
+    }
+
+
+
+
+
     //
     // #endregion
 
@@ -2572,36 +2402,42 @@ class GameClient {
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             if (distance <= collisionRadius) {
-                this.myPlayer.actions.primary.magazine.currentReserve = Math.min( // Pick up ammo
-                    this.myPlayer.actions.primary.magazine.maxReserve,
-                    this.myPlayer.actions.primary.magazine.currentReserve + ammoBox.ammoAmount
-                );
+                // Calculate how much ammo can actually be picked up
+                const currentReserve = this.myPlayer.actions.primary.magazine.currentReserve;
+                const maxReserve = this.myPlayer.actions.primary.magazine.maxReserve;
+                const actualAmmoAdded = Math.min(ammoBox.ammoAmount, maxReserve - currentReserve);
 
-                this.spawnAmmoInReserveUI(ammoBox.ammoAmount)
+                // Only pick up if we can actually add ammo
+                if (actualAmmoAdded > 0) {
+                    this.myPlayer.actions.primary.magazine.currentReserve += actualAmmoAdded;
 
-                console.log(`Picked up ammo box! +${ammoBox.ammoAmount} bullets. Inventory: ${this.myPlayer.actions.primary.magazine.currentReserve}/${this.myPlayer.actions.primary.magazine.maxReserve}`);
+                    // Spawn UI bullets based on ACTUAL ammo added, not ammo box amount
+                    this.spawnAmmoInReserveUI(actualAmmoAdded);
 
-                // Generate random lid physics
-                const angle = Math.random() * Math.PI * 2;
-                const speed = 2 + Math.random() * 3;
+                    console.log(`Picked up ammo box! +${actualAmmoAdded} bullets. Inventory: ${this.myPlayer.actions.primary.magazine.currentReserve}/${this.myPlayer.actions.primary.magazine.maxReserve}`);
 
-                ammoBox.isOpen = true;
-                ammoBox.lid.velocity = {
-                    x: Math.cos(angle) * speed,
-                    y: Math.sin(angle) * speed
-                };
-                ammoBox.lid.torque = (Math.random() - 0.5) * 0.3;
+                    // Generate random lid physics
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 2 + Math.random() * 3;
 
-                // Broadcast pickup with full box state
-                this.roomManager.sendMessage(JSON.stringify({
-                    type: 'ammo-pickup',
-                    ammoBoxId: boxId,
-                    playerId: this.userId,
-                    boxState: {
-                        isOpen: true,
-                        lid: ammoBox.lid
-                    }
-                }));
+                    ammoBox.isOpen = true;
+                    ammoBox.lid.velocity = {
+                        x: Math.cos(angle) * speed,
+                        y: Math.sin(angle) * speed
+                    };
+                    ammoBox.lid.torque = (Math.random() - 0.5) * 0.3;
+
+                    // Broadcast pickup with full box state
+                    this.roomManager.sendMessage(JSON.stringify({
+                        type: 'ammo-pickup',
+                        ammoBoxId: boxId,
+                        playerId: this.userId,
+                        boxState: {
+                            isOpen: true,
+                            lid: ammoBox.lid
+                        }
+                    }));
+                }
             }
         })
     }
@@ -2918,7 +2754,11 @@ class GameClient {
 
         // Send start game message to other players
         this.roomManager.sendMessage(JSON.stringify({
-            type: 'start-game'
+            type: 'start-game',
+            hostSpawn: {
+                x: this.myPlayer.transform.pos.x,
+                y: this.myPlayer.transform.pos.y
+            }
         }));
 
         // Also start the game for myself as the host
@@ -2937,7 +2777,7 @@ class GameClient {
         this.myPlayer.actions.primary.magazine.currentAmmo = this.myPlayer.actions.primary.magazine.size;
         this.isReloading = false;
 
-        this.initializePlayer();
+        // this.initializePlayer();
         this.createLeaderboard();
 
         resetUpgrades();
@@ -2952,6 +2792,8 @@ class GameClient {
         this.roomManager.sendMessage(JSON.stringify({
             type: 'player-state',
             id: this.myPlayer.id,
+            timestamp: this.myPlayer.timestamp,
+            color: this.myPlayer.color,
             transform: {
                 pos: {
                     x: this.myPlayer.transform.pos.x,
@@ -2959,8 +2801,6 @@ class GameClient {
                 },
                 rot: this.myPlayer.transform.rot
             },
-            timestamp: this.myPlayer.timestamp,
-            color: this.myPlayer.color,
             actions: {
                 dash: {
                     cooldown: this.myPlayer.actions.dash.cooldown,
@@ -3099,35 +2939,6 @@ class GameClient {
     }
 
     /**
-     * Call this function to toggle the pause state.
-     * 
-     * Uses consensus among players to pause the game rendering loop, or unpause it.
-     */
-    public togglePause(): void {
-        if (!this.gameRunning) return;
-
-        const isPaused = this.pausedPlayers.has(this.userId);
-
-        if (isPaused) { // I want to unpause
-            this.pausedPlayers.delete(this.userId);
-            this.roomManager.sendMessage(JSON.stringify({
-                type: 'player-unpause',
-                userId: this.userId
-            }));
-            console.log('Requesting unpause...');
-        } else { // I want to pause
-            this.pausedPlayers.add(this.userId);
-            this.roomManager.sendMessage(JSON.stringify({
-                type: 'player-pause',
-                userId: this.userId
-            }));
-            console.log('Requesting pause...');
-        }
-
-        this.updatePauseState(); // Check if game should be paused
-    }
-
-    /**
      * Pauses the game when called. Triggered through togglePause when state is correct.
      */
     public pauseGame(): void {
@@ -3154,21 +2965,6 @@ class GameClient {
     }
 
     /**
-     * Updates the pause state. Triggered through flow stated in togglePause.
-     */
-    private updatePauseState(): void {
-        const shouldPause = this.pausedPlayers.size > 0;
-
-        if (shouldPause && !this.gamePaused) {
-            this.pauseGame();
-            console.log(`Game paused. ${this.pausedPlayers.size} player(s) paused.`);
-        } else if (!shouldPause && this.gamePaused) {
-            this.resumeGame();
-            console.log('Game resumed. All players unpaused.');
-        }
-    }
-
-    /**
      * Resets the game state to default.
      */
     private resetGameState(resetType: ResetType): void {
@@ -3190,7 +2986,7 @@ class GameClient {
         this.decals.clear();
         this.particles.clear();
         this.emitters.clear();
-        this.pausedPlayers.clear();
+        this.upgradesCompleted.clear();
 
         if (resetType === 'Room') {
             this.lobbyPlayers.clear();
@@ -3220,7 +3016,8 @@ class GameClient {
      */
     private startUpgradePhase(winnerId: string | null): void {
         console.log('Starting upgrade phase...');
-        this.togglePause();
+
+        this.upgradesCompleted.clear(); // Reset upgrade tracking
 
         // Show upgrade UI based on if I won or lost
         if (winnerId === this.userId) {
@@ -3268,10 +3065,10 @@ class GameClient {
             console.log("Winner pressed continue...");
 
             this.upgradeContainer.style.display = 'none';
-            this.roomManager.sendMessage(JSON.stringify({
-                type: 'upgrade-complete',
-                userId: this.userId
-            }));
+
+            setTimeout(() => {
+                this.startNewRound();
+            }, GAME.NEW_ROUND_DELAY);
         };
 
         this.upgradeContainer.appendChild(waitingDiv);
@@ -3337,28 +3134,114 @@ class GameClient {
             this.toggleEquipment('crosshair');
         }
 
-        // Notify others about upgrade taken
-        this.roomManager.sendMessage(JSON.stringify({
-            type: 'upgrade-taken',
-            upgradeId: upgradeId,
-            userId: this.userId,
-            isUnique: UPGRADES.find(u => u.id === upgradeId)?.unique || false
-        }));
-
-        this.finishUpgrade();
+        this.finishUpgrade(upgradeId);
     }
 
     /**
      * Closes upgrade loop for loser once they have selected an upgrade.
      */
-    private finishUpgrade(): void {
+    private finishUpgrade(selectedUpgradeId: string): void {
         if (this.upgradeContainer) { // Hide upgrade UI
             this.upgradeContainer.style.display = 'none';
         }
 
-        this.roomManager.sendMessage(JSON.stringify({ // Signal I'm done with upgrades
-            type: 'upgrade-complete',
-            userId: this.userId
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'upgrade-taken',
+            upgradeId: selectedUpgradeId,
+            userId: this.userId,
+            isUnique: UPGRADES.find(u => u.id === selectedUpgradeId)?.unique || false
+        }));
+
+        // [ IMPORTANT ] Keep full track of Player object here
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'player-state',
+            id: this.myPlayer.id,
+            timestamp: this.myPlayer.timestamp,
+            color: this.myPlayer.color,
+            transform: {
+                pos: {
+                    x: this.myPlayer.transform.pos.x,
+                    y: this.myPlayer.transform.pos.y,
+                },
+                rot: this.myPlayer.transform.rot
+            },
+            actions: {
+                dash: {
+                    cooldown: this.myPlayer.actions.dash.cooldown,
+                    drain: this.myPlayer.actions.dash.drain,
+                    multiplier: this.myPlayer.actions.dash.multiplier,
+                    time: this.myPlayer.actions.dash.time
+                },
+                melee: {
+                    cooldown: this.myPlayer.actions.melee.cooldown,
+                    damage: this.myPlayer.actions.melee.damage,
+                    duration: this.myPlayer.actions.melee.duration,
+                    range: this.myPlayer.actions.melee.range,
+                    size: this.myPlayer.actions.melee.size
+                },
+                primary: {
+                    buffer: this.myPlayer.actions.primary.buffer,
+                    burst: {
+                        amount: this.myPlayer.actions.primary.burst.amount,
+                        delay: this.myPlayer.actions.primary.burst.delay
+                    },
+                    magazine: {
+                        currentAmmo: this.myPlayer.actions.primary.magazine.currentAmmo,
+                        currentReserve: this.myPlayer.actions.primary.magazine.currentReserve,
+                        maxReserve: this.myPlayer.actions.primary.magazine.maxReserve,
+                        size: this.myPlayer.actions.primary.magazine.size
+                    },
+                    offset: this.myPlayer.actions.primary.offset,
+                    projectile: {
+                        amount: this.myPlayer.actions.primary.projectile.amount,
+                        color: this.myPlayer.actions.primary.projectile.color,
+                        damage: this.myPlayer.actions.primary.projectile.damage,
+                        length: this.myPlayer.actions.primary.projectile.length,
+                        range: this.myPlayer.actions.primary.projectile.range,
+                        size: this.myPlayer.actions.primary.projectile.size,
+                        speed: this.myPlayer.actions.primary.projectile.speed,
+                        spread: this.myPlayer.actions.primary.projectile.spread,
+                        unique: this.myPlayer.actions.primary.projectile.unique
+                    },
+                    reload: {
+                        time: this.myPlayer.actions.primary.reload.time
+                    }
+                },
+                sprint: {
+                    drain: this.myPlayer.actions.sprint.drain,
+                    multiplier: this.myPlayer.actions.sprint.multiplier
+                }
+            },
+            equipment: {
+                crosshair: this.myPlayer.equipment.crosshair
+            },
+            physics: {
+                acceleration: this.myPlayer.physics.acceleration,
+                friction: this.myPlayer.physics.friction
+            },
+            rig: {
+                body: this.myPlayer.rig.body,
+                head: this.myPlayer.rig.head,
+                headwear: this.myPlayer.rig.headwear,
+                weapon: this.myPlayer.rig.weapon
+            },
+            stats: {
+                health: {
+                    max: this.myPlayer.stats.health.max,
+                    value: this.myPlayer.stats.health.max
+                },
+                luck: this.myPlayer.stats.luck,
+                size: this.myPlayer.stats.size,
+                speed: this.myPlayer.stats.speed,
+                stamina: {
+                    max: this.myPlayer.stats.stamina.max,
+                    recovery: {
+                        delay: this.myPlayer.stats.stamina.recovery.delay,
+                        rate: this.myPlayer.stats.stamina.recovery.rate
+                    },
+                    value: this.myPlayer.stats.stamina.max
+                }
+            }
         }));
 
         console.log('Upgrade selected, waiting for others...');
@@ -3398,11 +3281,9 @@ class GameClient {
     // #region [ Leaderboard ]
     //
     /**
-     * Initialize the leaderboard, or update it if it already exists.
+     * Locally initialize the leaderboard, or update it if it already exists.
      */
     private createLeaderboard(): void {
-        console.log('Creating/updating leaderboard for all players');
-
         // Create a set of all players
         const allPlayers = new Set<string>();
         allPlayers.add(this.userId);

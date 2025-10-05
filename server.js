@@ -138,7 +138,57 @@ function handleRoomMessage(ws, message) {
           try {
             const gameData = JSON.parse(message.message);
 
-            // Handle lobby options changes
+            // [ Spawn Generation ]
+            //
+            if (gameData.type === 'start-game') {
+              const room = rooms.get(message.roomId);
+              if (!room) break;
+
+              // Generate spawn points for all participants
+              const usedSpawns = [];
+              const minDist = 120;
+              room.spawnMap = room.spawnMap || {};
+
+              room.spawnMap[message.userId] = gameData.hostSpawn;
+              usedSpawns.push(gameData.hostSpawn);
+
+              room.participants.forEach(client => {
+                if (room.spawnMap[client.userId]) return;
+
+                let spawn, tries = 0;
+                do {
+                  spawn = {
+                    x: Math.random() * (800 - 2 * 15) + 15, // Use your CANVAS.WIDTH and BORDER_MARGIN
+                    y: Math.random() * (600 - 2 * 15) + 15
+                  };
+                  tries++;
+                } while (
+                  usedSpawns.some(s => Math.hypot(s.x - spawn.x, s.y - spawn.y) < minDist) &&
+                  tries < 1000
+                );
+                usedSpawns.push(spawn);
+                room.spawnMap[client.userId] = spawn;
+              });
+
+              // Attach spawnMap to the outgoing message
+              gameData.spawnMap = room.spawnMap;
+              message.message = JSON.stringify(gameData);
+              console.log("Spawn map generated!")
+              console.log(gameData.spawnMap);
+            }
+
+            if (gameData.type === 'new-round') {
+              if (!gameData.spawnMap) return;
+
+              gameData.spawnMap = gameData.spawnMap;
+              message.message = JSON.stringify(gameData);
+
+              console.log("Spawn map received.");
+              console.log(gameData.spawnMap);
+            }
+
+            // [ Lobby Options Changes ]
+            //
             if (gameData.type === 'lobby-options') {
               const room = rooms.get(message.roomId);
               if (room && room.hostUserId === message.userId) {
@@ -231,28 +281,39 @@ function joinRoom(ws, roomId, userId) {
   }
 
   const room = rooms.get(roomId);
+
+  // Check if room is full
+  if (room.participants.size >= room.maxPlayers) {
+    ws.send(JSON.stringify({
+      type: 'room-error',
+      message: 'Room is full',
+      userId: 'server'
+    }));
+    return;
+  }
+
+  // Check if game is active
+  if (room.gameActive) {
+    ws.send(JSON.stringify({
+      type: 'room-error',
+      message: 'Game already in progress.',
+      userId: 'server'
+    }));
+    return;
+  }
+
+  // Only now add the client to the room
   room.participants.add(ws);
   ws.currentRoom = roomId;
   ws.userId = userId;
 
-  // Check if game is active and send appropriate response
-  if (room.gameActive) {
-    // Game in progress - join directly into game
-    ws.send(JSON.stringify({
-      type: 'room-joined-game',
-      roomId: roomId,
-      userId: 'server',
-      gameActive: true
-    }));
-  } else {
-    // Join lobby
-    ws.send(JSON.stringify({
-      type: 'room-joined',
-      roomId: roomId,
-      userId: 'server',
-      gameActive: false
-    }));
-  }
+  // Join lobby
+  ws.send(JSON.stringify({
+    type: 'room-joined',
+    roomId: roomId,
+    userId: 'server',
+    gameActive: false
+  }));
 
   // Notify others in room
   broadcastToRoom(roomId, {
@@ -263,7 +324,6 @@ function joinRoom(ws, roomId, userId) {
 
   console.log(`User ${userId} joined room ${roomId} (game active: ${room.gameActive})`);
 }
-
 function leaveRoom(ws, roomId) {
   if (!rooms.has(roomId)) return;
 
