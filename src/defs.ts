@@ -11,7 +11,7 @@ export interface GameObject {
   timestamp: number;
 }
 
-export type ObjectType = 'AmmoBox' | 'Player' | 'Projectile'; 
+export type ObjectType = 'AmmoBox' | 'Player' | 'Projectile';
 
 export interface Player extends GameObject {
   actions: {
@@ -50,7 +50,6 @@ export interface Player extends GameObject {
         size: number;
         speed: number;
         spread: number;
-        unique: string[];
       }
       reload: { time: number; }
     }
@@ -60,9 +59,7 @@ export interface Player extends GameObject {
     }
   }
   color: string;
-  equipment: {
-    crosshair: boolean;
-  }
+  equipment: string[],
   physics: {
     acceleration: number;
     friction: number;
@@ -90,6 +87,7 @@ export interface Player extends GameObject {
       value: number;
     }
   }
+  unique: string[];
 }
 
 export interface Projectile extends GameObject {
@@ -121,6 +119,12 @@ export interface SpawnObjectParams {
 }
 
 export interface GameOptions {
+  audio: {
+    mixer: {
+      master: number;
+      sfx: number;
+    }
+  }
   controls: {
     keybinds: {
       dash: string;
@@ -136,11 +140,11 @@ export interface GameOptions {
 }
 
 export interface AnimationParams {
-    playerId: string;
-    part: string;
-    frames: { [key: number]: { x: number, y: number } };
-    duration: number;
-    partIndex?: number;
+  playerId: string;
+  part: string;
+  frames: { [key: number]: { x: number, y: number } };
+  duration: number;
+  partIndex?: number;
 }
 
 export interface RoomMessage {
@@ -168,3 +172,33 @@ export interface LeaderboardEntry {
 export type Leaderboard = Map<string, LeaderboardEntry>;
 
 export type ResetType = 'Room' | 'Lobby'
+
+export interface AudioParams {
+  delay?: {
+    min: number;
+    max: number;
+  }
+  loop?: boolean;
+  output?: string;
+  priority?: number;
+  pitch?: {
+    min: number;
+    max: number;
+  };
+  spatial?: {
+    blend?: number;
+    pos?: Vec2;
+    rolloff?: {
+      distance: number;
+      factor: number;
+      type?: 'linear' | 'logarithmic';
+    }
+  }
+  src: string;
+  volume?: {
+    min: number;
+    max: number;
+  };
+}
+
+export type AttackType = 'melee' | 'ranged';

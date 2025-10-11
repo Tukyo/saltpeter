@@ -7,11 +7,11 @@ export const PLAYER_DEFAULTS = {
             TIME: 150 // ms
         },
         MELEE: {
-            COOLDOWN: 600, // ms
-            DAMAGE: 35,
+            COOLDOWN: 250, // ms
+            DAMAGE: 10,
             DURATION: 100, // ms
-            RANGE: 40, // px
-            SIZE: 18, // px^2 area at tip
+            RANGE: 10, // px
+            SIZE: 2, // px^2 area at tip
         },
         PRIMARY: {
             BUFFER: 100, // ms
@@ -48,9 +48,7 @@ export const PLAYER_DEFAULTS = {
     DATA: {
         ID_LENGTH: 12
     },
-    EQUIPMENT: {
-        CROSSHAIR: false,
-    },
+    EQUIPMENT: [],
     PHYSICS: {
         ACCELERATION: 0.55,
         FRICTION: 0.85
@@ -76,6 +74,7 @@ export const PLAYER_DEFAULTS = {
             }
         }
     },
+    UNIQUE: [],
     VISUAL: {
         ID_DISPLAY_OFFSET: 25
     }
@@ -142,6 +141,16 @@ export const PARTICLES = {
             MIN: 800,
             MAX: 1000
         },
+        NOISE: {
+            STRENGTH: {
+                MIN: 0,
+                MAX: 0
+            },
+            SCALE: {
+                MIN: 0,
+                MAX: 0
+            }
+        },
         OPACITY: {
             MIN: 0.25,
             MAX: 0.75
@@ -149,6 +158,10 @@ export const PARTICLES = {
         SPEED: {
             MIN: 0.25,
             MAX: 0.75
+        },
+        SIZE_OVER_LIFETIME: {
+            MIN: 0,
+            MAX: 0
         },
         SIZE: {
             MIN: 0.125,
@@ -174,6 +187,16 @@ export const PARTICLES = {
             MIN: 150,
             MAX: 1200
         },
+        NOISE: {
+            STRENGTH: {
+                MIN: 0,
+                MAX: 0
+            },
+            SCALE: {
+                MIN: 0,
+                MAX: 0
+            }
+        },
         OPACITY: {
             MIN: 0.425,
             MAX: 0.775
@@ -181,6 +204,10 @@ export const PARTICLES = {
         SPEED: {
             MIN: 1.5,
             MAX: 4.75
+        },
+        SIZE_OVER_LIFETIME: {
+            MIN: 0,
+            MAX: 0
         },
         SIZE: {
             MIN: 0.75,
@@ -206,6 +233,16 @@ export const PARTICLES = {
             MIN: 150,
             MAX: 300
         },
+        NOISE: {
+            STRENGTH: {
+                MIN: 0,
+                MAX: 0
+            },
+            SCALE: {
+                MIN: 0,
+                MAX: 0
+            }
+        },
         OPACITY: {
             MIN: 0.4,
             MAX: 0.8
@@ -213,6 +250,10 @@ export const PARTICLES = {
         SPEED: {
             MIN: 4,
             MAX: 10
+        },
+        SIZE_OVER_LIFETIME: {
+            MIN: 0,
+            MAX: 0
         },
         SIZE: {
             MIN: 1,
@@ -238,6 +279,16 @@ export const PARTICLES = {
             MIN: 250,
             MAX: 550
         },
+        NOISE: {
+            STRENGTH: {
+                MIN: 0,
+                MAX: 0
+            },
+            SCALE: {
+                MIN: 0,
+                MAX: 0
+            }
+        },
         OPACITY: {
             MIN: 1.0,
             MAX: 1.0
@@ -245,6 +296,10 @@ export const PARTICLES = {
         SPEED: {
             MIN: 5,
             MAX: 8
+        },
+        SIZE_OVER_LIFETIME: {
+            MIN: 0,
+            MAX: 0
         },
         SIZE: {
             MIN: 2,
@@ -260,11 +315,103 @@ export const PARTICLES = {
         SPREAD: 0.4,
         STAIN: false,
         COLOR: "#d4af37"
+    },
+    SMOKE: {
+        COUNT: {
+            MIN: 3,
+            MAX: 6
+        },
+        LIFETIME: {
+            MIN: 800,
+            MAX: 1400
+        },
+        NOISE: {
+            STRENGTH: {
+                MIN: 0.1,
+                MAX: 0.3
+            },
+            SCALE: {
+                MIN: 40,
+                MAX: 80
+            }
+        },
+        OPACITY: {
+            MIN: 0.15,
+            MAX: 0.35
+        },
+        SPEED: {
+            MIN: 0.5,
+            MAX: 1.5
+        },
+        SIZE: {
+            MIN: 4,
+            MAX: 8
+        },
+        SIZE_OVER_LIFETIME: {
+            MIN: 2,
+            MAX: 3
+        },
+        TORQUE: {
+            MIN: -180,
+            MAX: 180
+        },
+        COLLIDE: false,
+        FADE: true,
+        PAINT: false,
+        SPREAD: 0.4,
+        STAIN: false,
+        COLOR: "#5a5a5a"
+    },
+    SPARKS: {
+        COUNT: {
+            MIN: 8,
+            MAX: 16
+        },
+        LIFETIME: {
+            MIN: 150,
+            MAX: 300
+        },
+        NOISE: {
+            STRENGTH: {
+                MIN: 0.25,
+                MAX: 5
+            },
+            SCALE: {
+                MIN: 0.25,
+                MAX: 1.5
+            }
+        },
+        OPACITY: {
+            MIN: 0.4,
+            MAX: 0.8
+        },
+        SPEED: {
+            MIN: 4,
+            MAX: 10
+        },
+        SIZE: {
+            MIN: 1,
+            MAX: 3
+        },
+        SIZE_OVER_LIFETIME: {
+            MIN: 0,
+            MAX: 0
+        },
+        TORQUE: {
+            MIN: -720,
+            MAX: 720
+        },
+        COLLIDE: false,
+        FADE: true,
+        PAINT: false,
+        SPREAD: 0.6,
+        STAIN: false,
+        COLOR: "#ffaa00"
     }
 };
 
 export const AMMO_BOX = {
-    BODY: '/assets/img/object/ammobox/body.png',
+    BASE: '/assets/img/object/ammobox/base.png',
     BULLETS: '/assets/img/object/ammobox/bullets.png',
     LID: '/assets/img/object/ammobox/lid.png',
 }
@@ -321,3 +468,72 @@ export const NETWORK = {
     MOVE_INTERVAL: 10, //ms
     ROTATE_INTERVAL: 25 //ms
 }
+
+export const AUDIO = {
+    MIXER: {
+        MASTER: 1.0,
+        SFX: 0.5
+    },
+    SETTINGS: {
+        MAX_CONCURRENT: 5, // Max simultaneous instances of same sound
+        POOL_SIZE: 10, // Number of Audio objects per sound
+        PRELOAD_SOUNDS: true
+    }
+};
+
+// Standardized weapon SFX configuration structure example
+export const SFX = {
+    IMPACT: {
+        FLESH: {
+            BULLET: [
+                '/assets/audio/sfx/impact/flesh/bullet/impact_flesh_bullet_00.ogg',
+                '/assets/audio/sfx/impact/flesh/bullet/impact_flesh_bullet_01.ogg',
+                '/assets/audio/sfx/impact/flesh/bullet/impact_flesh_bullet_02.ogg',
+                '/assets/audio/sfx/impact/flesh/bullet/impact_flesh_bullet_03.ogg',
+                '/assets/audio/sfx/impact/flesh/bullet/impact_flesh_bullet_04.ogg',
+                '/assets/audio/sfx/impact/flesh/bullet/impact_flesh_bullet_05.ogg'
+            ]
+        },
+        METAL: {
+            BULLET: [
+                '/assets/audio/sfx/impact/metal/bullet/impact_metal_bullet_00.ogg',
+                '/assets/audio/sfx/impact/metal/bullet/impact_metal_bullet_01.ogg',
+                '/assets/audio/sfx/impact/metal/bullet/impact_metal_bullet_02.ogg',
+                '/assets/audio/sfx/impact/metal/bullet/impact_metal_bullet_03.ogg',
+                '/assets/audio/sfx/impact/metal/bullet/impact_metal_bullet_04.ogg'
+            ] 
+        }
+    },
+    WEAPON: {
+        GLOCK: {
+            ATTACK: [
+                '/assets/audio/sfx/weapons/glock/glock_attack_00.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_attack_01.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_attack_02.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_attack_03.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_attack_04.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_attack_05.ogg'
+            ],
+            SHELL: [
+                '/assets/audio/sfx/weapons/glock/glock_shell_00.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_01.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_02.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_03.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_04.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_05.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_06.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_07.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_08.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_09.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_10.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_11.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_12.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_13.ogg',
+                '/assets/audio/sfx/weapons/glock/glock_shell_14.ogg'
+            ],
+            EMPTY: [
+                '/assets/audio/sfx/weapons/glock/glock_empty_00.ogg'
+            ]
+        }
+    }
+};

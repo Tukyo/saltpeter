@@ -1,8 +1,8 @@
-import { generateUID, getRandomColor, hexToRgb, setSlider, updateToggle, updateInput, forward } from './utils';
+import { generateUID, getRandomColor, hexToRgb, setSlider, updateToggle, updateInput, forward, getRandomInArray, getRandomInt } from './utils';
 import { RoomManager } from './roomManager';
-import { Player, RoomMessage, Projectile, LobbyPlayer, Leaderboard, LeaderboardEntry, AmmoBox, ResetType, GameOptions, AnimationParams, GameObject, SpawnObjectParams, Vec2 } from './defs';
-import { PLAYER_DEFAULTS, CANVAS, GAME, UI, CHAT, DECALS, PARTICLES, AMMO_BOX, NETWORK } from './config';
-import { applyUpgrade, getUpgrades, removeUpgradeFromPool, resetUpgrades, UPGRADES } from './upgrades';
+import { Player, RoomMessage, Projectile, LobbyPlayer, Leaderboard, LeaderboardEntry, AmmoBox, ResetType, GameOptions, AnimationParams, GameObject, SpawnObjectParams, AudioParams, Vec2, AttackType } from './defs';
+import { PLAYER_DEFAULTS, CANVAS, GAME, UI, CHAT, DECALS, PARTICLES, AMMO_BOX, NETWORK, SFX, AUDIO } from './config';
+import { applyUpgrade, getUpgrades, hasEquipment, removeUpgradeFromPool, resetUpgrades, UPGRADES } from './upgrades';
 import { CHARACTER_DECALS, CharacterLayer, getCharacterAsset } from './char';
 
 class GameClient {
@@ -37,8 +37,6 @@ class GameClient {
     private upgradeContainer: HTMLElement | null = null;
     private leaderboardContainer: HTMLDivElement | null = null;
     private leaderboardBody: HTMLTableSectionElement | null = null;
-
-    private crosshair: HTMLElement | null = null;
 
     private modal: HTMLElement | null = null;
     private modalInput: HTMLInputElement | null = null;
@@ -101,12 +99,16 @@ class GameClient {
         fade: boolean,
         hasCollided: boolean,
         id: string,
+        initialSize: number,
         lifetime: number,
         maxOpacity: number,
+        noiseStrength: number,
+        noiseScale: number,
         opacity: number,
         paint: boolean,
         rotation: number,
         size: number,
+        sizeOverLifetime: number,
         stain: boolean,
         torque: number,
         velocityX: number,
@@ -127,6 +129,8 @@ class GameClient {
 
     private projectiles: Map<string, Projectile> = new Map();
     private ammoBoxes: Map<string, AmmoBox> = new Map();
+
+    private audioPool: AudioPool = new AudioPool(AUDIO.SETTINGS.POOL_SIZE, AUDIO.SETTINGS.MAX_CONCURRENT);
 
     // Game
     private gamePaused = false; // Tracks paused state of game
@@ -237,14 +241,12 @@ class GameClient {
 
         this.upgradeContainer = document.getElementById('upgradeContainer') as HTMLElement;
 
-        this.crosshair = document.getElementById('crosshair') as HTMLElement;
-
         this.leaderboardContainer = document.getElementById("leaderboardContainer") as HTMLDivElement;
         this.leaderboardBody = document.getElementById("leaderboardBody") as HTMLTableSectionElement;
 
-        this.hostButton = document.getElementById("hostBtn") as HTMLButtonElement;
-        this.joinButton = document.getElementById("joinBtn") as HTMLButtonElement;
-        this.quickplayButton = document.getElementById("quickBtn") as HTMLButtonElement;
+        this.hostButton = document.getElementById("atomHost") as HTMLButtonElement;
+        this.joinButton = document.getElementById("atomJoin") as HTMLButtonElement;
+        this.quickplayButton = document.getElementById("atomQuickplay") as HTMLButtonElement;
 
         this.lobbyLeaveButton = document.getElementById("lobbyLeaveBtn") as HTMLButtonElement;
         this.lobbyCodeButton = document.getElementById("lobbyCodeBtn") as HTMLButtonElement;
@@ -266,7 +268,7 @@ class GameClient {
             !this.lobbyPlayersList || !this.startGameBtn || !this.gameOptionsContainer ||
             !this.chatContainer || !this.chatMessages || !this.chatInput || !this.chatSendBtn ||
             !this.privateToggle || !this.upgradesToggle || !this.winsInput || !this.playersInput ||
-            !this.upgradeContainer || !this.crosshair || !this.leaderboardContainer ||
+            !this.upgradeContainer || !this.leaderboardContainer ||
             !this.leaderboardBody || !this.hostButton || !this.joinButton || !this.quickplayButton ||
             !this.lobbyLeaveButton || !this.lobbyCodeButton || !this.gameLeaveButton ||
             !this.gameCodeButton) {
@@ -294,6 +296,10 @@ class GameClient {
 
         this.userIdDisplay.textContent = this.userId;
         this.showRoomControls();
+
+        if (AUDIO.SETTINGS.PRELOAD_SOUNDS) {
+            this.preloadAudioAssets();
+        }
     }
 
     /**
@@ -409,7 +415,7 @@ class GameClient {
                     this.startDash();
                     break;
                 case keybinds.melee:
-                    if (this.canMelee()) this.startMelee();
+                    if (this.canMelee()) this.triggerAttack('melee');
                     break;
                 case keybinds.reload:
                     this.startReload();
@@ -451,7 +457,7 @@ class GameClient {
 
         if (e.button === 0 && this.canShoot && !this.isBurstActive && !this.isMelee) { // Left mouse button
             this.updateMouse(e);
-            this.startBurst(); // Trigger burst on click
+            this.triggerAttack('ranged');
             this.canShoot = false; // Prevent shooting until mouse up
         }
     }
@@ -497,12 +503,6 @@ class GameClient {
 
             this.lastSentRotation = rotation;
             this.lastSentRotationTime = now;
-        }
-
-        // TODO: Create a global equipment function that can be called when you need to check for specific upgrades
-        if (this.crosshair && this.myPlayer.equipment.crosshair) {
-            this.crosshair.style.left = `${e.clientX}px`;
-            this.crosshair.style.top = `${e.clientY}px`;
         }
     }
 
@@ -733,8 +733,7 @@ class GameClient {
                                         range: gameData.actions?.primary.projectile.range || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.RANGE,
                                         size: gameData.actions?.primary.projectile.size || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SIZE,
                                         speed: gameData.actions?.primary.projectile.speed || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPEED,
-                                        spread: gameData.actions?.primary.projectile.spread || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD,
-                                        unique: gameData.actions?.primary.projectile.unique || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.UNIQUE
+                                        spread: gameData.actions?.primary.projectile.spread || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD
                                     },
                                     reload: {
                                         time: gameData.actions?.primary.reload.time || PLAYER_DEFAULTS.ACTIONS.PRIMARY.RELOAD.TIME
@@ -745,9 +744,7 @@ class GameClient {
                                     multiplier: gameData.actions?.sprint.multiplier || PLAYER_DEFAULTS.ACTIONS.SPRINT.MULTIPLIER
                                 }
                             },
-                            equipment: {
-                                crosshair: gameData.equipment?.crosshair || PLAYER_DEFAULTS.EQUIPMENT.CROSSHAIR
-                            },
+                            equipment: gameData.equipment || PLAYER_DEFAULTS.EQUIPMENT,
                             physics: {
                                 acceleration: gameData.physics?.acceleration || PLAYER_DEFAULTS.PHYSICS.ACCELERATION,
                                 friction: gameData.physics?.friction || PLAYER_DEFAULTS.PHYSICS.FRICTION
@@ -774,7 +771,8 @@ class GameClient {
                                     },
                                     value: gameData.stats?.stamina.value || PLAYER_DEFAULTS.STATS.STAMINA.MAX,
                                 },
-                            }
+                            },
+                            unique: gameData.unique || PLAYER_DEFAULTS.UNIQUE
                         });
                     }
 
@@ -970,6 +968,16 @@ class GameClient {
                         if (this.upgradesCompleted.size >= this.players.size) {
                             this.showWinnerContinueButton();
                         }
+                    }
+                    break;
+                //
+                // #endregion
+                //
+                // #region [ Audio ]
+                //
+                case 'play-audio':
+                    if (message.userId !== this.userId) {
+                        this.playAudio(gameData.params);
                     }
                     break;
                 //
@@ -1450,7 +1458,7 @@ class GameClient {
 
         setTimeout(() => {
             this.pauseGame(); // Everybody pause locally
-        }, GAME.ROUND_END_DELAY / 6 ); // TODO: 500ms for testing
+        }, GAME.ROUND_END_DELAY / 6);
 
         // We have a winner, start the upgrade phase after a delay
         setTimeout(() => {
@@ -1535,11 +1543,10 @@ class GameClient {
             player.actions.primary.projectile.size = player.actions.primary.projectile.size || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SIZE;
             player.actions.primary.projectile.speed = player.actions.primary.projectile.speed || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPEED;
             player.actions.primary.projectile.spread = player.actions.primary.projectile.spread || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD;
-            player.actions.primary.projectile.unique = player.actions.primary.projectile.unique || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.UNIQUE;
             player.actions.primary.reload.time = player.actions.primary.reload.time || PLAYER_DEFAULTS.ACTIONS.PRIMARY.RELOAD.TIME;
             player.actions.sprint.drain = player.actions.sprint.drain || PLAYER_DEFAULTS.ACTIONS.SPRINT.DRAIN;
             player.actions.sprint.multiplier = player.actions.sprint.multiplier || PLAYER_DEFAULTS.ACTIONS.SPRINT.MULTIPLIER;
-            player.equipment.crosshair = player.equipment.crosshair || PLAYER_DEFAULTS.EQUIPMENT.CROSSHAIR;
+            player.equipment = player.equipment || PLAYER_DEFAULTS.EQUIPMENT;
             player.physics.acceleration = player.physics.acceleration || PLAYER_DEFAULTS.PHYSICS.ACCELERATION;
             player.physics.friction = player.physics.friction || PLAYER_DEFAULTS.PHYSICS.FRICTION;
             player.rig.body = player.rig.body || PLAYER_DEFAULTS.RIG.BODY;
@@ -1555,6 +1562,7 @@ class GameClient {
             player.stats.stamina.recovery.delay = player.stats.stamina.recovery.delay || PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.DELAY;
             player.stats.stamina.recovery.rate = player.stats.stamina.recovery.rate || PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.RATE;
             player.stats.stamina.value = player.stats.stamina.value || PLAYER_DEFAULTS.STATS.STAMINA.MAX;
+            player.unique = player.unique || PLAYER_DEFAULTS.UNIQUE
         });
 
         // Send the spawn map to all other players
@@ -1564,10 +1572,11 @@ class GameClient {
         }));
     }
 
-
-
-
-
+    /**
+     * Creates a spawn map for player start locations in a new round.
+     * 
+     * This value is generated by the winner or the host, and is sent to the server for distribution.
+     */
     private getSpawnMap(distance: number): { [playerId: string]: { x: number, y: number } } {
         const spawnMap: { [playerId: string]: { x: number, y: number } } = {};
         const usedSpawns: { x: number, y: number }[] = [];
@@ -1597,11 +1606,6 @@ class GameClient {
 
         return spawnMap;
     }
-
-
-
-
-
     //
     // #endregion
 
@@ -1679,6 +1683,24 @@ class GameClient {
     // #endregion
 
     // #region [ Attack ]
+
+    /**
+     * Entrypoint for triggering attacks based on type needed.
+     */
+    private triggerAttack(type: AttackType): void {
+        switch (type) {
+            case 'melee':
+                this.startMelee();
+                break;
+            case 'ranged':
+                this.startBurst();
+                break;
+            default:
+                console.warn(`Unknown attack type: ${type}`);
+                break;
+        }
+    }
+
     /**
      * Responsible for what happens during attack actions.
      */
@@ -1700,7 +1722,10 @@ class GameClient {
             // Check if we still have ammo and haven't finished the intended burst amount
             const ammoNeeded = this.myPlayer.actions.primary.burst.amount;
             if (this.myPlayer.actions.primary.magazine.currentAmmo > 0 && this.currentBurstShot < ammoNeeded) {
-                this.launchProjectile();
+                const dir = this.getAimDirection();
+                if (dir.x === 0 && dir.y === 0) return;
+                this.launchProjectile(dir, true);
+
                 this.currentBurstShot++;
                 this.myPlayer.actions.primary.magazine.currentAmmo--; // Use 1 ammo per shot in burst
 
@@ -1842,7 +1867,16 @@ class GameClient {
                 partIndex: 1
             }); // duration=0 means infinite/held
 
-            // TODO: Play empty magazine sound
+            this.playAudioNetwork({
+                src: getRandomInArray(SFX.WEAPON.GLOCK.EMPTY), // TODO: Use current weapon
+                output: 'sfx',
+                pitch: { min: 0.975, max: 1.05 },
+                spatial: {
+                    blend: 1.0,
+                    pos: { x: this.myPlayer.transform.pos.x, y: this.myPlayer.transform.pos.y }
+                },
+                volume: { min: 0.985, max: 1 }
+            });
             return;
         }
 
@@ -1850,9 +1884,27 @@ class GameClient {
         this.currentBurstShot = 0;
 
         // Fire first shot immediately
-        this.launchProjectile();
+        const dir = this.getAimDirection();
+        if (dir.x === 0 && dir.y === 0) return;
+        this.launchProjectile(dir, true);
+
         this.currentBurstShot++;
         this.myPlayer.actions.primary.magazine.currentAmmo--; // Use 1 ammo per shot in burst
+
+        // Blend in empty sound as magazine gets low
+        // This is a local sound only, to help the player manage their ammo
+        const ammoRatio = this.myPlayer.actions.primary.magazine.currentAmmo / this.myPlayer.actions.primary.magazine.size;
+        const emptyBlend = 1 - ammoRatio; // 0 when full, 1 when empty
+
+        if (emptyBlend > 0.5) { // Only play when below 50% ammo (half mag empty)
+            const blendVolume = (emptyBlend - 0.5) * 2 * 0.5; // Remap 0.5-1.0 to 0-0.5 volume
+            this.playAudio({ // Play sound locally
+                src: getRandomInArray(SFX.WEAPON.GLOCK.EMPTY), // TODO: Use current weapon
+                output: 'sfx',
+                pitch: { min: 0.975, max: 1.05 },
+                volume: { min: blendVolume, max: blendVolume }
+            });
+        }
 
         // If burst has more shots and we have ammo, schedule the next one
         if (this.myPlayer.actions.primary.burst.amount > 1 && this.myPlayer.actions.primary.magazine.currentAmmo > 0 && this.currentBurstShot < ammoToUse) {
@@ -1878,17 +1930,15 @@ class GameClient {
     /**
      * Calculates physics for projectile and adds them to mapping.
      */
-    private launchProjectile(): void {
+    private launchProjectile(dir: Vec2, canTriggerUnique: boolean): void {
         console.log(`Fired shot!`);
 
-        const dx = this.mouseX - this.myPlayer.transform.pos.x;
-        const dy = this.mouseY - this.myPlayer.transform.pos.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
+        // Use the passed direction and normalize it
+        const distance = Math.sqrt(dir.x * dir.x + dir.y * dir.y);
         if (distance === 0) return;
 
-        const dirX = dx / distance;
-        const dirY = dy / distance;
+        const dirX = dir.x / distance;
+        const dirY = dir.y / distance;
 
         // Animate weapon slide (glock_slide.png is index 1 in the WEAPON.GLOCK array)
         this.animateCharacterPart({
@@ -1910,12 +1960,22 @@ class GameClient {
         const rightX = -dirY;
         const rightY = dirX;
 
+        // TODO: Wrap all of these particles in some sort of defined type that contains this in one message
+
         this.createParticles( // Muzzle flash
             bulletSpawnX,
             bulletSpawnY,
             `muzzle_${Date.now()}`,
             PARTICLES.MUZZLE_FLASH,
             { x: dirX, y: dirY }
+        );
+
+        this.createParticles( // Muzzle smoke
+            bulletSpawnX,
+            bulletSpawnY,
+            `smoke_${Date.now()}`,
+            PARTICLES.SMOKE,
+            { x: dirX * 0.3, y: dirY * 0.3 }
         );
 
         this.createParticles( // Shell casing
@@ -1926,8 +1986,45 @@ class GameClient {
             { x: rightX * 0.8 + dirX * -0.2, y: rightY * 0.8 + dirY * -0.2 } // Right + slightly back
         );
 
+        this.playAudioNetwork({
+            src: getRandomInArray(SFX.WEAPON.GLOCK.ATTACK), // TODO: Use current weapon
+            output: 'sfx',
+            pitch: { min: 0.95, max: 1.125 },
+            spatial: {
+                blend: 1.0,
+                pos: { x: this.myPlayer.transform.pos.x, y: this.myPlayer.transform.pos.y },
+                rolloff: {
+                    distance: Math.max(CANVAS.WIDTH, CANVAS.HEIGHT) * 2,
+                    factor: 0.5,
+                    type: 'logarithmic'
+                }
+            },
+            volume: { min: 0.965, max: 1 }
+        });
+
+        this.playAudioNetwork({
+            src: getRandomInArray(SFX.WEAPON.GLOCK.SHELL), // TODO: Use current weapon
+            delay: { min: 0.25, max: 0.5 }, // Play with a short delay trigger to simulate the shell hitting the ground
+            output: 'sfx',
+            pitch: { min: 0.95, max: 1.125 },
+            spatial: {
+                blend: 1.0,
+                pos: { x: this.myPlayer.transform.pos.x, y: this.myPlayer.transform.pos.y }
+            },
+            volume: { min: 0.675, max: 1 }
+        });
+
         // Create projectiles
         for (let i = 0; i < this.myPlayer.actions.primary.projectile.amount; i++) {
+            if (this.myPlayer.unique.length > 0 && canTriggerUnique) {
+                for (const unique of this.myPlayer.unique) {
+                    if (this.luckRoll()) {
+                        this.triggerUnique(unique);
+                        break; // Break so only one effect can trigger per projectile
+                    }
+                }
+            }
+
             const spread = (Math.random() - 0.5) * (this.myPlayer.actions.primary.projectile.spread / 100);
             const angle = Math.atan2(dirY, dirX) + spread;
             const dir = forward(angle);
@@ -2031,6 +2128,17 @@ class GameClient {
                             this.createParticles(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
                             this.createEmitter(playerId, projectile.transform.pos.x, projectile.transform.pos.y, player.transform.pos.x, player.transform.pos.y);
 
+                            this.playAudioNetwork({
+                                src: getRandomInArray(SFX.IMPACT.FLESH.BULLET), // TODO: User current body material
+                                output: 'sfx',
+                                pitch: { min: 0.925, max: 1.15 },
+                                spatial: {
+                                    blend: 1.0,
+                                    pos: { x: projectile.transform.pos.x, y: projectile.transform.pos.y }
+                                },
+                                volume: { min: 0.95, max: 1 }
+                            });
+
                             if (newHealth <= 0) { // If they died, I get a kill
                                 console.log(`I killed ${playerId}!`);
 
@@ -2079,6 +2187,20 @@ class GameClient {
                         this.createDecal(projectile.transform.pos.x, projectile.transform.pos.y, `impact_${id}`, DECALS.PROJECTILE);
                     }
 
+                    this.createParticles(projectile.transform.pos.x, projectile.transform.pos.y, `sparks_${id}`, PARTICLES.SPARKS);
+
+
+                    this.playAudioNetwork({
+                        src: getRandomInArray(SFX.IMPACT.METAL.BULLET), // TODO: Use current projectile type
+                        output: 'sfx',
+                        pitch: { min: 0.95, max: 1.125 },
+                        spatial: {
+                            blend: 1.0,
+                            pos: { x: projectile.transform.pos.x, y: projectile.transform.pos.y }
+                        },
+                        volume: { min: 0.965, max: 1 }
+                    });
+
                     // Notify others to remove projectile
                     this.roomManager.sendMessage(JSON.stringify({
                         type: 'projectile-remove',
@@ -2092,6 +2214,16 @@ class GameClient {
         projectilesToRemove.forEach(id => {
             this.projectiles.delete(id);
         });
+    }
+
+    private triggerUnique(unique: string): void {
+        if (unique === "projectile_array") {
+            const amount = getRandomInt(1, 3);
+            for (let i = 0; i < amount; i++) {
+                const dir = this.getRandomDirection(360);
+                this.launchProjectile(dir, false);
+            }
+        }
     }
     //
     // #endregion
@@ -2216,8 +2348,7 @@ class GameClient {
                         range: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.RANGE,
                         size: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SIZE,
                         speed: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPEED,
-                        spread: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD,
-                        unique: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.UNIQUE
+                        spread: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD
                     },
                     reload: {
                         time: PLAYER_DEFAULTS.ACTIONS.PRIMARY.RELOAD.TIME
@@ -2228,9 +2359,7 @@ class GameClient {
                     multiplier: PLAYER_DEFAULTS.ACTIONS.SPRINT.MULTIPLIER
                 }
             },
-            equipment: {
-                crosshair: PLAYER_DEFAULTS.EQUIPMENT.CROSSHAIR
-            },
+            equipment: PLAYER_DEFAULTS.EQUIPMENT,
             physics: {
                 acceleration: PLAYER_DEFAULTS.PHYSICS.ACCELERATION,
                 friction: PLAYER_DEFAULTS.PHYSICS.FRICTION
@@ -2257,7 +2386,8 @@ class GameClient {
                     },
                     value: PLAYER_DEFAULTS.STATS.STAMINA.MAX,
                 },
-            }
+            },
+            unique: PLAYER_DEFAULTS.UNIQUE
         };
     }
 
@@ -2268,6 +2398,7 @@ class GameClient {
         this.canShoot = true;
         this.isBurstActive = false;
         this.isReloading = false;
+        this.isMelee = false;
         this.isSprinting = false;
         this.isDashing = false;
         this.isStaminaRecoveryBlocked = false;
@@ -2278,6 +2409,7 @@ class GameClient {
         this.dashStartTime = 0;
         this.lastDashTime = 0;
         this.reloadStartTime = 0;
+        this.lastMeleeTime = 0;
         this.lastShotTime = 0;
         this.nextBurstShotTime = 0;
         this.currentBurstShot = 0;
@@ -2508,6 +2640,28 @@ class GameClient {
     private isMoving(): boolean {
         return this.getMoveInput().inputLength > 0;
     }
+
+    /**
+     * Perform a luck roll using the player's luck stat.
+     *
+     * Luck is a signed value centered around 0.
+     * - Uses tanh() to map luck smoothly into [-1, 1], which gives soft limits.
+     * - The resulting chance is 5%–95%, with heavy diminishing returns past ±10.
+     *
+     * Approximate success odds:
+     *   luck -20 → ~5%
+     *   luck -10 → ~10%
+     *   luck  -5 → ~27%
+     *   luck   0 → 50%
+     *   luck  +5 → ~73%
+     *   luck +10 → ~90%
+     *   luck +20 → ~95%
+     */
+    private luckRoll(): boolean {
+        const scaledLuck = Math.tanh(this.myPlayer.stats.luck / 10);
+        const chance = 0.5 + scaledLuck * 0.45;
+        return Math.random() < chance;
+    }
     //
     // #endregion
 
@@ -2722,6 +2876,12 @@ class GameClient {
      */
     private initializeGameOptions(): GameOptions { // TODO: Add ability to save/load to cache
         return this.myGameOptions = { // [ IMPORTANT ] Keep track of the default game options here
+            audio: {
+                mixer: {
+                    master: AUDIO.MIXER.MASTER,
+                    sfx: AUDIO.MIXER.SFX
+                }
+            },
             controls: {
                 keybinds: {
                     dash: GAME.CONTROLS.KEYBINDS.DASH,
@@ -2745,13 +2905,27 @@ class GameClient {
     }
 
     /**
-     * Called by the host to start game when the start button is pressed in the lobby.
+     * Called by the host when the start button is pressed in the lobby.
      * 
-     * Broadcasts to all lobbyPlayers to start game and sync player states.
+     * Starts game loop via executeStartGame or displays a warning before continuing if solo.
      */
     private startGame(): void {
         if (!this.isHost) return;
 
+        // Check if solo and show warning if needed
+        if (this.lobbyPlayers.size === 1) {
+            this.soloGameWarning();
+            return; // Don't continue, let the modal handle it
+        }
+
+        // If not solo, proceed normally
+        this.executeStartGame();
+    }
+
+    /**
+     * Executes the beginning of a game and broadcasts the start to all lobbyplayers.
+     */
+    private executeStartGame(): void {
         // Send start game message to other players
         this.roomManager.sendMessage(JSON.stringify({
             type: 'start-game',
@@ -2775,16 +2949,13 @@ class GameClient {
 
         this.myPlayer.actions.primary.magazine.currentReserve = Math.floor(PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.MAX_RESERVE / 2);
         this.myPlayer.actions.primary.magazine.currentAmmo = this.myPlayer.actions.primary.magazine.size;
+        this.spawnAmmoInReserveUI(this.myPlayer.actions.primary.magazine.currentReserve);
         this.isReloading = false;
 
         // this.initializePlayer();
         this.createLeaderboard();
 
-        resetUpgrades();
-
-        if (this.crosshair) {
-            this.toggleEquipment('crosshair');
-        }
+        resetUpgrades(this.myPlayer);
 
         // Send my player data
         // TODO: You can maybe just call this.initializePlayer and use the returned player object, unsure yet.
@@ -2836,8 +3007,7 @@ class GameClient {
                         range: this.myPlayer.actions.primary.projectile.range,
                         size: this.myPlayer.actions.primary.projectile.size,
                         speed: this.myPlayer.actions.primary.projectile.speed,
-                        spread: this.myPlayer.actions.primary.projectile.spread,
-                        unique: this.myPlayer.actions.primary.projectile.unique
+                        spread: this.myPlayer.actions.primary.projectile.spread
                     },
                     reload: {
                         time: this.myPlayer.actions.primary.reload.time
@@ -2848,9 +3018,7 @@ class GameClient {
                     multiplier: this.myPlayer.actions.sprint.multiplier
                 }
             },
-            equipment: {
-                crosshair: this.myPlayer.equipment.crosshair
-            },
+            equipment: this.myPlayer.equipment,
             physics: {
                 acceleration: this.myPlayer.physics.acceleration,
                 friction: this.myPlayer.physics.friction
@@ -2877,7 +3045,8 @@ class GameClient {
                     },
                     value: this.myPlayer.stats.stamina.value,
                 },
-            }
+            },
+            unique: this.myPlayer.unique
         }));
 
         this.gameLoop();
@@ -2939,7 +3108,7 @@ class GameClient {
     }
 
     /**
-     * Pauses the game when called. Triggered through togglePause when state is correct.
+     * Pauses the game when called.
      */
     public pauseGame(): void {
         if (!this.gameRunning) return;
@@ -2955,7 +3124,7 @@ class GameClient {
     }
 
     /**
-     * Resumes the game when called. Triggered through togglePause when state is correct.
+     * Resumes the game when called.
      */
     public resumeGame(): void {
         if (!this.gameRunning) return;
@@ -2974,6 +3143,9 @@ class GameClient {
         this.gameWinner = null;
         this.roundWinner = null;
 
+        this.gameMaxWins = GAME.MAX_WINS;
+        this.gameMaxPlayers = GAME.MAX_PLAYERS;
+
         if (resetType === 'Room') {
             this.inLobby = false;
             this.isHost = false;
@@ -2988,6 +3160,8 @@ class GameClient {
         this.emitters.clear();
         this.upgradesCompleted.clear();
 
+        this.reserveBullets = [];
+
         if (resetType === 'Room') {
             this.lobbyPlayers.clear();
         }
@@ -3000,12 +3174,9 @@ class GameClient {
         this.initializePlayer();
 
         // Reset upgrades and equipment
-        resetUpgrades();
-
-        if (this.crosshair) {
-            this.toggleEquipment('crosshair');
-        }
+        resetUpgrades(this.myPlayer);
     }
+
     //
     // #endregion
 
@@ -3088,12 +3259,29 @@ class GameClient {
 
         // Get 3 random upgrades
         // TODO: Test this, seems to not be working, might actual be upgrade rolls not having enough in pool right now.
-        const availableUpgrades = getUpgrades(3);
+        const availableUpgrades = getUpgrades(3, this.myPlayer);
 
         availableUpgrades.forEach(upgrade => {
             const upgradeDiv = document.createElement('div');
             upgradeDiv.className = 'upgrade_card';
             upgradeDiv.setAttribute('data-rarity', upgrade.rarity.toString());
+
+            // Create image element
+            const imageDiv = document.createElement('div');
+            imageDiv.className = 'upgrade_image';
+
+            const img = document.createElement('img');
+            img.src = upgrade.icon;
+            img.alt = upgrade.name;
+            img.className = 'upgrade_icon';
+
+            // Handle image load errors
+            img.onerror = () => {
+                console.warn(`Failed to load upgrade image: ${upgrade.icon}`);
+                img.style.display = 'none';
+            };
+
+            imageDiv.appendChild(img);
 
             const nameDiv = document.createElement('div');
             nameDiv.className = 'upgrade_name';
@@ -3103,6 +3291,7 @@ class GameClient {
             subtitleDiv.className = 'upgrade_subtitle';
             subtitleDiv.textContent = upgrade.subtitle;
 
+            upgradeDiv.appendChild(imageDiv);
             upgradeDiv.appendChild(nameDiv);
             upgradeDiv.appendChild(subtitleDiv);
 
@@ -3124,14 +3313,10 @@ class GameClient {
      * Processes selection upgrade and sends a network message to inform others of the action.
      */
     private selectUpgrade(upgradeId: string): void {
-        const success = applyUpgrade(upgradeId);
+        const success = applyUpgrade(upgradeId, this.myPlayer);
         if (!success) {
             console.error('Failed to apply upgrade');
             return;
-        }
-
-        if (upgradeId === 'neural_target_interface') {
-            this.toggleEquipment('crosshair');
         }
 
         this.finishUpgrade(upgradeId);
@@ -3200,8 +3385,7 @@ class GameClient {
                         range: this.myPlayer.actions.primary.projectile.range,
                         size: this.myPlayer.actions.primary.projectile.size,
                         speed: this.myPlayer.actions.primary.projectile.speed,
-                        spread: this.myPlayer.actions.primary.projectile.spread,
-                        unique: this.myPlayer.actions.primary.projectile.unique
+                        spread: this.myPlayer.actions.primary.projectile.spread
                     },
                     reload: {
                         time: this.myPlayer.actions.primary.reload.time
@@ -3212,9 +3396,7 @@ class GameClient {
                     multiplier: this.myPlayer.actions.sprint.multiplier
                 }
             },
-            equipment: {
-                crosshair: this.myPlayer.equipment.crosshair
-            },
+            equipment: this.myPlayer.equipment,
             physics: {
                 acceleration: this.myPlayer.physics.acceleration,
                 friction: this.myPlayer.physics.friction
@@ -3241,7 +3423,8 @@ class GameClient {
                     },
                     value: this.myPlayer.stats.stamina.max
                 }
-            }
+            },
+            unique: this.myPlayer.unique
         }));
 
         console.log('Upgrade selected, waiting for others...');
@@ -3250,29 +3433,17 @@ class GameClient {
     /**
      * Toggle all equipment based on player state.
      */
-    public toggleEquipment(equipmentType: keyof Player['equipment']): void {
-        // Read the current state from myPlayer.equipment
-        const isEnabled = this.myPlayer.equipment[equipmentType];
+    private toggleEquipment(equipmentId: string): void {
+        if (!hasEquipment(this.myPlayer, equipmentId)) return;
 
-        switch (equipmentType) {
-            case 'crosshair':
-                if (!this.crosshair) return;
-
-                if (isEnabled) {
-                    this.crosshair.style.display = 'block';
-                    console.log('Crosshair enabled');
-                } else {
-                    this.crosshair.style.display = 'none';
-                    console.log('Crosshair disabled');
-                }
+        switch (equipmentId) {
+            case 'test_equipment_id':
+                // Toggle equipment stuff here
                 break;
-
-            // case '':
-            //     // TODO: Add more equipment types here
-            //     break;
+            // TODO: Add more equipment types here
 
             default:
-                console.warn(`Unknown equipment type: ${equipmentType}`);
+                console.warn(`Unknown equipment: ${equipmentId}`);
         }
     }
     //
@@ -3521,7 +3692,7 @@ class GameClient {
 
             // Load and cache images
             if (!this.ammoBoxImages) this.ammoBoxImages = {};
-            const layers: (keyof typeof AMMO_BOX)[] = ['BODY', 'BULLETS', 'LID'];
+            const layers: (keyof typeof AMMO_BOX)[] = ['BASE', 'BULLETS', 'LID'];
             layers.forEach(layer => {
                 if (!this.ammoBoxImages[layer]) {
                     const img = new Image();
@@ -3552,7 +3723,7 @@ class GameClient {
             this.ctx.rotate(ammoBox.transform.rot || 0);
 
             // Draw body
-            this.ctx.drawImage(this.ammoBoxImages['BODY'], -scale / 2, -scale / 2, scale, scale);
+            this.ctx.drawImage(this.ammoBoxImages['BASE'], -scale / 2, -scale / 2, scale, scale);
 
             // Draw bullets only if NOT open
             if (!ammoBox.isOpen) {
@@ -3824,9 +3995,6 @@ class GameClient {
             this.ammoReservesCanvas!.width,
             this.ammoReservesCanvas!.height
         );
-
-        // Spawn bullet at materializer position
-        this.spawnAmmoInReserveUI(this.myPlayer.actions.primary.magazine.currentReserve);
     }
 
     /**
@@ -4052,6 +4220,9 @@ class GameClient {
             const size = params.SIZE.MIN + Math.random() * (params.SIZE.MAX - params.SIZE.MIN);
             const opacity = params.OPACITY.MIN + Math.random() * (params.OPACITY.MAX - params.OPACITY.MIN);
             const torque = params.TORQUE.MIN + Math.random() * (params.TORQUE.MAX - params.TORQUE.MIN);
+            const noiseStrength = params.NOISE ? (params.NOISE.STRENGTH.MIN + Math.random() * (params.NOISE.STRENGTH.MAX - params.NOISE.STRENGTH.MIN)) : 0;
+            const noiseScale = params.NOISE ? (params.NOISE.SCALE.MIN + Math.random() * (params.NOISE.SCALE.MAX - params.NOISE.SCALE.MIN)) : 0;
+            const sizeOverLifetime = params.SIZE_OVER_LIFETIME ? (params.SIZE_OVER_LIFETIME.MIN + Math.random() * (params.SIZE_OVER_LIFETIME.MAX - params.SIZE_OVER_LIFETIME.MIN)) : 0;
 
             let angle;
             if (direction) {
@@ -4066,9 +4237,13 @@ class GameClient {
                 y: y,
                 velocityX: Math.cos(angle) * speed,
                 velocityY: Math.sin(angle) * speed,
+                initialSize: size,
                 size: size,
-                opacity: opacity,
+                sizeOverLifetime: sizeOverLifetime,
                 maxOpacity: opacity,
+                noiseScale: noiseScale,
+                noiseStrength: noiseStrength,
+                opacity: opacity,
                 color: params.COLOR,
                 lifetime: lifetime,
                 age: 0,
@@ -4092,6 +4267,20 @@ class GameClient {
         const particlesToRemove: string[] = [];
 
         this.particles.forEach((particle, id) => {
+            if (particle.noiseStrength > 0 && particle.noiseScale > 0) {
+                const time = Date.now() * 0.001; // Use time for animation
+                const noiseX = this.simplexNoise2D(particle.x / particle.noiseScale, time);
+                const noiseY = this.simplexNoise2D(particle.y / particle.noiseScale, time + 100);
+
+                particle.velocityX += noiseX * particle.noiseStrength * delta;
+                particle.velocityY += noiseY * particle.noiseStrength * delta;
+            }
+
+            if (particle.sizeOverLifetime > 0) {
+                const ageRatio = particle.age / particle.lifetime;
+                particle.size = particle.initialSize * (1 + ageRatio * particle.sizeOverLifetime);
+            }
+
             particle.x += particle.velocityX * delta;
             particle.y += particle.velocityY * delta;
             particle.age += 16.67 * delta;
@@ -4280,7 +4469,7 @@ class GameClient {
                     worldX + (Math.random() - 0.5) * 8,
                     worldY + (Math.random() - 0.5) * 8,
                     `emitter_particles_${emitterId}_${emitter.age}`,
-                    PARTICLES.BLOOD_DRIP,
+                    PARTICLES.BLOOD_DRIP, // TODO: Make this dynamically passed
                     {
                         x: Math.cos(angle) * finalSpeed,
                         y: Math.sin(angle) * finalSpeed
@@ -4402,6 +4591,136 @@ class GameClient {
     //
     // #endregion
 
+    // #region [ Audio ]
+    //
+    /**
+     * Plays an audio source using the predefined pool for the audio source.
+     */
+    private playAudio(params: AudioParams): void {
+        const audio = this.audioPool.getAudio(params.src);
+        if (!audio) {
+            console.warn(`Audio pool exhausted or max concurrent reached for: ${params.src}`);
+            return;
+        }
+
+        // [ Volume ]
+        let volume = 1.0;
+        if (params.volume) {
+            volume = params.volume.min + Math.random() * (params.volume.max - params.volume.min);
+        }
+
+        // [ 2D Spatial Audio ]
+        const blend = params.spatial?.blend ?? 0;
+        if (blend > 0 && params.spatial?.pos) {
+            const dx = params.spatial.pos.x - this.myPlayer.transform.pos.x;
+            const dy = params.spatial.pos.y - this.myPlayer.transform.pos.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            let distanceVolume: number;
+
+            if (params.spatial.rolloff) {
+                const rolloffType = params.spatial.rolloff.type || 'linear';
+                const factor = params.spatial.rolloff.factor;
+                const maxDistance = params.spatial.rolloff.distance;
+
+                if (rolloffType === 'logarithmic') {
+                    // Factor determines reference distance as % of max distance
+                    const referenceDistance = maxDistance * factor;
+
+                    if (distance < referenceDistance) {
+                        distanceVolume = 1.0;
+                    } else {
+                        const normalizedDistance = (distance - referenceDistance) / (maxDistance - referenceDistance);
+                        distanceVolume = Math.max(0, 1 - Math.pow(normalizedDistance, 0.5));
+                    }
+                } else {
+                    // Linear: factor is just multiplier on falloff curve
+                    distanceVolume = Math.max(0, 1 - (distance / maxDistance) * factor);
+                }
+            } else {
+                // Default: simple linear falloff using canvas dimensions as fallback
+                const maxDistance = Math.max(CANVAS.WIDTH, CANVAS.HEIGHT);
+                distanceVolume = Math.max(0, 1 - (distance / maxDistance));
+            }
+
+            volume *= (1 - blend) + (distanceVolume * blend);
+        }
+
+        // [ Mixer ]
+        const outputGroup = params.output?.toLowerCase() || null;
+        if (outputGroup && this.myGameOptions.audio.mixer[outputGroup as keyof typeof this.myGameOptions.audio.mixer] !== undefined) {
+            volume *= this.myGameOptions.audio.mixer[outputGroup as keyof typeof this.myGameOptions.audio.mixer];
+        }
+
+        volume *= this.myGameOptions.audio.mixer.master;
+        audio.volume = Math.max(0, Math.min(1, volume));
+
+        // [ Pitch ]
+        if (params.pitch) {
+            const pitch = params.pitch.min + Math.random() * (params.pitch.max - params.pitch.min);
+            audio.playbackRate = Math.max(0.25, Math.min(4, pitch));
+        }
+
+        // [ Loop ]
+        if (params.loop !== undefined) {
+            audio.loop = params.loop;
+        }
+
+        // [ Trigger Delay ]
+        let delayMs = 0;
+        if (params.delay) {
+            delayMs = (params.delay.min + Math.random() * (params.delay.max - params.delay.min)) * 1000; // Convert to seconds
+        }
+
+        setTimeout(() => {
+            audio.play().catch((error: unknown) => {
+                console.warn('Audio play failed:', error);
+            });
+        }, delayMs);
+    }
+
+    /**
+     * Syncs an audio trigger over the network.
+     */
+    private playAudioNetwork(params: AudioParams): void {
+        this.playAudio(params);
+
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'play-audio',
+            params: params
+        }));
+    }
+
+    /**
+     * Responsible for preloading all different types of audio assets on start.
+     */
+    private preloadAudioAssets(): void {
+        this.preloadSFX(SFX);
+    }
+
+    /**
+     * Iterate through the defined sound effects, and preload them for the session.
+     */
+    private preloadSFX(obj: any): void {
+        for (const key in obj) {
+            const value = obj[key];
+
+            if (Array.isArray(value)) {
+                // If it's an array, assume it's an array of audio file paths
+                value.forEach(src => {
+                    if (typeof src === 'string' && (src.endsWith('.ogg'))) { // All sound files should be .ogg
+                        this.audioPool.preloadSound(src);
+                    }
+                });
+            } else if (typeof value === 'object' && value !== null) {
+                // If it's an object, recurse into it
+                this.preloadSFX(value);
+            }
+        }
+    }
+    //
+    // #endregion
+
     // #region [ UI ]
     //
     /**
@@ -4514,6 +4833,43 @@ class GameClient {
     }
 
     /**
+     * Displays a wanring modal if the player starts a game alone.
+     */
+    private soloGameWarning(): void {
+        if (!this.modal || !this.modalConfirmButton || !this.modalCancelButton ||
+            !this.modalContent || !this.modalText || !this.modalInput ||
+            !this.modalErrorDiv || !this.modalButtons) return;
+
+        this.modal.classList.remove('hidden');
+        this.modalInput.style.display = 'none';
+        this.modalErrorDiv.textContent = ' ';
+        this.modalButtons.style.display = 'flex';
+        this.modalCancelButton.style.display = 'flex';
+
+        this.modalText.textContent = 'Start game as only player? Other players will be unable to join until you return to the lobby.';
+        this.modalConfirmButton.textContent = 'Start Game';
+        this.modalCancelButton.textContent = 'Cancel';
+
+        const closeModal = () => {
+            if (!this.modal || !this.modalInput || !this.modalConfirmButton ||
+                !this.modalCancelButton || !this.modalText) return;
+
+            this.modal.classList.add('hidden');
+            this.modalInput.style.display = 'flex';
+            this.modalText.textContent = 'Join Room';
+            this.modalConfirmButton.onclick = null;
+            this.modalCancelButton.onclick = null;
+        };
+
+        this.modalConfirmButton.onclick = () => {
+            closeModal();
+            this.executeStartGame(); // Proceed with starting the game
+        };
+
+        this.modalCancelButton.onclick = closeModal;
+    }
+
+    /**
      * Displays connected players in the lobby interface.
      */
     private displayLobbyPlayers(): void {
@@ -4587,8 +4943,31 @@ class GameClient {
 
     // #region [ Utility ]
     //
+
+    /**
+     * Gets the current aim direction of the local player.
+     */
+    private getAimDirection(): Vec2 {
+        const dx = this.mouseX - this.myPlayer.transform.pos.x;
+        const dy = this.mouseY - this.myPlayer.transform.pos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance === 0) return { x: 0, y: 0 }; // avoid NaN
+        return { x: dx / distance, y: dy / distance };
+    }
+
+    /**
+     * Returns a random based on the degree radius.
+     */
+    private getRandomDirection(degrees: number): Vec2 {
+        const randomAngle = Math.random() * (degrees * Math.PI / 180);
+        const direction = { x: Math.cos(randomAngle), y: Math.sin(randomAngle) }
+        return direction;
+    }
+
     /**
      * Calculates and returns delta time.
+     * 
+     * https://en.wikipedia.org/wiki/Delta_timing
      */
     private deltaTime(): number {
         const now = performance.now();
@@ -4599,10 +4978,143 @@ class GameClient {
         // Cap at 100ms to prevent huge jumps during lag spikes
         return Math.min(delta, 100) / 16.67;
     }
+
+    /**
+     * 2D noise function using Simplex.
+     * 
+     * https://en.wikipedia.org/wiki/Simplex_noise
+     */
+    private simplexNoise2D(x: number, y: number): number {
+        const F2 = 0.5 * (Math.sqrt(3.0) - 1.0);
+        const G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
+
+        const s = (x + y) * F2;
+        const i = Math.floor(x + s);
+        const j = Math.floor(y + s);
+
+        const t = (i + j) * G2;
+        const X0 = i - t;
+        const Y0 = j - t;
+        const x0 = x - X0;
+        const y0 = y - Y0;
+
+        const i1 = x0 > y0 ? 1 : 0;
+        const j1 = x0 > y0 ? 0 : 1;
+
+        const x1 = x0 - i1 + G2;
+        const y1 = y0 - j1 + G2;
+        const x2 = x0 - 1.0 + 2.0 * G2;
+        const y2 = y0 - 1.0 + 2.0 * G2;
+
+        const ii = i & 255;
+        const jj = j & 255;
+
+        const perm = new Uint8Array(512);
+        for (let k = 0; k < 256; k++) perm[k] = k;
+        for (let k = 0; k < 256; k++) {
+            const r = k + Math.floor(Math.random() * (256 - k));
+            [perm[k], perm[r]] = [perm[r], perm[k]];
+        }
+        for (let k = 0; k < 256; k++) perm[256 + k] = perm[k];
+
+        const gi0 = perm[ii + perm[jj]] % 12;
+        const gi1 = perm[ii + i1 + perm[jj + j1]] % 12;
+        const gi2 = perm[ii + 1 + perm[jj + 1]] % 12;
+
+        const grad3 = [[1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0],
+        [1, 0, 1], [-1, 0, 1], [1, 0, -1], [-1, 0, -1],
+        [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1]];
+
+        const dot = (g: number[], x: number, y: number) => g[0] * x + g[1] * y;
+
+        let t0 = 0.5 - x0 * x0 - y0 * y0;
+        let n0 = t0 < 0 ? 0 : Math.pow(t0, 4) * dot(grad3[gi0], x0, y0);
+
+        let t1 = 0.5 - x1 * x1 - y1 * y1;
+        let n1 = t1 < 0 ? 0 : Math.pow(t1, 4) * dot(grad3[gi1], x1, y1);
+
+        let t2 = 0.5 - x2 * x2 - y2 * y2;
+        let n2 = t2 < 0 ? 0 : Math.pow(t2, 4) * dot(grad3[gi2], x2, y2);
+
+        return 70.0 * (n0 + n1 + n2);
+    }
     //
     // #endregion
 }
 
+class AudioPool {
+    private pools: Map<string, HTMLAudioElement[]> = new Map();
+    private activeAudio: Map<string, HTMLAudioElement[]> = new Map();
+
+    constructor(private poolSize: number = 10, private maxConcurrent: number = 5) { }
+
+    private createPool(src: string): HTMLAudioElement[] {
+        const pool: HTMLAudioElement[] = [];
+        for (let i = 0; i < this.poolSize; i++) {
+            const audio = new Audio(src);
+            audio.preload = 'auto';
+            audio.addEventListener('ended', () => this.returnToPool(src, audio));
+            audio.addEventListener('pause', () => this.returnToPool(src, audio));
+            pool.push(audio);
+        }
+        return pool;
+    }
+
+    private returnToPool(src: string, audio: HTMLAudioElement): void {
+        const active = this.activeAudio.get(src);
+        if (active) {
+            const index = active.indexOf(audio);
+            if (index > -1) {
+                active.splice(index, 1);
+            }
+        }
+
+        const pool = this.pools.get(src);
+        if (pool && !pool.includes(audio)) {
+            pool.push(audio);
+        }
+    }
+
+    public getAudio(src: string): HTMLAudioElement | null {
+        // Check if we're at max concurrent instances
+        const active = this.activeAudio.get(src) || [];
+        if (active.length >= this.maxConcurrent) {
+            return null; // Skip playing if too many instances
+        }
+
+        // Get or create pool for this sound
+        let pool = this.pools.get(src);
+        if (!pool) {
+            pool = this.createPool(src);
+            this.pools.set(src, pool);
+            this.activeAudio.set(src, []);
+        }
+
+        // Get available audio from pool
+        const audio = pool.pop();
+        if (audio) {
+            // Reset audio properties
+            audio.currentTime = 0;
+            audio.volume = 1;
+            audio.playbackRate = 1;
+            audio.loop = false;
+
+            // Move to active list
+            active.push(audio);
+            return audio;
+        }
+
+        return null; // Pool exhausted
+    }
+
+    public preloadSound(src: string): void {
+        if (!this.pools.has(src)) {
+            const pool = this.createPool(src);
+            this.pools.set(src, pool);
+            this.activeAudio.set(src, []);
+        }
+    }
+}
 // Initialize the game client
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {

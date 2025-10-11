@@ -8,10 +8,10 @@
 
 <body>
   <div id="fg"></div>
+  <div id="background"></div>
 
   <canvas class='hacker hacker_3d'></canvas>
   <canvas class='hacker hacker_bars'></canvas>
-  <div class="hacker hacker_console"></div>
 
   <h1 id="saltpeterTitle">SALTPETER</h1>
 
@@ -20,12 +20,48 @@
   </div>
 
   <div id="roomControls" class="container room_controls">
-    <h2>Neural Network Control Panel</h2>
-    <p>Create a session for other hackers to join, or join an ongoing neural link.</p>
-    <button id="hostBtn">Host Session</button>
-    <div id="joinButtons" class="container row">
-      <button id="joinBtn">Join Session</button>
-      <button id="quickBtn">Quickplay</button>
+    <div class="atoms">
+      <div id="atomRoot" class="atom atom_container">
+        <div id="rootBackground" class="atom atom_background"></div>
+        <div id="rootBase" class="atom atom_base"></div>
+        <div id="rootForeground" class="atom atom_foreground"></div>
+        <div id="rootOverlay" class="atom atom_overlay"></div>
+        <div id="rootLeftConnectorEffector" class="atom connector_effector"></div>
+        <div id="rootTopConnectorEffector" class="atom connector_effector"></div>
+        <div id="rootConnectorBase" class="atom connector_base"></div>
+        <div id="rootTarget" class="atom atom_target"></div>
+      </div>
+      <div id="atomHost" class="atom atom_container">
+        <div id="hostBackground" class="atom atom_background"></div>
+        <div id="hostBase" class="atom atom_base"></div>
+        <div id="hostForeground" class="atom atom_foreground"></div>
+        <div id="hostOverlay" class="atom atom_overlay"></div>
+        <div id="hostIcon" class="atom atom_icon"></div>
+        <div id="hostConnectorEffector" class="atom connector_effector"></div>
+        <div id="hostConnectorBase" class="atom connector_base"></div>
+      </div>
+      <div id="atomJoin" class="atom atom_container">
+        <div id="joinBackground" class="atom atom_background"></div>
+        <div id="joinBase" class="atom atom_base"></div>
+        <div id="joinForeground" class="atom atom_foreground"></div>
+        <div id="joinOverlay" class="atom atom_overlay"></div>
+        <div id="joinIcon" class="atom atom_icon"></div>
+        <div id="joinConnectorEffector" class="atom connector_effector"></div>
+        <div id="joinConnectorBase" class="atom connector_base"></div>
+      </div>
+      <div id="atomQuickplay" class="atom atom_container">
+        <div id="quickplayBackground" class="atom atom_background"></div>
+        <div id="quickplayBase" class="atom atom_base"></div>
+        <div id="quickplayForeground" class="atom atom_foreground"></div>
+        <div id="quickplayOverlay" class="atom atom_overlay"></div>
+        <div id="quickplayIcon" class="atom atom_icon"></div>
+      </div>
+      <div id="atomSettings" class="atom atom_container">
+        <div id="settingsBackground" class="atom atom_background"></div>
+        <div id="settingsBase" class="atom atom_base"></div>
+        <div id="settingsOverlay" class="atom atom_overlay"></div>
+        <div id="settingsIcon" class="atom atom_icon"></div>
+      </div>
     </div>
   </div>
 
@@ -48,11 +84,17 @@
     <div id="gameOptionsContainer" class="container game_options">
       <div class="container row game_option">
         <span>Private</span>
-        <toggle id="privateToggle" role="switch" aria-checked="false"></toggle>
+        <div class="toggle_wrapper">
+          <toggle id="privateToggle" role="switch" aria-checked="false"></toggle>
+          <div class="toggle_foreground"></div>
+        </div>
       </div>
       <div class="container row game_option">
         <span>Upgrades</span>
-        <toggle id="upgradesToggle" role="switch" aria-checked="true"></toggle>
+        <div class="toggle_wrapper">
+          <toggle id="upgradesToggle" role="switch" aria-checked="true"></toggle>
+          <div class="toggle_foreground"></div>
+        </div>
       </div>
       <div class="container game_options_row">
         <div class="container row game_option">
@@ -181,5 +223,10 @@
   <script src="/app.js"></script>
   <script src="/assets/scripts/vfx.js"></script>
 </body>
+
+<!-- PARTICLE.JS -->
+<script src="/assets/scripts/particlejs/particles.min.js"></script>
+<script src="/assets/scripts/particlejs/particles.js"></script>
+<!-- PARTICLE.JS -->
 
 </html>

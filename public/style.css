@@ -34,6 +34,10 @@
     --grey: #6e6e6e;
     --grey-slate-20: #ffffff33;
 
+    --bg: url('./assets/img/bg.png');
+    --bg-dark: url('./assets/img/bg_dark.png');
+    --bg-white: url('./assets/img/bg_white.png');
+
     --font-heading: 'AlphaProta', Arial, sans-serif;
     --font-mono: 'BittypixMonospace', 'Courier New', monospace;
     --primary-font-size: 16px;
@@ -89,7 +93,7 @@ h6 {
 h1 {
     position: absolute;
     bottom: 0px;
-    right: 10px;
+    left: 2.5rem;
     font-size: 5rem;
     font-weight: bold;
     color: var(--grey);
@@ -113,11 +117,12 @@ button:hover {
 
 toggle {
     position: relative;
-    width: 3rem;
-    height: 1.5rem;
-    background: var(--grey-slate-20);
-    border: 2px solid var(--primary-color);
-    border-radius: var(--smooth-radius);
+    width: 52px;
+    height: 28px;
+    background: url('./assets/img/icon/elements/toggle/toggle_background.png') no-repeat center;
+    background-size: contain;
+    border: none;
+    border-radius: 0;
     cursor: pointer;
     transition: all 0.3s ease;
     flex-shrink: 0;
@@ -126,26 +131,55 @@ toggle {
 toggle::before {
     content: '';
     position: absolute;
-    top: 0.125rem;
-    left: 0.125rem;
-    width: 1rem;
-    height: 1rem;
-    background: var(--primary-color);
-    border-radius: 50%;
+    top: 50%;
+    left: 3px;
+    width: 22px;
+    height: 22px;
+    background: url('./assets/img/icon/elements/toggle/toggle_handle.png') no-repeat center;
+    background-size: contain;
+    border-radius: 0;
+    transform: translateY(-50%);
     transition: all 0.3s ease;
+    z-index: 2;
 }
 
-toggle[checked] {
-    background: var(--primary-color);
+toggle::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url('./assets/img/icon/elements/toggle/toggle_active.png') no-repeat center;
+    background-size: contain;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 1;
+}
+
+toggle[checked]::after {
+    opacity: 1;
 }
 
 toggle[checked]::before {
-    background: var(--black);
-    transform: translateX(1.5rem);
+    left: calc(100% - 25px);
 }
 
-toggle:hover {
-    box-shadow: 0 0 0.5rem rgba(255, 255, 255, 0.3);
+.toggle_wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.toggle_foreground {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 52px;
+    height: 28px;
+    background: url('./assets/img/icon/elements/toggle/toggle_foreground.png') no-repeat center;
+    background-size: contain;
+    pointer-events: none;
+    z-index: 3;
 }
 
 /**/
@@ -202,30 +236,15 @@ toggle:hover {
 /**/
 .game_container {
     padding: 1rem;
-}
-
-.room_controls,
-.game_container {
     background: var(--tertiary-color);
     border: 1px solid #ddd;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    background-image: url('./assets/img/bg.png');
-}
-
-.room_controls {
-    text-align: center;
-    padding: 10rem;
-}
-
-.room_controls h2 {
-    color: var(--secondary-color);
-    margin-bottom: 20px;
-    font-family: var(--font-heading);
+    background-image: var(--bg);
 }
 
 .game_header {
-    background: var(--tertiary-color);
+    background: var(--bg-white);
     padding: 0.25rem;
     border-radius: var(--primary-radius);
     border: 1px solid #dee2e6;
@@ -315,6 +334,23 @@ toggle:hover {
 
 .upgrade_card[data-rarity="4"] {
     border-color: var(--rarity-4);
+}
+
+.upgrade_image {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.upgrade_icon {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: brightness(1.1) contrast(1.1);
 }
 
 .upgrade_name {
@@ -520,6 +556,17 @@ toggle:hover {
     z-index: -1;
 }
 
+#background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 110%;
+    z-index: -1000;
+    background: url(./assets/img/bg_dark.png);
+    background-position: center;
+}
+
 #fg {
     position: fixed;
     top: 0;
@@ -531,6 +578,7 @@ toggle:hover {
     pointer-events: none;
     z-index: 1000;
     opacity: 0.075;
+    mix-blend-mode: hard-light;
 }
 
 .hacker {
@@ -540,6 +588,7 @@ toggle:hover {
     height: 100px;
     width: 50%;
     z-index: -1;
+    background-color: black;
 }
 
 .hacker * {
@@ -549,13 +598,6 @@ toggle:hover {
 
 .hacker_bars {
     left: 50%;
-}
-
-.hacker_console {
-    color: var(--primary-color);
-    max-width: 40rem;
-    margin: auto 1rem;
-    overflow-y: clip;
 }
 
 /**/
@@ -568,7 +610,7 @@ toggle:hover {
     border: 1px solid #ddd;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    background-image: url('./assets/img/bg.png');
+    background-image: var(--bg);
     padding: 1rem;
     min-height: 400px;
 }
@@ -644,14 +686,10 @@ toggle:hover {
     cursor: not-allowed;
 }
 
-#joinButtons>* {
-    flex: 1;
-}
-
 .game_options {
     margin: 1.25rem 0;
     padding: 1rem;
-    background: rgba(0, 0, 0, 0.9);
+    background: var(--bg-dark);
     border: 2px solid var(--primary-color);
     border-radius: var(--primary-radius);
     backdrop-filter: blur(5px);
@@ -729,7 +767,7 @@ toggle:hover {
 }
 
 #modalContent {
-    background: var(--black-60);
+    background: var(--bg-dark);
     border: 1px solid var(--secondary-color);
     border-radius: var(--primary-radius);
     padding: 2rem 4rem;
@@ -737,6 +775,7 @@ toggle:hover {
     align-items: center;
     flex-direction: column;
     min-width: 600px;
+    max-width: 800px;
 }
 
 #modalText {
@@ -767,9 +806,8 @@ toggle:hover {
     padding: 8px 18px;
     border-radius: var(--primary-radius);
     border: none;
-    background: var(--primary-color);
+    background: var(--bg-white);
     color: #000;
-    cursor: pointer;
     font-weight: bold;
 }
 
@@ -800,13 +838,13 @@ toggle:hover {
 
 .vitals_divider {
     flex: 0.1 1 0;
-    background-image: url('./assets/img/icon/elements/wireconnector_60px_03.png');
+    background-image: url('./assets/img/icon/elements/dividers/wireconnector_60px_03.png');
 
 }
 
 .stamina_divider {
     flex: 0.25 1 0;
-    background-image: url('./assets/img/icon/elements/wireconnector_120px.png');
+    background-image: url('./assets/img/icon/elements/dividers/wireconnector_120px.png');
 }
 
 .divider.top,
@@ -818,31 +856,31 @@ toggle:hover {
 
 #playerStats>div.divider:nth-child(2) {
     /* 1st divider */
-    background-image: url('./assets/img/icon/elements/wireconnector_60px_01.png');
+    background-image: url('./assets/img/icon/elements/dividers/wireconnector_60px_01.png');
     transform: translateY(20%);
 }
 
 #playerStats>div.divider:nth-child(4) {
     /* 2nd divider */
-    background-image: url('./assets/img/icon/elements/wireconnector_60px_02.png');
+    background-image: url('./assets/img/icon/elements/dividers/wireconnector_60px_02.png');
     transform: translateY(-12%);
 }
 
 #playerStats>div.divider:nth-child(6) {
     /* 3rd divider */
-    background-image: url('./assets/img/icon/elements/wireconnector_60px_05.png');
+    background-image: url('./assets/img/icon/elements/dividers/wireconnector_60px_05.png');
     transform: translateY(5%);
 }
 
 #playerStats>div.divider:nth-child(8) {
     /* 4th divider */
-    background-image: url('./assets/img/icon/elements/wireconnector_60px_04.png');
+    background-image: url('./assets/img/icon/elements/dividers/wireconnector_60px_04.png');
     transform: translateY(-35%);
 }
 
 #playerStats>div.divider:nth-child(10) {
     /* 5th divider */
-    background-image: url('./assets/img/icon/elements/wireconnector_60px_00.png');
+    background-image: url('./assets/img/icon/elements/dividers/wireconnector_60px_00.png');
 }
 
 /* #endregion */
@@ -928,12 +966,10 @@ toggle:hover {
 .chat_send_btn {
     flex: 1;
     padding: 8px 16px;
-    background: var(--primary-color);
+    background: var(--bg-white);
     color: var(--black);
     border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-family: var(--font-mono);
+    border-radius: var(--secondary-radius);
     font-size: var(--secondary-font-size);
     font-weight: bold;
     margin: 0;
@@ -1057,3 +1093,411 @@ toggle:hover {
 
 /**/
 /* #endregion */
+
+
+
+.atom {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    height: 100%;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+    user-select: none;
+}
+
+.atom_container {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+    user-select: none;
+}
+
+.atoms {
+    display: grid;
+    grid-template-columns: 375px 375px 375px;
+    grid-template-rows: 375px 375px;
+    gap: 0;
+    justify-content: center;
+    align-items: center;
+    user-select: none;
+    animation: rotate3d 120s ease-in-out infinite;
+}
+
+.atom_background {
+    opacity: 0%;
+    z-index: 1;
+}
+
+.atom_base {
+    opacity: 100%;
+    z-index: 2;
+}
+
+.atom_foreground {
+    opacity: 100%;
+    z-index: 3;
+}
+
+.atom_overlay {
+    opacity: 0%;
+    z-index: 4;
+}
+
+.atom_icon {
+    opacity: 100%;
+    z-index: 5;
+}
+
+.connector_effector {
+    filter: saturate(100%) brightness(100%) hue-rotate(0deg);
+    animation: idle-pulse 10s ease-in-out infinite;
+}
+
+.connector_effector {
+    opacity: 100%;
+    z-index: 6;
+}
+
+.connector_base {
+    opacity: 100%;
+    z-index: 7;
+}
+
+.atom_target {
+    opacity: 100%;
+    z-index: 8;
+}
+
+.atom_container:hover {
+    cursor: pointer;
+}
+
+.atom_container:hover .atom_background {
+    opacity: 100%;
+    animation: rotate-background 45s linear infinite;
+}
+
+.atom_container:hover .atom_overlay {
+    opacity: 100%;
+    animation: rotate-background-reverse 25s linear infinite;
+}
+
+.atom_container:hover .atom_foreground {
+    animation: wobble .25s ease-in-out infinite;
+}
+
+#atomSettings:hover .atom_base {
+    animation: wobble .25s ease-in-out infinite;
+}
+
+.atom_container:hover .atom_icon {
+    opacity: 0%;
+}
+
+.atom_container:hover .connector_effector {
+    filter: saturate(500%) brightness(80%) hue-rotate(0deg);
+    animation: rgb-strobe 0.15s linear infinite;
+}
+
+#atomJoin:hover #rootLeftConnectorEffector {
+    filter: saturate(500%) brightness(80%) hue-rotate(0deg);
+    animation: rgb-strobe 0.15s linear infinite;
+}
+
+.atom_container:hover #rootTarget {
+    animation: rootTarget .5s ease forwards;
+}
+
+#atomHost {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+#atomJoin {
+    grid-column: 1;
+    grid-row: 2;
+}
+
+#atomRoot {
+    grid-column: 2;
+    grid-row: 2;
+}
+
+#atomQuickplay {
+    grid-column: 3;
+    grid-row: 2;
+}
+
+#atomSettings {
+    grid-column: 3;
+    grid-row: 1;
+    animation: hover 5s ease-in-out infinite;
+}
+
+/* Background images for each atom */
+#rootBackground {
+    background-image: url('./assets/img/icon/mainmenu/root/background.png');
+}
+
+#rootBase {
+    background-image: url('./assets/img/icon/mainmenu/root/base.png');
+}
+
+#rootForeground {
+    background-image: url('./assets/img/icon/mainmenu/root/foreground.png');
+}
+
+#rootOverlay {
+    background-image: url('./assets/img/icon/mainmenu/root/overlay.png');
+}
+
+#rootTarget {
+    background-image: url('./assets/img/icon/mainmenu/root/target_frame_00.png');
+    transform: rotate3d(3, 5, 3, 0deg);
+    animation: spin3d 10s linear infinite;
+}
+
+#hostBackground {
+    background-image: url('./assets/img/icon/mainmenu/host/background.png');
+}
+
+#hostBase {
+    background-image: url('./assets/img/icon/mainmenu/host/base.png');
+}
+
+#hostForeground {
+    background-image: url('./assets/img/icon/mainmenu/host/foreground.png');
+}
+
+#hostOverlay {
+    background-image: url('./assets/img/icon/mainmenu/host/overlay.png');
+}
+
+#hostIcon {
+    background-image: url('./assets/img/icon/mainmenu/host/icon.png');
+}
+
+#settingsBackground {
+    background-image: url('./assets/img/icon/mainmenu/settings/background.png');
+}
+
+#settingsBase {
+    background-image: url('./assets/img/icon/mainmenu/settings/base.png');
+}
+
+#settingsOverlay {
+    background-image: url('./assets/img/icon/mainmenu/settings/overlay.png');
+}
+
+#settingsIcon {
+    background-image: url('./assets/img/icon/mainmenu/settings/icon.png');
+}
+
+#joinBackground {
+    background-image: url('./assets/img/icon/mainmenu/join/background.png');
+}
+
+#joinBase {
+    background-image: url('./assets/img/icon/mainmenu/join/base.png');
+}
+
+#joinForeground {
+    background-image: url('./assets/img/icon/mainmenu/join/foreground.png');
+}
+
+#joinOverlay {
+    background-image: url('./assets/img/icon/mainmenu/join/overlay.png');
+}
+
+#joinIcon {
+    background-image: url('./assets/img/icon/mainmenu/join/icon.png');
+}
+
+#quickplayBackground {
+    background-image: url('./assets/img/icon/mainmenu/quickplay/background.png');
+}
+
+#quickplayBase {
+    background-image: url('./assets/img/icon/mainmenu/quickplay/base.png');
+}
+
+#quickplayForeground {
+    background-image: url('./assets/img/icon/mainmenu/quickplay/foreground.png');
+}
+
+#quickplayOverlay {
+    background-image: url('./assets/img/icon/mainmenu/quickplay/overlay.png');
+}
+
+#quickplayIcon {
+    background-image: url('./assets/img/icon/mainmenu/quickplay/icon.png');
+}
+
+#rootConnectorBase {
+    background-image: url('./assets/img/icon/mainmenu/root/connector_base.png');
+}
+
+#rootLeftConnectorEffector {
+    background-image: url('./assets/img/icon/mainmenu/root/connector_left_effector.png');
+}
+
+#rootTopConnectorEffector {
+    background-image: url('./assets/img/icon/mainmenu/root/connector_top_effector.png');
+}
+
+#hostConnectorEffector {
+    background-image: url('./assets/img/icon/mainmenu/host/connector_effector.png');
+}
+
+#hostConnectorBase {
+    background-image: url('./assets/img/icon/mainmenu/host/connector_base.png');
+}
+
+#joinConnectorEffector {
+    background-image: url('./assets/img/icon/mainmenu/join/connector_effector.png');
+}
+
+#joinConnectorBase {
+    background-image: url('./assets/img/icon/mainmenu/join/connector_base.png');
+}
+
+@keyframes rotate-background {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes rotate-background-reverse {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(-360deg);
+    }
+}
+
+@keyframes hover {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
+}
+
+@keyframes rotate3d {
+
+    0%,
+    100% {
+        transform: rotate3d(3, 5, 3, 25deg);
+    }
+
+    50% {
+        transform: rotate3d(2, 4, 2, 15deg);
+    }
+}
+
+@keyframes wobble {
+
+    0%,
+    100% {
+        transform: translate(0, 0) rotate(0deg);
+    }
+
+    20% {
+        transform: translate(2px, -2px) rotate(0.5deg);
+    }
+
+    40% {
+        transform: translate(-2px, 2px) rotate(-0.5deg);
+    }
+
+    60% {
+        transform: translate(2px, 2px) rotate(0.5deg);
+    }
+
+    80% {
+        transform: translate(-2px, -2px) rotate(-0.5deg);
+    }
+}
+
+@keyframes rootTarget {
+    0% {
+        transform: rotate3d(3, 5, 3, 25deg);
+        background-image: url('./assets/img/icon/mainmenu/root/target_frame_00.png');
+    }
+
+    33% {
+        transform: rotate3d(1, 2, 4, 10deg);
+        background-image: url('./assets/img/icon/mainmenu/root/target_frame_01.png');
+    }
+
+    66% {
+        transform: rotate3d(1, 1, 1, 5deg);
+        background-image: url('./assets/img/icon/mainmenu/root/target_frame_02.png');
+    }
+
+    100% {
+        transform: rotate3d(1, 1, 1, 0deg);
+        background-image: url('./assets/img/icon/mainmenu/root/target_frame_03.png');
+    }
+}
+
+@keyframes idle-pulse {
+    0% {
+        filter: saturate(100%) brightness(100%) hue-rotate(0deg);
+        /* Blue */
+    }
+
+    50% {
+        filter: saturate(100%) brightness(100%) hue-rotate(100deg);
+        /* Red */
+    }
+
+    100% {
+        filter: saturate(100%) brightness(100%) hue-rotate(0deg);
+        /* Blue */
+    }
+}
+
+@keyframes rgb-strobe {
+    0% {
+        filter: saturate(500%) brightness(80%) hue-rotate(0deg) contrast(150%);
+    }
+
+    25% {
+        filter: saturate(500%) brightness(80%) hue-rotate(90deg) contrast(150%);
+    }
+
+    50% {
+        filter: saturate(500%) brightness(80%) hue-rotate(180deg) contrast(150%);
+    }
+
+    75% {
+        filter: saturate(500%) brightness(80%) hue-rotate(270deg) contrast(150%);
+    }
+
+    100% {
+        filter: saturate(500%) brightness(80%) hue-rotate(360deg) contrast(150%);
+    }
+}
+
+@keyframes spin3d {
+    from {
+        transform: rotate3d(3, 5, 3, 0deg);
+    }
+
+    to {
+        transform: rotate3d(3, 5, 3, 360deg);
+    }
+}

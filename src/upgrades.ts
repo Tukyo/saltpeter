@@ -1,7 +1,6 @@
-import { PLAYER_DEFAULTS } from './config';
+import { Player } from './defs';
 
 const takenUniques = new Set<string>();
-const myEquipment = new Set<string>();
 
 enum UpgradeRarity {
     COMMON = 0,
@@ -18,12 +17,13 @@ enum UpgradeType {
 
 interface Upgrade {
     id: string;
+    icon: string;
     name: string;
+    rarity: UpgradeRarity;
     subtitle: string;
     type: UpgradeType;
-    rarity: UpgradeRarity;
     unique: boolean;
-    func: () => void;
+    func: (player: Player) => void;
 }
 
 const RARITY_CONFIG = {
@@ -48,23 +48,74 @@ const RARITY_CONFIG = {
         color: '#ff9500'
     }
 };
+/**
+ Upgrade Ideas:
+
+
+
+
+ > [ Resources ]
+  - Reserves ++
+  - 
+ > [ Stats ]
+  - Size -- / Speed ++
+  - Damage ++ / Buffer ++
+  - 
+ > [ Persistent ]
+  - Projectile burst into more projectiles on non-player hit.
+  - Dash becomes teleport but uses twice as much stamina.
+  - Switch, unlocking further firing modes 
+ > [ Luck Based ]
+  - Explosive
+    > explode on hit
+    > stick, then explode after timer
+    > only explode on player hit
+  - Fire
+    > leave behind a flame on ground hit that persists and does damage for some time
+    > burn player on hit for timer
+  - Oil
+    > leave oil puddles on hit, flammable, oil on fire persists much longer
+  - Poison
+    > decrease player health gradually for timer on player hit
+    > leave pool of poison on ground for timer
+    > spray poison out on ground hit
+  - Bounce
+    > chance for projectile to bounce
+  - Orbital Laser
+    > chance to spawn cluster of lasers on non-boundary hit
+*/
 
 export const UPGRADES: Upgrade[] = [ // TODO: Update all upgrades to use the player object instead of the olayer defaults
     // #region [ STATS ]
     //
     {
-        id: "bigger_is_better",
-        name: "Bigger is Better",
-        subtitle: "Have my bullets always been this big?",
+        id: "damage_buffer",
+        name: "Damage Buffer",
+        subtitle: "Type D14 buffer, which improves the damage at a small cost. ",
+        icon: "/assets/img/icon/upgrades/damageup.png",
         type: UpgradeType.STAT,
         rarity: UpgradeRarity.COMMON,
         unique: false,
-        func: () => {
-            PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SIZE *= 1.1;
-            PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.DAMAGE *= 1.05;
-            PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD *= 1.025;
+        func: (player: Player) => {
+            player.actions.primary.projectile.damage *= 1.25;
+            player.actions.primary.buffer *= 1.1;
 
-            console.log("[Bigger is Better] - Projectile Changes: ", "Size: ", PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SIZE, "Dmg: ", PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.DAMAGE, "Spread: ", PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD);
+            console.log(`Damage Buffer installed. New damage: ${player.actions.primary.projectile.damage} - New Buffer: ${player.actions.primary.buffer}`);
+        }
+    },
+    {
+        id: "locomotion_module",
+        name: "Locomotion Module",
+        subtitle: "Primitave locomotion module installed on the user's footwear.",
+        icon: "/assets/img/icon/upgrades/speedup.png",
+        type: UpgradeType.STAT,
+        rarity: UpgradeRarity.COMMON,
+        unique: false,
+        func: (player: Player) => {
+            player.stats.speed += 1;
+            player.actions.dash.cooldown *= 1.5;
+
+            console.log(`Locomotion Module installed. New Speed: ${player.stats.speed} - New Dash Cooldown: ${player.actions.dash.cooldown}`);
         }
     },
     //
@@ -72,49 +123,60 @@ export const UPGRADES: Upgrade[] = [ // TODO: Update all upgrades to use the pla
     //
     // #region [ EQUIPMENT ]
     //
-    {
-        id: "neural_target_interface",
-        name: "Neural Target Interface",
-        subtitle: "G.I.M.P. proprietary targeting module.",
-        type: UpgradeType.EQUIPMENT,
-        rarity: UpgradeRarity.UNCOMMON,
-        unique: false,
-        func: () => {
-            PLAYER_DEFAULTS.EQUIPMENT.CROSSHAIR = true;
-            PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD *= 0.95;
+    // {
+    //     id: "neural_target_interface",
+    //     name: "Neural Target Interface",
+    //     subtitle: "G.I.M.P. proprietary targeting module.",
+    //     icon: "/assets/img/icon/upgrades/crosshair.png",
+    //     type: UpgradeType.EQUIPMENT,
+    //     rarity: UpgradeRarity.UNCOMMON,
+    //     unique: false,
+    //     func: (player: Player) => {
+    //         // Add to equipment array if not already present
+    //         if (!player.equipment.includes('neural_target_interface')) {
+    //             player.equipment.push('neural_target_interface');
+    //         }
+            
+    //         // Apply stat changes
+    //         player.actions.primary.projectile.spread *= 0.95;
 
-            console.log("[Neural Target Interface] - Crosshair enabled.", "Spread: ", PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD);
-        }
-    },
+    //         console.log(`[Neural Target Interface] - Equipment added.`, "Spread:", player.actions.primary.projectile.spread);
+    //     }
+    // },
     //
     // #endregion
     //
     // #region [ UNIQUE ]
     //
-    // {
-    //     id: "",
-    //     name: "",
-    //     subtitle: "",
-    //     type: UpgradeType.UNIQUE,
-    //     rarity: UpgradeRarity.COMMON,
-    //     unique: true,
-    //     func: () => {
-
-    //     }
-    // }
+    {
+        id: "projectile_array",
+        name: "Projectile Array",
+        subtitle: "Chance to fire an array of extra projectiles.",
+        icon: "/assets/img/icon/upgrades/projectilearray.png",
+        type: UpgradeType.UNIQUE,
+        rarity: UpgradeRarity.UNCOMMON,
+        unique: true,
+        func: (player: Player) => {
+            if (!player.unique.includes('projectile_array')) {
+                player.unique.push('projectile_array');
+            }
+        }
+    }
     //
     // #endregion
     //
 ]
 
-export function getUpgrades(count: number): Upgrade[] {
+export function getUpgrades(count: number, player: Player): Upgrade[] {
     // Filter available upgrades based on type restrictions
     const availableUpgrades = UPGRADES.filter(upgrade => {
+        // Check if unique upgrade has already been taken globally
         if (upgrade.unique && takenUniques.has(upgrade.id)) {
             return false;
         }
 
-        if (upgrade.type === UpgradeType.EQUIPMENT && myEquipment.has(upgrade.id)) {
+        // Check if equipment is already owned by this player
+        if (upgrade.type === UpgradeType.EQUIPMENT && player.equipment.includes(upgrade.id)) {
             return false;
         }
 
@@ -164,24 +226,28 @@ export function getRarityWeight(rarity: UpgradeRarity): number {
     return RARITY_CONFIG[rarity].weight;
 }
 
-export function applyUpgrade(upgradeId: string): boolean {
+export function applyUpgrade(upgradeId: string, player: Player): boolean {
     const upgrade = UPGRADES.find(u => u.id === upgradeId);
     if (!upgrade) return false;
 
     // Double-check restrictions
-    if (upgrade.unique && takenUniques.has(upgradeId)) return false;
-    if (upgrade.type === UpgradeType.EQUIPMENT && myEquipment.has(upgradeId)) return false;
-
-    // Track locally
-    if (upgrade.type === UpgradeType.EQUIPMENT) {
-        myEquipment.add(upgradeId);
+    if (upgrade.unique && takenUniques.has(upgradeId)) {
+        console.warn(`Unique upgrade ${upgradeId} already taken globally`);
+        return false;
     }
+    
+    if (upgrade.type === UpgradeType.EQUIPMENT && player.equipment.includes(upgradeId)) {
+        console.warn(`Equipment ${upgradeId} already owned by player`);
+        return false;
+    }
+
+    // Track unique upgrades globally
     if (upgrade.unique) {
-        takenUniques.add(upgradeId); // Add locally immediately
+        takenUniques.add(upgradeId);
     }
 
-    // Apply the upgrade
-    upgrade.func();
+    // Apply the upgrade to the player object
+    upgrade.func(player);
     return true;
 }
 
@@ -189,7 +255,15 @@ export function removeUpgradeFromPool(upgradeId: string): void {
     takenUniques.add(upgradeId);
 }
 
-export function resetUpgrades(): void {
+export function resetUpgrades(player: Player): void {
     takenUniques.clear();
-    myEquipment.clear();
+    player.equipment = [];
+}
+
+export function hasEquipment(player: Player, equipmentId: string): boolean {
+    return player.equipment.includes(equipmentId);
+}
+
+export function hasUnique(player: Player, uniqueId: string): boolean {
+    return player.unique.includes(uniqueId);
 }

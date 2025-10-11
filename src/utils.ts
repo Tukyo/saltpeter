@@ -28,6 +28,15 @@ export function updateURLWithRoom(roomId: string): void {
     window.history.pushState({ roomId }, '', newURL);
 }
 
+export function getRandomInt(min: number, max: number): number {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+
+export function getRandomInArray<T>(array: T[]): T {
+    return array[Math.floor(Math.random() * array.length)];
+}
+
 export function getRandomColor(): string {
     const color = "#" + Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, "0");
     return color;

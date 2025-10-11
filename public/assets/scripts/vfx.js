@@ -1,17 +1,13 @@
 var canvas = document.querySelector(".hacker_3d"),
     ctx = canvas.getContext("2d"),
     canvasBars = document.querySelector(".hacker_bars"),
-    ctxBars = canvasBars.getContext("2d"),
-    outputConsole = document.querySelector(".hacker_console");
+    ctxBars = canvasBars.getContext("2d");
 
 canvas.width = (window.innerWidth / 3) * 2;
 canvas.height = window.innerHeight / 3;
 
 canvasBars.width = window.innerWidth / 3;
 canvasBars.height = canvas.height;
-
-outputConsole.style.height = '100vh';
-outputConsole.style.top = '0px'
 
 /* Graphics stuff */
 function Square(z) {
@@ -115,41 +111,6 @@ var squares = [],
     barVals = [],
     sineVal = 0;
 
-/* fake console stuff */
-var commandStart = ['Performing DNS Lookups for',
-    'Searching ',
-    'Analyzing ',
-    'Estimating Approximate Location of ',
-    'Compressing ',
-    'Requesting Authorization From : ',
-    'wget -a -t ',
-    'tar -xzf ',
-    'Entering Location ',
-    'Compilation Started of ',
-    'Downloading '],
-    commandParts = ['Data Structure',
-        'http://wwjd.com?au&2',
-        'Texture',
-        'TPS Reports',
-        ' .... Searching ... ',
-        'http://zanb.se/?23&88&far=2',
-        'http://ab.ret45-33/?timing=1ww'],
-    commandResponses = ['Authorizing ',
-        'Authorized...',
-        'Access Granted..',
-        'Going Deeper....',
-        'Compression Complete.',
-        'Compilation of Data Structures Complete..',
-        'Entering Security Console...',
-        'Encryption Unsuccesful Attempting Retry...',
-        'Waiting for response...',
-        '....Searching...',
-        'Calculating Space Requirements '
-    ],
-    isProcessing = false,
-    processTime = 0,
-    lastProcess = 0;
-
 
 function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -195,54 +156,12 @@ function render() {
     requestAnimationFrame(render);
 }
 
-function consoleOutput() {
-    var textEl = document.createElement('p');
-
-    if (isProcessing) {
-        textEl = document.createElement('span');
-        textEl.textContent += Math.random() + " ";
-        if (Date.now() > lastProcess + processTime) {
-            isProcessing = false;
-        }
-    } else {
-        var commandType = ~~(Math.random() * 4);
-        switch (commandType) {
-            case 0:
-                textEl.textContent = commandStart[~~(Math.random() * commandStart.length)] + commandParts[~~(Math.random() * commandParts.length)];
-                break;
-            case 3:
-                isProcessing = true;
-                processTime = ~~(Math.random() * 5000);
-                lastProcess = Date.now();
-            default:
-                textEl.textContent = commandResponses[~~(Math.random() * commandResponses.length)];
-                break;
-        }
-    }
-
-    outputConsole.scrollTop = outputConsole.scrollHeight;
-    outputConsole.appendChild(textEl);
-
-    if (outputConsole.scrollHeight > window.innerHeight) {
-        var removeNodes = outputConsole.querySelectorAll('*');
-        for (var n = 0; n < ~~(removeNodes.length / 3); n++) {
-            outputConsole.removeChild(removeNodes[n]);
-        }
-    }
-
-    setTimeout(consoleOutput, ~~(Math.random() * 200));
-}
-
 setTimeout(function () {
     canvas.width = (window.innerWidth / 3) * 2;
     canvas.height = window.innerHeight / 3;
 
     canvasBars.width = window.innerWidth / 3;
     canvasBars.height = canvas.height;
-
-    outputConsole.style.height = '100vh';
-    outputConsole.style.top = '0px';
-
     focal = canvas.width / 2;
     vpx = canvas.width / 2;
     vpy = canvas.height / 2;
@@ -256,7 +175,6 @@ setTimeout(function () {
     ctx.strokeStyle = ctxBars.strokeStyle = ctxBars.fillStyle = primaryColor;
 
     render();
-    consoleOutput();
 }, 200);
 
 window.addEventListener('resize', function () {
@@ -265,10 +183,6 @@ window.addEventListener('resize', function () {
 
     canvasBars.width = window.innerWidth / 3;
     canvasBars.height = canvas.height;
-
-    outputConsole.style.height = '100vh';
-    outputConsole.style.top = '0px';
-
     focal = canvas.width / 2;
     vpx = canvas.width / 2;
     vpy = canvas.height / 2;
@@ -276,4 +190,31 @@ window.addEventListener('resize', function () {
     // Get the primary color from CSS custom property
     var primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim();
     ctx.strokeStyle = ctxBars.strokeStyle = ctxBars.fillStyle = primaryColor;
+});
+
+
+// Main Menu animations
+const atomJoin = document.getElementById('atomJoin');
+const atomHost = document.getElementById('atomHost');
+const rootConnectorLeft = document.getElementById('rootLeftConnectorEffector');
+const rootConnectorTop = document.getElementById('rootTopConnectorEffector');
+
+atomJoin.addEventListener('mouseenter', () => {
+    rootConnectorLeft.style.filter = 'saturate(500%) brightness(80%) hue-rotate(0deg)';
+    rootConnectorLeft.style.animation = 'rgb-strobe 0.15s linear infinite';
+});
+
+atomJoin.addEventListener('mouseleave', () => {
+    rootConnectorLeft.style.filter = '';
+    rootConnectorLeft.style.animation = '';
+});
+
+atomHost.addEventListener('mouseenter', () => {
+    rootConnectorTop.style.filter = 'saturate(500%) brightness(80%) hue-rotate(0deg)';
+    rootConnectorTop.style.animation = 'rgb-strobe 0.15s linear infinite';
+});
+
+atomHost.addEventListener('mouseleave', () => {
+    rootConnectorTop.style.filter = '';
+    rootConnectorTop.style.animation = '';
 });
