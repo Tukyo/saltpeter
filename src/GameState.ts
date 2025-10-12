@@ -1,4 +1,4 @@
-import { GAME } from "./config";
+import { GAME } from "./Config";
 
 export class GameState {
     /**

@@ -1,6 +1,6 @@
-import { AUDIO, GAME } from "./config";
+import { AUDIO, GAME } from "./Config";
 
-import { GameSettings } from "./defs";
+import { GameSettings } from "./Types";
 
 export class SettingsManager {
     private gameSettings: GameSettings

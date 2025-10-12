@@ -1,4 +1,4 @@
-import { Vec2 } from "./defs";
+import { Vec2 } from "./Types";
 
 export class ControlsManager {
     private activeKeys: Set<string> = new Set();

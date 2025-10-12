@@ -1,20 +1,19 @@
-import { CANVAS, DECALS, OBJECT_DEFAULTS, PARTICLES, SFX } from "../config";
+import { CANVAS, DECALS, OBJECT_DEFAULTS, PARTICLES, SFX } from "../Config";
 
+import { AmmoReservesUIController } from "./AmmoReservesUIController";
 import { Animator } from "../Animator";
 import { AudioManager } from "../AudioManager";
 import { CollisionsManager } from "../CollisionsManager";
 import { ControlsManager } from "../ControlsManager";
 import { DecalsManager } from "../DecalsManager";
-import { AttackType, DirectionParams, Projectile, SetSliderParams, Vec2 } from "../defs";
+import { AttackType, Direction, Projectile, SetSliderParams, Vec2 } from "../Types";
 import { GameState } from "../GameState";
+import { LuckController } from "./LuckController";
 import { ParticlesManager } from "../ParticlesManager";
-import { PlayerState } from "../PlayerState";
+import { PlayerState } from "./PlayerState";
 import { RoomManager } from "../RoomManager";
 import { UserInterface } from "../UserInterface";
 import { Utility } from "../Utility";
-
-import { AmmoReservesUIController } from "./AmmoReservesUIController";
-import { LuckController } from "./LuckController";
 
 export class CombatController {
     public projectiles: Map<string, Projectile> = new Map();
@@ -77,7 +76,7 @@ export class CombatController {
             if (this.playerState.myPlayer.actions.primary.magazine.currentAmmo > 0 && this.playerState.currentBurstShot < ammoNeeded) {
                 const mousePos = this.controlsManager.getMousePos();
 
-                const params: DirectionParams = {
+                const params: Direction = {
                     rootPos: {
                         x: this.playerState.myPlayer.transform.pos.x,
                         y: this.playerState.myPlayer.transform.pos.y
@@ -255,7 +254,7 @@ export class CombatController {
 
         const mousePos = this.controlsManager.getMousePos();
 
-        const params: DirectionParams = {
+        const params: Direction = {
             rootPos: {
                 x: this.playerState.myPlayer.transform.pos.x,
                 y: this.playerState.myPlayer.transform.pos.y

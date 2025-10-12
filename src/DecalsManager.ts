@@ -1,5 +1,5 @@
-import { CANVAS, DECALS } from "./config";
-import { Decal } from "./defs";
+import { CANVAS, DECALS } from "./Config";
+import { Decal } from "./Types";
 import { RoomManager } from "./RoomManager";
 import { UserInterface } from "./UserInterface";
 import { Utility } from "./Utility";

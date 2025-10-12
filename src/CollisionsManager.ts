@@ -1,7 +1,7 @@
-import { CANVAS } from "./config";
+import { CANVAS } from "./Config";
 
-import { Player } from "./defs";
-import { PlayerState } from "./PlayerState";
+import { Player } from "./Types";
+import { PlayerState } from "./player/PlayerState";
 import { RoomManager } from "./RoomManager";
 
 import { AmmoReservesUIController } from "./player/AmmoReservesUIController";
@@ -94,7 +94,7 @@ export class CollisionsManager {
     private checkPlayersCollisions(delta: number): void {
         if (this.playerState.myPlayer.stats.health.value <= 0) return;
 
-        this.playerState.players.forEach((player) => {
+        this.playerState.players.forEach((player: Player) => {
             if (player.stats.health.value <= 0) return;
 
             const dx = this.playerState.myPlayer.transform.pos.x - player.transform.pos.x;

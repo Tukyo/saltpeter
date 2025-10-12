@@ -1,12 +1,13 @@
-import { GAME } from "./config";
+import { GAME } from "./Config";
 
 import { GameState } from "./GameState";
 import { LobbyManager } from "./LobbyManager";
-import { PlayerState } from "./PlayerState";
 import { RoomManager } from "./RoomManager";
 import { UpgradeManager } from "./UpgradeManager";
 import { UserInterface } from "./UserInterface";
 import { WebsocketManager } from "./WebsocketManager";
+
+import { PlayerState } from "./player/PlayerState";
 
 export class RoomController {
     constructor(

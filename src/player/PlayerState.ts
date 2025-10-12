@@ -1,7 +1,7 @@
-import { CANVAS, PLAYER_DEFAULTS } from "./config";
+import { CANVAS, PLAYER_DEFAULTS } from "../Config";
 
-import { Player, Players } from "./defs";
-import { Utility } from "./Utility";
+import { Player, Players } from "../Types";
+import { Utility } from "../Utility";
 
 export class PlayerState {
     public myPlayer: Player; // My player object

@@ -1,18 +1,19 @@
-import { NETWORK } from "./config";
+import { NETWORK } from "./Config";
 
 import { Animator } from "./Animator";
 import { ChatManager } from "./ChatManager";
 import { ControlsManager } from "./ControlsManager";
 import { GameState } from "./GameState";
 import { LobbyManager } from "./LobbyManager";
-import { CombatController } from "./player/CombatController";
-import { DashController } from "./player/DashController";
-import { MoveController } from "./player/MoveController";
-import { PlayerState } from "./PlayerState";
 import { RoomController } from "./RoomController";
 import { RoomManager } from "./RoomManager";
 import { SettingsManager } from "./SettingsManager";
 import { UserInterface } from "./UserInterface";
+
+import { CombatController } from "./player/CombatController";
+import { DashController } from "./player/DashController";
+import { MoveController } from "./player/MoveController";
+import { PlayerState } from "./player/PlayerState";
 
 export class EventsManager {
     constructor(

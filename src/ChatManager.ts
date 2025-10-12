@@ -1,4 +1,4 @@
-import { CHAT } from "./config";
+import { CHAT } from "./Config";
 
 import { RoomManager } from "./RoomManager";
 import { UserInterface } from "./UserInterface";

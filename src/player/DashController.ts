@@ -1,6 +1,6 @@
-import { NETWORK } from "../config";
+import { NETWORK } from "../Config";
 
-import { PlayerState } from "../PlayerState";
+import { PlayerState } from "./PlayerState";
 import { RoomManager } from "../RoomManager";
 import { MoveController } from "./MoveController";
 import { StaminaController } from "./StaminaController";

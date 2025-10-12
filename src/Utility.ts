@@ -1,4 +1,4 @@
-import { DirectionParams, RandomColorParams, SetInputParams, SetSliderParams, SetSpanParams, SetToggleParams, Vec2 } from './defs';
+import { Direction, RandomColorParams, SetInputParams, SetSliderParams, SetSpanParams, SetToggleParams, Vec2 } from './Types';
 
 export class Utility {
     private lastFrameTime: number;
@@ -64,7 +64,7 @@ export class Utility {
     /**
      * Gets the current aim direction of the local player.
      */
-    public getDirection(params: DirectionParams): Vec2 {
+    public getDirection(params: Direction): Vec2 {
         const dx = params.targetPos.x - params.rootPos.x;
         const dy = params.targetPos.y - params.rootPos.y;
 

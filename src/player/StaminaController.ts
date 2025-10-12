@@ -1,4 +1,4 @@
-import { PlayerState } from "../PlayerState";
+import { PlayerState } from "./PlayerState";
 
 export class StaminaController {
     constructor(private playerState: PlayerState) { }

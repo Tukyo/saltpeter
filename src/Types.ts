@@ -1,22 +1,51 @@
-import { DECALS } from "./config";
+import { DECALS } from "./Config";
 
+// #region [ Core ]
+//
+/**
+ * Represents a 2D vector with x and y coordinates.
+ */
 export type Vec2 = { x: number, y: number }
 
+/**
+ * Represents an object's position and rotation in 2D space.
+ */
 export type Transform = {
   pos: Vec2;
   rot: number;
 }
 
+/**
+ * Represents a directional relationship between two points in 2D space.
+ */
+export type Direction = { rootPos: Vec2; targetPos: Vec2; };
+//
+// #endregion
+
+// #region [ Game Object ]
+/**
+ * Base interface for all game world entities.
+ * Includes a unique ID, transform data, and a timestamp for synchronization.
+ */
 export interface GameObject {
   id: string;
   transform: Transform;
   timestamp: number;
 }
 
+/**
+ * All gameobject types.
+ */
 export type ObjectType = 'AmmoBox' | 'Player' | 'Projectile';
 
+/**
+ * Mapping definition for stored player objects.
+ */
 export type Players = Map<string, Player>;
 
+/**
+ * Full representation of the player object. Extends GameObject.
+ */
 export interface Player extends GameObject {
   actions: {
     dash: {
@@ -121,28 +150,11 @@ export interface SpawnObjectParams {
   type: ObjectType;
   data?: any;
 }
+//
+// #endregion
 
-export interface GameSettings {
-  audio: {
-    mixer: {
-      master: number;
-      sfx: number;
-    }
-  }
-  controls: {
-    keybinds: {
-      dash: string;
-      melee: string;
-      moveDown: string;
-      moveLeft: string;
-      moveRight: string;
-      moveUp: string;
-      reload: string;
-      sprint: string;
-    }
-  }
-}
-
+// #region [ Animation ]
+//
 export interface AnimationParams {
   playerId: string;
   part: string;
@@ -150,33 +162,11 @@ export interface AnimationParams {
   duration: number;
   partIndex?: number;
 }
+//
+// #endregion
 
-export interface RoomMessage {
-  type: 'join-room' | 'create-room' | 'leave-room' | 'room-message' | 'room-created' | 'room-joined' | 'room-joined-game' | 'room-error' | 'user-joined' | 'user-left';
-  roomId?: string;
-  userId: string;
-  message?: string;
-  data?: any;
-  gameActive?: boolean;
-}
-
-export interface LobbyPlayer { // TODO: Consider just merging this into the standard player
-  id: string;
-  color: string;
-  isHost: boolean;
-}
-
-export interface LeaderboardEntry {
-  playerId: string;
-  kills: number;
-  deaths: number;
-  wins: number;
-}
-
-export type Leaderboard = Map<string, LeaderboardEntry>;
-
-export type ResetType = 'Room' | 'Lobby'
-
+// #region [ Audio ]
+//
 export interface AudioParams {
   delay?: {
     min: number;
@@ -205,11 +195,57 @@ export interface AudioParams {
     max: number;
   };
 }
+//
+// #endregion
 
-export type AttackType = 'melee' | 'ranged';
+// #region [ Lobby & Room ]
+//
+export type ResetType = 'Room' | 'Lobby'
 
-export type DirectionParams = { rootPos: Vec2; targetPos: Vec2; }
+export interface RoomMessage {
+  type: 'join-room' | 'create-room' | 'leave-room' | 'room-message' | 'room-created' | 'room-joined' | 'room-joined-game' | 'room-error' | 'user-joined' | 'user-left';
+  roomId?: string;
+  userId: string;
+  message?: string;
+  data?: any;
+  gameActive?: boolean;
+}
 
+export interface LobbyPlayer { // TODO: Consider just merging this into the standard player
+  id: string;
+  color: string;
+  isHost: boolean;
+}
+//
+// #endregion
+
+// #region [ Settings ]
+//
+export interface GameSettings {
+  audio: {
+    mixer: {
+      master: number;
+      sfx: number;
+    }
+  }
+  controls: {
+    keybinds: {
+      dash: string;
+      melee: string;
+      moveDown: string;
+      moveLeft: string;
+      moveRight: string;
+      moveUp: string;
+      reload: string;
+      sprint: string;
+    }
+  }
+}
+//
+// #endregion
+
+// #region [ Params ]
+//
 export type RandomColorParams = {
   format: 'hex' | 'rgb';
   mode: 'any' | 'primary' | 'pastel' | 'vibrant' | 'dark' | 'light' | 'grayscale';
@@ -237,7 +273,30 @@ export type SetToggleParams = {
   toggleId: string;
   value: boolean;
 }
+//
+// #endregion
 
+// #region [ Leaderboard ]
+//
+export interface LeaderboardEntry {
+  playerId: string;
+  kills: number;
+  deaths: number;
+  wins: number;
+}
+
+export type Leaderboard = Map<string, LeaderboardEntry>;
+//
+// #endregion
+
+// #region [ Combat ]
+//
+export type AttackType = 'melee' | 'ranged';
+//
+// #endregion
+
+// #region [ Visual ]
+//
 export type CharacterAnimation = Map<string, {
   playerId: string;
   part: string;
@@ -247,30 +306,6 @@ export type CharacterAnimation = Map<string, {
   startTime: number;
   originalOffset: { x: number, y: number };
 }>
-
-export enum UpgradeRarity {
-  COMMON = 0,
-  UNCOMMON = 1,
-  RARE = 2,
-  EPIC = 3,
-  LEGENDARY = 4
-}
-export enum UpgradeType {
-  STAT = 'stat',
-  UNIQUE = 'unique',
-  EQUIPMENT = 'equipment'
-}
-
-export interface Upgrade {
-  id: string;
-  icon: string;
-  name: string;
-  rarity: UpgradeRarity;
-  subtitle: string;
-  type: UpgradeType;
-  unique: boolean;
-  func: (player: Player) => void;
-}
 
 export type Particle = {
   age: number;
@@ -317,3 +352,35 @@ export type ReserveBulletParticle = {
   width: number;
   height: number;
 }
+
+export type CharacterLayer = 'BODY' | 'WEAPON' | 'HEAD' | 'HEADWEAR';
+//
+// #endregion
+
+// #region [ Upgrades ]
+//
+export enum UpgradeRarity {
+  COMMON = 0,
+  UNCOMMON = 1,
+  RARE = 2,
+  EPIC = 3,
+  LEGENDARY = 4
+}
+export enum UpgradeType {
+  STAT = 'stat',
+  UNIQUE = 'unique',
+  EQUIPMENT = 'equipment'
+}
+
+export interface Upgrade {
+  id: string;
+  icon: string;
+  name: string;
+  rarity: UpgradeRarity;
+  subtitle: string;
+  type: UpgradeType;
+  unique: boolean;
+  func: (player: Player) => void;
+}
+//
+// #endregion

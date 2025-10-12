@@ -1,7 +1,7 @@
-import { AUDIO, CANVAS } from "./config";
+import { AUDIO, CANVAS } from "./Config";
 
 import { AudioPool } from "./AudioPool";
-import { AudioParams } from "./defs";
+import { AudioParams } from "./Types";
 import { RoomManager } from "./RoomManager";
 import { SettingsManager } from "./SettingsManager";
 

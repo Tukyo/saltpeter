@@ -1,4 +1,4 @@
-import { Player, Upgrade, UpgradeRarity, UpgradeType } from './defs';
+import { Player, Upgrade, UpgradeRarity, UpgradeType } from './Types';
 
 /**
  Upgrade Ideas:

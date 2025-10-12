@@ -1,4 +1,4 @@
-import { GAME } from "./config";
+import { GAME } from "./Config";
 
 import { GameState } from "./GameState";
 import { RoomManager } from "./RoomManager";

@@ -1,19 +1,22 @@
-import { CHARACTER_DECALS } from "./char";
-import { CANVAS, DECALS, PARTICLES } from "./config";
-import { DecalsManager } from "./DecalsManager";
-import { Emitter, Particle, Vec2 } from "./defs";
-import { PlayerState } from "./PlayerState";
-import { RenderingManager } from "./RenderingManager";
+import { CANVAS, DECALS, PARTICLES } from "./Config";
 
+import { CharacterConfig } from "./CharacterConfig";
+import { DecalsManager } from "./DecalsManager";
+import { Emitter, Particle, Vec2 } from "./Types";
+import { RenderingManager } from "./RenderingManager";
 import { RoomManager } from "./RoomManager";
 import { UserInterface } from "./UserInterface";
 import { Utility } from "./Utility";
+
+import { PlayerState } from "./player/PlayerState";
+
 
 export class ParticlesManager {
     public particles: Map<string, Particle> = new Map();
     public emitters: Map<string, Emitter> = new Map();
 
     constructor(
+        private charConfig: CharacterConfig,
         private decalsManager: DecalsManager,
         private playerState: PlayerState,
         private renderdingManager: RenderingManager,
@@ -189,6 +192,35 @@ export class ParticlesManager {
 
         particlesToRemove.forEach(id => this.particles.delete(id));
     }
+
+    /**
+     * Responsible for the actual rendering of particles spawned via emitters and particle functions.
+     */
+    public drawParticles(): void {
+        if (!this.ui.ctx) return;
+
+        this.particles.forEach(particle => {
+            const rgb = this.utility.hexToRgb(particle.color);
+            if (!rgb) return;
+
+            if (!this.ui.ctx) return;
+            this.ui.ctx.save();
+            this.ui.ctx.globalAlpha = particle.opacity;
+
+            // Apply rotation if torque exists
+            if (particle.torque !== 0) {
+                this.ui.ctx.translate(particle.pos.x + particle.size / 2, particle.pos.y + particle.size / 2);
+                this.ui.ctx.rotate(particle.rotation);
+                this.ui.ctx.fillStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+                this.ui.ctx.fillRect(-particle.size / 2, -particle.size / 2, particle.size, particle.size);
+            } else {
+                this.ui.ctx.fillStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+                this.ui.ctx.fillRect(Math.floor(particle.pos.x), Math.floor(particle.pos.y), particle.size, particle.size);
+            }
+
+            this.ui.ctx.restore();
+        });
+    }
     //
 
     // [ Particle Persistence ]
@@ -340,7 +372,7 @@ export class ParticlesManager {
     public generateGore(playerId: string, centerX: number, centerY: number, playerSize: number): void {
         // Sample unique gore assets
         const goreCount = 2 + Math.floor(Math.random() * 4); // 2-5 pieces
-        const gorePool = [...CHARACTER_DECALS.GORE];
+        const gorePool = [...this.charConfig.CHARACTER_DECALS.GORE];
         for (let i = 0; i < goreCount && gorePool.length > 0; i++) {
             const idx = Math.floor(Math.random() * gorePool.length);
             const goreAsset = gorePool.splice(idx, 1)[0];
@@ -369,7 +401,7 @@ export class ParticlesManager {
 
         // Sample unique blood assets
         const bloodCount = 1 + Math.floor(Math.random() * 2); // 1-2 pieces
-        const bloodPool = [...CHARACTER_DECALS.BLOOD];
+        const bloodPool = [...this.charConfig.CHARACTER_DECALS.BLOOD];
         for (let i = 0; i < bloodCount && bloodPool.length > 0; i++) {
             const idx = Math.floor(Math.random() * bloodPool.length);
             const bloodAsset = bloodPool.splice(idx, 1)[0];

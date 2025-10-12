@@ -1,4 +1,4 @@
-import { PlayerState } from "../PlayerState";
+import { PlayerState } from "./PlayerState";
 
 export class LuckController {
     constructor(private playerState: PlayerState) {}

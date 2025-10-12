@@ -1,35 +1,38 @@
 
-import { Player, RoomMessage, Projectile, LobbyPlayer, LeaderboardEntry, AmmoBox, ResetType, GameObject, SpawnObjectParams, SetSliderParams, SetSpanParams } from './defs';
-import { PLAYER_DEFAULTS, CANVAS, GAME, UI, AMMO_BOX, NETWORK, SFX, AUDIO, OBJECT_DEFAULTS } from './config';
-import { CharacterLayer, getCharacterAsset } from './char';
+import { PLAYER_DEFAULTS, CANVAS, GAME, SFX, AUDIO } from './Config';
+
+import { Player, RoomMessage, LobbyPlayer, LeaderboardEntry, ResetType, SetSliderParams, SetSpanParams } from './Types';
 
 import { Animator } from './Animator';
 import { AudioManager } from './AudioManager';
+import { CharacterConfig } from './CharacterConfig';
+import { CharacterManager } from './CharacterManager';
+import { ChatManager } from './ChatManager';
 import { ControlsManager } from './ControlsManager';
 import { CollisionsManager } from './CollisionsManager';
 import { DecalsManager } from './DecalsManager';
-import { LobbyManager } from './LobbyManager';
 import { EventsManager } from './EventsManager';
+import { GameState } from './GameState';
+import { LobbyManager } from './LobbyManager';
 import { ParticlesManager } from './ParticlesManager';
-import { PlayerState } from './PlayerState';
+import { RenderingManager } from './RenderingManager';
 import { RoomController } from './RoomController';
 import { RoomManager } from './RoomManager';
 import { SettingsManager } from './SettingsManager';
 import { UpgradeManager } from './UpgradeManager';
 import { UserInterface } from './UserInterface';
 import { Utility } from './Utility';
-import { GameState } from './GameState';
-import { ChatManager } from './ChatManager';
 import { WebsocketManager } from './WebsocketManager';
 
-import { DashController } from './player/DashController';
-import { MoveController } from './player/MoveController';
-import { StaminaController } from './player/StaminaController';
-import { CombatController } from './player/CombatController';
 import { AmmoReservesUIController } from './player/AmmoReservesUIController';
+import { CombatController } from './player/CombatController';
+import { DashController } from './player/DashController';
 import { LuckController } from './player/LuckController';
+import { MoveController } from './player/MoveController';
 import { ObjectsManager } from './ObjectsManager';
-import { RenderingManager } from './RenderingManager';
+import { PlayerController } from './player/PlayerController';
+import { PlayerState } from './player/PlayerState';
+import { StaminaController } from './player/StaminaController';
 
 class Client {
     private userId: string;
@@ -42,6 +45,8 @@ class Client {
     private ammoReservesUIController: AmmoReservesUIController;
     private animator: Animator;
     private audioManager: AudioManager;
+    private charConfig: CharacterConfig;
+    private charManager: CharacterManager;
     private chatManager: ChatManager;
     private collisionsManager: CollisionsManager;
     private combatController: CombatController;
@@ -55,6 +60,7 @@ class Client {
     private moveController: MoveController;
     private objectsManager: ObjectsManager;
     private particlesManager: ParticlesManager;
+    private playerController: PlayerController;
     private playerState: PlayerState;
     private renderingManager: RenderingManager;
     private roomController: RoomController;
@@ -75,14 +81,20 @@ class Client {
         this.upgradeManager = new UpgradeManager();
         this.controlsManager = new ControlsManager();
         this.gameState = new GameState();
-        this.objectsManager = new ObjectsManager();
-        this.renderingManager = new RenderingManager();
+
+        this.charConfig = new CharacterConfig();
+        this.charManager = new CharacterManager(this.charConfig);
 
         this.userId = this.utility.generateUID(PLAYER_DEFAULTS.DATA.ID_LENGTH);
 
         this.playerState = new PlayerState(this.userId, this.utility);
 
         this.settingsManager.initSettings();
+
+        this.objectsManager = new ObjectsManager(
+            this.playerState,
+            this.utility
+        );
 
         this.roomManager = new RoomManager(this.userId, this.utility);
         this.lobbyManager = new LobbyManager(this.utility, this.ui, this.roomManager);
@@ -116,6 +128,16 @@ class Client {
         this.dashController = new DashController(this.moveController, this.playerState, this.roomManager, this.staminaController);
         this.luckController = new LuckController(this.playerState);
 
+        this.audioManager = new AudioManager(this.roomManager, this.settingsManager);
+        this.animator = new Animator(this.playerState, this.roomManager, this.userId);
+
+        this.renderingManager = new RenderingManager(
+            this.animator,
+            this.charManager,
+            this.objectsManager,
+            this.ui
+        );
+
         this.decalsManager = new DecalsManager(
             this.roomManager,
             this.ui,
@@ -123,6 +145,7 @@ class Client {
         );
 
         this.particlesManager = new ParticlesManager(
+            this.charConfig,
             this.decalsManager,
             this.playerState,
             this.renderingManager,
@@ -132,8 +155,15 @@ class Client {
             this.utility
         );
 
-        this.audioManager = new AudioManager(this.roomManager, this.settingsManager);
-        this.animator = new Animator(this.playerState, this.roomManager, this.userId);
+        this.playerController = new PlayerController(
+            this.gameState,
+            this.moveController,
+            this.objectsManager,
+            this.particlesManager,
+            this.playerState,
+            this.roomManager,
+            this.userId
+        );
 
         this.combatController = new CombatController(
             this.ammoReservesUIController,
@@ -531,7 +561,7 @@ class Client {
                         this.utility.setSlider(healthSliderParams);
 
                         if (this.playerState.myPlayer.stats.health.value <= 0) {
-                            this.recordDeath();
+                            this.playerController.playerDeath();
                             this.checkRoundEnd();
                         }
                     } else if (this.playerState.players.has(gameData.targetId)) {
@@ -616,7 +646,7 @@ class Client {
                     }
                     // For other players
                     if (gameData.spawnMap) {
-                        this.playerState.players.forEach((player, id) => {
+                        this.playerState.players.forEach((player: Player, id: string) => {
                             if (gameData.spawnMap[id]) {
                                 player.transform.pos.x = gameData.spawnMap[id].x;
                                 player.transform.pos.y = gameData.spawnMap[id].y;
@@ -681,7 +711,7 @@ class Client {
                     this.resumeGame(); // Unpause locally
 
                     // Receive all player's spawn locations and reset their health
-                    this.playerState.players.forEach((player, playerId) => { // Respawn other players
+                    this.playerState.players.forEach((player: Player, playerId: string) => { // Respawn other players
                         if (gameData.spawnMap[playerId]) {
                             player.transform.pos.x = gameData.spawnMap[player.id].x;
                             player.transform.pos.y = gameData.spawnMap[player.id].y;
@@ -817,7 +847,7 @@ class Client {
         let aliveCount = this.playerState.myPlayer.stats.health.value > 0 ? 1 : 0;
         let lastAlivePlayer = this.playerState.myPlayer.stats.health.value > 0 ? this.userId : null;
 
-        this.playerState.players.forEach((player) => {
+        this.playerState.players.forEach((player: Player) => {
             if (player.stats.health.value > 0) {
                 aliveCount++;
                 lastAlivePlayer = player.id;
@@ -933,7 +963,7 @@ class Client {
 
         // Locally update all other players for the winner, their state should already be updated after taking upgrades
         // [ IMPORTANT ] Keep full track of Player object here
-        this.playerState.players.forEach(player => {
+        this.playerState.players.forEach((player: Player) => {
             const spawn = spawnMap[player.id];
 
             player.transform.pos.x = spawn.x;
@@ -1009,7 +1039,7 @@ class Client {
         };
         usedSpawns.push(spawnMap[this.userId]);
 
-        this.playerState.players.forEach(player => {
+        this.playerState.players.forEach((player: Player) => {
             let spawn: { x: number, y: number };
             let tries = 0;
             do {
@@ -1027,143 +1057,6 @@ class Client {
         });
 
         return spawnMap;
-    }
-    //
-    // #endregion
-
-    // #region [ Player ]
-    /**
-     * Processes player movements and desired velocity. 
-     */
-    private updatePlayerPosition(delta: number): void {
-        if (!this.gameState.gameInProgress || this.playerState.myPlayer.stats.health.value <= 0 || this.playerState.isDashing) return;
-
-        const now = Date.now();
-        const { inputX, inputY } = this.moveController.getMoveInput();
-
-        // [ Sprinting ]
-        const canSprint = this.playerState.isSprinting && this.playerState.myPlayer.stats.stamina.value > 0 && this.moveController.isMoving();
-        const currentSpeed = canSprint ? this.playerState.myPlayer.stats.speed * this.playerState.myPlayer.actions.sprint.multiplier : this.playerState.myPlayer.stats.speed;
-        if (this.playerState.isSprinting && this.playerState.myPlayer.stats.stamina.value <= 0) { // Stop sprinting if out of stamina
-            this.playerState.isSprinting = false;
-            console.log('Out of stamina, stopped sprinting');
-        }
-        //
-
-        const targetVelocityX = inputX * currentSpeed;
-        const targetVelocityY = inputY * currentSpeed;
-
-        this.playerState.playerVelocityX += (targetVelocityX - this.playerState.playerVelocityX) * this.playerState.myPlayer.physics.acceleration * delta;
-        this.playerState.playerVelocityY += (targetVelocityY - this.playerState.playerVelocityY) * this.playerState.myPlayer.physics.acceleration * delta;
-
-        if (!this.moveController.isMoving()) {
-            this.playerState.playerVelocityX *= Math.pow(this.playerState.myPlayer.physics.friction, delta);
-            this.playerState.playerVelocityY *= Math.pow(this.playerState.myPlayer.physics.friction, delta);
-        }
-
-        let newX = this.playerState.myPlayer.transform.pos.x + this.playerState.playerVelocityX * delta;
-        let newY = this.playerState.myPlayer.transform.pos.y + this.playerState.playerVelocityY * delta;
-
-        this.playerState.myPlayer.transform.pos.x = newX;
-        this.playerState.myPlayer.transform.pos.y = newY;
-
-        let moved = (this.playerState.playerVelocityX !== 0 || this.playerState.playerVelocityY !== 0);
-
-        const distanceFromLastSent = Math.sqrt(
-            (this.playerState.myPlayer.transform.pos.x - this.playerState.lastSentX) ** 2 +
-            (this.playerState.myPlayer.transform.pos.y - this.playerState.lastSentY) ** 2
-        );
-
-        if (moved && distanceFromLastSent > 2 && now - this.playerState.lastSentMoveTime >= NETWORK.MOVE_INTERVAL) {
-            this.roomManager.sendMessage(JSON.stringify({
-                type: 'player-move',
-                transform: {
-                    pos: {
-                        x: this.playerState.myPlayer.transform.pos.x,
-                        y: this.playerState.myPlayer.transform.pos.y
-                    }
-                }
-            }));
-
-            this.playerState.lastSentX = this.playerState.myPlayer.transform.pos.x;
-            this.playerState.lastSentY = this.playerState.myPlayer.transform.pos.y;
-            this.playerState.lastSentMoveTime = now;
-        }
-
-        if (Math.abs(this.playerState.playerVelocityX) < 0.01) this.playerState.playerVelocityX = 0;
-        if (Math.abs(this.playerState.playerVelocityY) < 0.01) this.playerState.playerVelocityY = 0;
-    }
-
-    /**
-     * Record the player's own death when they are the targetId of a player-hit message and their health reaches 0.
-     */
-    private recordDeath(): void {
-        console.log('I died! Waiting for round to end...');
-
-        this.playerState.resetPlayerState();
-
-        const ammoBox = this.spawnAmmoBox(10);
-        this.objectsManager.ammoBoxes.set(ammoBox.id, ammoBox);
-
-        this.particlesManager.generateGore(this.userId, this.playerState.myPlayer.transform.pos.x, this.playerState.myPlayer.transform.pos.y, this.playerState.myPlayer.stats.size);
-
-        this.roomManager.sendMessage(JSON.stringify({
-            type: 'player-death',
-            playerId: this.userId,
-            x: this.playerState.myPlayer.transform.pos.x,
-            y: this.playerState.myPlayer.transform.pos.y,
-            size: this.playerState.myPlayer.stats.size,
-            ammoBox: ammoBox
-        }));
-    }
-    //
-    // #endregion
-
-    // #region [ Objects ]
-    //
-    /**
-     * Spawns a GameObject in the scene, returning it's properties for the construction.
-     */
-    private spawnObject(params: SpawnObjectParams): GameObject {
-        const baseObject: GameObject = {
-            id: this.utility.generateUID(OBJECT_DEFAULTS.DATA.ID_LENGTH),
-            transform: params.transform,
-            timestamp: Date.now()
-        };
-
-        switch (params.type) { //TODO: Spawn the player, projectiles and any other GameObject types here
-            case 'AmmoBox':
-                return {
-                    id: baseObject.id,
-                    transform: baseObject.transform,
-                    timestamp: baseObject.timestamp,
-                    ammoAmount: params.data?.amount || 10,
-                    isOpen: false,
-                    lid: {
-                        pos: { x: 0, y: 0 },
-                        rot: 0,
-                        velocity: { x: 0, y: 0 },
-                        torque: 0
-                    }
-                } as AmmoBox;
-
-            default:
-                throw new Error(`Unknown object type: ${params.type}`);
-        }
-    }
-
-    private spawnAmmoBox(amount: number): AmmoBox {
-        return this.spawnObject({
-            type: 'AmmoBox',
-            transform: {
-                pos: {
-                    x: this.playerState.myPlayer.transform.pos.x,
-                    y: this.playerState.myPlayer.transform.pos.y
-                },
-                rot: this.playerState.myPlayer.transform.rot
-            },
-            data: { amount }
-        }) as AmmoBox;
     }
     //
     // #endregion
@@ -1358,7 +1251,7 @@ class Client {
         const dt = this.utility.deltaTime();
 
         // Update
-        this.updatePlayerPosition(dt);
+        this.playerController.updatePlayerPosition(dt);
         this.combatController.updateAttack(dt);
         this.combatController.updateProjectiles(dt);
         this.particlesManager.updateParticles(dt);
@@ -1378,24 +1271,24 @@ class Client {
         }
         this.utility.setSlider(staminaSliderParams);
 
-        this.clearCtx(this.ui.ctx);
+        this.renderingManager.clearCtx(this.ui.ctx);
 
         this.ui.ctx.drawImage(this.ui.decalCanvas, 0, 0)
 
-        this.drawObjects();
+        this.renderingManager.drawObjects();
 
         // Draw projectiles
         this.combatController.projectiles.forEach(projectile => {
-            this.drawProjectile(projectile);
+            this.renderingManager.drawProjectile(projectile);
         });
 
         // Draw other players
-        this.playerState.players.forEach(player => {
-            this.drawCharacter(player);
+        this.playerState.players.forEach((player: Player) => {
+            this.renderingManager.drawCharacter(player);
         });
 
-        this.drawCharacter(this.playerState.myPlayer, true);
-        this.drawParticles();
+        this.renderingManager.drawCharacter(this.playerState.myPlayer, true);
+        this.particlesManager.drawParticles();
 
         // Continue game loop
         requestAnimationFrame(() => this.gameLoop());
@@ -1461,7 +1354,7 @@ class Client {
         }
 
         // Reset UI and player
-        this.clearCtx();
+        this.renderingManager.clearCtx();
         this.chatManager.clearChat();
         this.ui.clearLeaderboard();
         this.playerState.resetPlayerState();
@@ -1743,252 +1636,7 @@ class Client {
     //
     // #endregion
 
-    // #region [ Rendering ]
-    //
-    /**
-     * Clear all canvas rendering context in the game.
-     * 
-     * / OR /
-     * 
-     * Pass the specific CanvasRenderingContext2D to clear.
-     */
-    private clearCtx(customCtx?: CanvasRenderingContext2D): void {
-        if (customCtx) {
-            customCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
-            return;
-        }
 
-        if (!this.ui.decalCtx || !this.ui.ctx) return;
-
-        this.ui.ctx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
-        this.ui.decalCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
-    }
-    // #endregion
-
-    // [ Character ]
-    //
-    /**
-     * Draws the corresponding character layers defined in the rig to create the player character.
-     */
-    private drawCharacter(player: Player, isMe: boolean = false): void {
-        if (!this.ui.ctx) return;
-        if (player.stats.health.value <= 0) return;
-
-        // Render layers in order: BODY → WEAPON → HEAD → HEADWEAR
-        this.drawCharacterLayer(player, 'BODY', player.rig.body);
-        this.drawCharacterLayer(player, 'WEAPON', player.rig.weapon);
-        this.drawCharacterLayer(player, 'HEAD', player.rig.head);
-        this.drawCharacterLayer(player, 'HEADWEAR', player.rig.headwear);
-
-        // Draw player name/info (existing code)
-        this.ui.ctx.fillStyle = UI.TEXT_COLOR;
-        this.ui.ctx.font = UI.FONT;
-        this.ui.ctx.textAlign = 'center';
-
-        const displayName = isMe ? 'You' : player.id.substring(0, 6);
-        this.ui.ctx.fillText(
-            displayName,
-            player.transform.pos.x,
-            player.transform.pos.y - PLAYER_DEFAULTS.VISUAL.ID_DISPLAY_OFFSET
-        );
-    }
-
-    /**
-     * Retrieves character assets and draws each layer using drawCharacterPart.
-     */
-    private drawCharacterLayer(player: Player, layer: CharacterLayer, variant: string): void {
-        if (!this.ui.ctx) return;
-
-        const assets = getCharacterAsset(layer, variant);
-
-        if (typeof assets === 'string') {
-            this.drawCharacterPart(player, assets, layer);
-        }
-        else if (Array.isArray(assets)) {
-            assets.forEach((assetPath, index) => {
-                this.drawCharacterPart(player, assetPath, layer, index);
-            });
-        }
-    }
-
-    /**
-     * Handles the actual rendering for all player parts on each layer.
-     */
-    private drawCharacterPart(player: Player, assetPath: string, partType: CharacterLayer, partIndex?: number): void {
-        if (!this.ui.ctx) return;
-
-        let image = this.renderingManager.characterImages.get(assetPath);
-
-        if (!image) {
-            image = new Image();
-            image.src = assetPath;
-            this.renderingManager.characterImages.set(assetPath, image);
-            if (!image.complete) return;
-        }
-
-        if (!image.complete || image.naturalWidth === 0) return;
-
-        const drawSize = GAME.CHARACTER_SIZE * (player.stats.size / GAME.CHARACTER_SIZE);
-
-        // Check for animation offset
-        const animationId = `${player.id}_${partType}_${partIndex || 0}`;
-        const animationOffset = this.animator.characterOffsets?.get(animationId) || { x: 0, y: 0 };
-
-        this.ui.ctx.save();
-
-        // Apply rotation if it exists
-        if (player.transform.rot !== undefined) {
-            this.ui.ctx.translate(player.transform.pos.x, player.transform.pos.y);
-            this.ui.ctx.rotate(player.transform.rot);
-
-            // Apply animation offset
-            this.ui.ctx.translate(animationOffset.x, animationOffset.y);
-
-            this.ui.ctx.drawImage(
-                image,
-                -drawSize / 2,
-                -drawSize / 2,
-                drawSize,
-                drawSize
-            );
-        } else {
-            this.ui.ctx.drawImage(
-                image,
-                player.transform.pos.x - drawSize / 2 + animationOffset.x,
-                player.transform.pos.y - drawSize / 2 + animationOffset.y,
-                drawSize,
-                drawSize
-            );
-        }
-
-        this.ui.ctx.restore();
-    }
-    //
-
-    /**
-     * Draws object entities on the canvas.
-     */
-    private drawObjects(): void {
-        if (!this.ui.ctx) return;
-
-        //TODO: Use this function to draw all 'objects' in the scene.
-
-        // Ammo Boxes
-        this.objectsManager.ammoBoxes.forEach(ammoBox => {
-            if (!this.ui.ctx) return;
-
-            // Load and cache images
-            if (!this.renderingManager.ammoBoxImages) this.renderingManager.ammoBoxImages = {};
-            const layers: (keyof typeof AMMO_BOX)[] = ['BASE', 'BULLETS', 'LID'];
-            layers.forEach(layer => {
-                if (!this.renderingManager.ammoBoxImages[layer]) {
-                    const img = new Image();
-                    img.src = AMMO_BOX[layer];
-                    this.renderingManager.ammoBoxImages[layer] = img;
-                }
-            });
-
-            if (!layers.every(layer => this.renderingManager.ammoBoxImages[layer]?.complete && this.renderingManager.ammoBoxImages[layer]?.naturalWidth > 0)) return;
-
-            const scale = 35;
-            const x = ammoBox.transform.pos.x;
-            const y = ammoBox.transform.pos.y;
-
-            // Update lid physics if open
-            if (ammoBox.isOpen) {
-                ammoBox.lid.velocity.x *= 0.85;
-                ammoBox.lid.velocity.y *= 0.85;
-                ammoBox.lid.torque *= 0.85;
-
-                ammoBox.lid.pos.x += ammoBox.lid.velocity.x;
-                ammoBox.lid.pos.y += ammoBox.lid.velocity.y;
-                ammoBox.lid.rot += ammoBox.lid.torque;
-            }
-
-            this.ui.ctx.save();
-            this.ui.ctx.translate(x, y);
-            this.ui.ctx.rotate(ammoBox.transform.rot || 0);
-
-            // Draw body
-            this.ui.ctx.drawImage(this.renderingManager.ammoBoxImages['BASE'], -scale / 2, -scale / 2, scale, scale);
-
-            // Draw bullets only if NOT open
-            if (!ammoBox.isOpen) {
-                this.ui.ctx.drawImage(this.renderingManager.ammoBoxImages['BULLETS'], -scale / 2, -scale / 2, scale, scale);
-                // Draw closed lid here
-                this.ui.ctx.drawImage(this.renderingManager.ammoBoxImages['LID'], -scale / 2, -scale / 2, scale, scale);
-            }
-
-            this.ui.ctx.restore();
-
-            // Draw flying lid separately if open
-            if (ammoBox.isOpen) {
-                this.ui.ctx.save();
-                this.ui.ctx.translate(x + ammoBox.lid.pos.x, y + ammoBox.lid.pos.y);
-                this.ui.ctx.rotate((ammoBox.transform.rot || 0) + ammoBox.lid.rot);
-                this.ui.ctx.drawImage(this.renderingManager.ammoBoxImages['LID'], -scale / 2, -scale / 2, scale, scale);
-                this.ui.ctx.restore();
-            }
-        });
-    }
-
-    /**
-     * Draws the rect of the projectile and renders it on the main canvas.
-     */
-    private drawProjectile(projectile: Projectile): void {
-        if (!this.ui.ctx) return;
-
-        // Calculate projectile direction
-        const speed = Math.sqrt(projectile.velocity.x * projectile.velocity.x + projectile.velocity.y * projectile.velocity.y);
-        const dirX = projectile.velocity.x / speed;
-        const dirY = projectile.velocity.y / speed;
-
-        // Calculate front and back points
-        const frontX = projectile.transform.pos.x + dirX * (projectile.length / 2);
-        const frontY = projectile.transform.pos.y + dirY * (projectile.length / 2);
-        const backX = projectile.transform.pos.x - dirX * (projectile.length / 2);
-        const backY = projectile.transform.pos.y - dirY * (projectile.length / 2);
-
-        // Draw the capsule body (rectangle)
-        this.ui.ctx.fillStyle = projectile.color;
-        this.ui.ctx.strokeStyle = projectile.color;
-        this.ui.ctx.lineWidth = projectile.size;
-        this.ui.ctx.lineCap = 'round';
-
-        this.ui.ctx.beginPath();
-        this.ui.ctx.moveTo(backX, backY);
-        this.ui.ctx.lineTo(frontX, frontY);
-        this.ui.ctx.stroke();
-    }
-
-    /**
-     * Responsible for the actual rendering of particles spawned via emitters and particle functions.
-     */
-    private drawParticles(): void {
-        if (!this.ui.ctx) return;
-
-        this.particlesManager.particles.forEach(particle => {
-            const rgb = this.utility.hexToRgb(particle.color);
-            if (!rgb) return;
-
-            if (!this.ui.ctx) return;
-            this.ui.ctx.save();
-            this.ui.ctx.globalAlpha = particle.opacity;
-
-            // Apply rotation if torque exists
-            if (particle.torque !== 0) {
-                this.ui.ctx.translate(particle.pos.x + particle.size / 2, particle.pos.y + particle.size / 2);
-                this.ui.ctx.rotate(particle.rotation);
-                this.ui.ctx.fillStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-                this.ui.ctx.fillRect(-particle.size / 2, -particle.size / 2, particle.size, particle.size);
-            } else {
-                this.ui.ctx.fillStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-                this.ui.ctx.fillRect(Math.floor(particle.pos.x), Math.floor(particle.pos.y), particle.size, particle.size);
-            }
-
-            this.ui.ctx.restore();
-        });
-    }
 }
 
 // Initialize the game client

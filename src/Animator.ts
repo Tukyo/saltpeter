@@ -1,6 +1,8 @@
-import { AnimationParams, CharacterAnimation, Vec2 } from "./defs";
-import { PlayerState } from "./PlayerState";
+import { AnimationParams, CharacterAnimation, Vec2 } from "./Types";
+
 import { RoomManager } from "./RoomManager";
+
+import { PlayerState } from "./player/PlayerState";
 
 export class Animator {
     private characterAnimations: CharacterAnimation = new Map();

@@ -1,4 +1,4 @@
-import { ReserveBulletParticle } from "../defs";
+import { ReserveBulletParticle } from "../Types";
 import { UserInterface } from "../UserInterface";
 
 export class AmmoReservesUIController {

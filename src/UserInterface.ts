@@ -1,6 +1,6 @@
-import { CANVAS } from "./config";
+import { CANVAS } from "./Config";
 
-import { Leaderboard, Players } from "./defs";
+import { Leaderboard, Players } from "./Types";
 import { LobbyManager } from "./LobbyManager";
 
 export class UserInterface {
