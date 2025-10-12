@@ -80,6 +80,12 @@ export const PLAYER_DEFAULTS = {
     }
 };
 
+export const OBJECT_DEFAULTS = {
+    DATA: {
+        ID_LENGTH: 8
+    },
+}
+
 export const DECALS = {
     PROJECTILE: {
         RADIUS: {
@@ -501,7 +507,7 @@ export const SFX = {
                 '/assets/audio/sfx/impact/metal/bullet/impact_metal_bullet_02.ogg',
                 '/assets/audio/sfx/impact/metal/bullet/impact_metal_bullet_03.ogg',
                 '/assets/audio/sfx/impact/metal/bullet/impact_metal_bullet_04.ogg'
-            ] 
+            ]
         }
     },
     WEAPON: {

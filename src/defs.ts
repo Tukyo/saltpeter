@@ -1,3 +1,5 @@
+import { DECALS } from "./config";
+
 export type Vec2 = { x: number, y: number }
 
 export type Transform = {
@@ -12,6 +14,8 @@ export interface GameObject {
 }
 
 export type ObjectType = 'AmmoBox' | 'Player' | 'Projectile';
+
+export type Players = Map<string, Player>;
 
 export interface Player extends GameObject {
   actions: {
@@ -118,7 +122,7 @@ export interface SpawnObjectParams {
   data?: any;
 }
 
-export interface GameOptions {
+export interface GameSettings {
   audio: {
     mixer: {
       master: number;
@@ -178,6 +182,7 @@ export interface AudioParams {
     min: number;
     max: number;
   }
+  listener: Vec2;
   loop?: boolean;
   output?: string;
   priority?: number;
@@ -202,3 +207,113 @@ export interface AudioParams {
 }
 
 export type AttackType = 'melee' | 'ranged';
+
+export type DirectionParams = { rootPos: Vec2; targetPos: Vec2; }
+
+export type RandomColorParams = {
+  format: 'hex' | 'rgb';
+  mode: 'any' | 'primary' | 'pastel' | 'vibrant' | 'dark' | 'light' | 'grayscale';
+
+}
+
+export type SetInputParams = {
+  inputId: string;
+  value: number;
+}
+
+export type SetSliderParams = {
+  sliderId: string;
+  targetValue: number;
+  maxValue: number;
+  lerpTime?: number;
+}
+
+export type SetSpanParams = {
+  spanId: string;
+  value: string | number;
+}
+
+export type SetToggleParams = {
+  toggleId: string;
+  value: boolean;
+}
+
+export type CharacterAnimation = Map<string, {
+  playerId: string;
+  part: string;
+  partIndex?: number;
+  frames: { [key: number]: { x: number, y: number } };
+  duration: number;
+  startTime: number;
+  originalOffset: { x: number, y: number };
+}>
+
+export enum UpgradeRarity {
+  COMMON = 0,
+  UNCOMMON = 1,
+  RARE = 2,
+  EPIC = 3,
+  LEGENDARY = 4
+}
+export enum UpgradeType {
+  STAT = 'stat',
+  UNIQUE = 'unique',
+  EQUIPMENT = 'equipment'
+}
+
+export interface Upgrade {
+  id: string;
+  icon: string;
+  name: string;
+  rarity: UpgradeRarity;
+  subtitle: string;
+  type: UpgradeType;
+  unique: boolean;
+  func: (player: Player) => void;
+}
+
+export type Particle = {
+  age: number;
+  collide: boolean;
+  color: string;
+  fade: boolean;
+  hasCollided: boolean;
+  id: string;
+  initialSize: number;
+  lifetime: number;
+  maxOpacity: number;
+  noiseStrength: number;
+  noiseScale: number;
+  opacity: number;
+  paint: boolean;
+  pos: Vec2;
+  rotation: number;
+  size: number;
+  sizeOverLifetime: number;
+  stain: boolean;
+  torque: number;
+  velocity: Vec2
+}
+
+export type Emitter = {
+  age: number;
+  direction: number;
+  emissionInterval: number;
+  lastEmission: number;
+  lifetime: number;
+  offset: Vec2;
+  playerId: string;
+}
+
+export type Decal = {
+  params: typeof DECALS[keyof typeof DECALS] | null;
+  pos: Vec2;
+}
+
+export type ReserveBulletParticle = {
+  transform: Transform;
+  velocity: Vec2;
+  torque: number;
+  width: number;
+  height: number;
+}
