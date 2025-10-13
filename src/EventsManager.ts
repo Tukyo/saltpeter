@@ -52,7 +52,7 @@ export class EventsManager {
         this.ui.gameCodeButton.addEventListener("click", () => this.roomController.copyRoomCode());
         this.ui.startGameBtn.addEventListener("click", () => this.onStartButtonClick());
 
-        // Chat event listeners
+        // [ Chat ]
         this.ui.chatSendBtn.addEventListener("click", () => this.chatManager.sendChatMessage(this.userId));
         this.ui.chatInput.addEventListener("keypress", (e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -60,8 +60,6 @@ export class EventsManager {
                 this.chatManager.sendChatMessage(this.userId);
             }
         });
-
-        // Add focus/blur listeners to chat input
         this.ui.chatInput.addEventListener("focus", () => {
             this.controlsManager.clearActiveKeys();
 
@@ -80,6 +78,14 @@ export class EventsManager {
             this.playerState.isDashing = false;
         });
 
+        this.ui.settingsButton?.addEventListener('click', () => {
+            this.ui.showSettingsPage();
+        });
+
+        this.ui.settingsCloseButton?.addEventListener('click', () => {
+            this.ui.hideSettingsPage();
+        })
+
         // Listen on document for events, not canvas.
         // If this presents issues, swap "document." with "this.interface.canvas"
         document.addEventListener('keydown', (e) => this.onKeyDown(e));
@@ -96,6 +102,41 @@ export class EventsManager {
         document.addEventListener('mousemove', (e) => this.onMouseMove(e));
 
         this.ui.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e)); // Canvas only listening for mouse (shooting mainly)
+
+        this.ui.switchSettingsPage('sound'); // Init settings page to sound tab on dom load
+
+        this.ui.controlsTab?.addEventListener('click', () => {
+            this.ui.switchSettingsPage('controls');
+        });
+
+        this.ui.graphicsTab?.addEventListener('click', () => {
+            this.ui.switchSettingsPage('graphics');
+        });
+
+        this.ui.soundTab?.addEventListener('click', () => {
+            this.ui.switchSettingsPage('sound');
+        });
+
+        // Settings page click to open when hidden
+        this.ui.controlsBody?.addEventListener('click', () => {
+            if (this.ui.controlsBody?.classList.contains('settings_page_hidden')) {
+                this.ui.switchSettingsPage('controls');
+            }
+        });
+
+        this.ui.graphicsBody?.addEventListener('click', () => {
+            if (this.ui.graphicsBody?.classList.contains('settings_page_hidden')) {
+                this.ui.switchSettingsPage('graphics');
+            }
+        });
+
+        this.ui.soundBody?.addEventListener('click', () => {
+            if (this.ui.soundBody?.classList.contains('settings_page_hidden')) {
+                this.ui.switchSettingsPage('sound');
+            }
+        });
+
+        this.initAudioSliders();
     }
 
     /**
@@ -233,4 +274,46 @@ export class EventsManager {
     }
     //
     // #endregion
+
+    /**
+     * Initializes settings slider event listeners
+     */
+    private initAudioSliders(): void {
+        const sliders = [
+            { slider: this.ui.masterSlider, fill: this.ui.masterFill, value: this.ui.masterValue, channel: 'master' },
+            { slider: this.ui.interfaceSlider, fill: this.ui.interfaceFill, value: this.ui.interfaceValue, channel: 'interface' },
+            { slider: this.ui.musicSlider, fill: this.ui.musicFill, value: this.ui.musicValue, channel: 'music' },
+            { slider: this.ui.sfxSlider, fill: this.ui.sfxFill, value: this.ui.sfxValue, channel: 'sfx' },
+            { slider: this.ui.voiceSlider, fill: this.ui.voiceFill, value: this.ui.voiceValue, channel: 'voice' }
+        ];
+
+        sliders.forEach(({ slider, fill, value, channel }) => {
+            if (!slider || !fill || !value) return;
+
+            slider.addEventListener('mousedown', (e) => {
+                const handleMove = (moveEvent: MouseEvent) => {
+                    const sliderValue = this.ui.calculateSliderValue(slider, moveEvent.clientX);
+                    this.ui.updateSettingsSlider(fill, value, sliderValue);
+
+                    this.settingsManager.updateSettings({
+                        audio: {
+                            mixer: {
+                                [channel]: sliderValue
+                            }
+                        }
+                    });
+                };
+
+                const handleUp = () => {
+                    document.removeEventListener('mousemove', handleMove);
+                    document.removeEventListener('mouseup', handleUp);
+                };
+
+                handleMove(e);
+                document.addEventListener('mousemove', handleMove);
+                document.addEventListener('mouseup', handleUp);
+                e.preventDefault();
+            });
+        });
+    }
 }

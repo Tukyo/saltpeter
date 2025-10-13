@@ -33,6 +33,7 @@
 
     --grey: #6e6e6e;
     --grey-slate-20: #ffffff33;
+    --grey-dark: #333333bf;
 
     --bg: url('./assets/img/bg.png');
     --bg-dark: url('./assets/img/bg_dark.png');
@@ -47,6 +48,7 @@
     --secondary-radius: 4px;
     --tertiary-radius: 10px;
     --smooth-radius: 1rem;
+    --curve-radius: 100rem;
 
     --rarity-0: #ffffff;
     --rarity-1: #1eff00;
@@ -1094,8 +1096,8 @@ toggle[checked]::before {
 /**/
 /* #endregion */
 
-
-
+/* #region [ Homepage ] */
+/**/
 .atom {
     grid-column: 1;
     grid-row: 1;
@@ -1363,6 +1365,243 @@ toggle[checked]::before {
     background-image: url('./assets/img/icon/mainmenu/join/connector_base.png');
 }
 
+/**/
+/* #endregion */
+
+/* #region [ Settings ] */
+/**/
+#settingsContainer {
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+#settingsTabs,
+#settingsFooter {
+    width: 100%;
+    flex: 0.1;
+    user-select: none;
+}
+
+#settingsFooter>* {
+    max-width: 60%;
+    border-top-left-radius: var(--curve-radius);
+    border-top-right-radius: var(--curve-radius);
+}
+
+#settingsBody {
+    border-radius: calc(var(--curve-radius) / 30);
+    background-color: var(--black-60);
+    width: 90%;
+    flex: 1;
+    overflow: hidden;
+    padding: 2rem;
+    gap: 0.5rem;
+}
+
+#controlsBody,
+#soundBody {
+    background-color: var(--grey-slate-20);
+}
+
+#graphicsBody {
+    background-color: var(--grey);
+}
+
+.settings_tab {
+    flex: 1;
+    height: 100%;
+    background-color: var(--grey-dark);
+}
+
+.settings_tab:hover {
+    cursor: pointer;
+    background:
+        url('/assets/img/noise2.gif'),
+        var(--grey-dark);
+    background-size: cover, auto;
+    background-blend-mode: color;
+    filter: contrast(200%);
+}
+
+.settings_page {
+    flex: 1;
+    height: 100%;
+    background-color: var(--black-05);
+    border-radius: var(--smooth-radius);
+    gap: 1rem;
+    padding-left: 1rem;
+    overflow: hidden;
+    flex-wrap: nowrap;
+}
+
+#controlsTab,
+#controlsTab .tab_span_container {
+    border-bottom-left-radius: var(--curve-radius);
+}
+
+#controlsTab .tab_span_container {
+    border-top-right-radius: calc(var(--smooth-radius) * 30);
+    border-bottom-right-radius: calc(var(--smooth-radius) * 30);
+}
+
+.tab_span_container {
+    background-color: inherit;
+}
+
+#soundTab,
+#soundTab .tab_span_container {
+    border-bottom-right-radius: var(--curve-radius);
+}
+
+#soundTab .tab_span_container {
+    border-top-left-radius: calc(var(--smooth-radius) * 30);
+    border-bottom-left-radius: calc(var(--smooth-radius) * 30);
+}
+
+#graphicsTab .tab_span_container {
+    border-radius: calc(var(--smooth-radius) * 30);
+}
+
+.settings_page_hidden {
+    flex: 0.025 !important;
+}
+
+.settings_page_header {
+    color: white;
+    height: 98%;
+    justify-content: space-evenly;
+    flex: 0.025;
+    align-content: center;
+    user-select: none;
+    align-items: center;
+}
+
+.settings_page_header span {
+    color: white;
+}
+
+.settings_page_hidden:hover {
+    cursor: pointer;
+}
+
+.settings_page_hidden:hover .settings_page_header .settings_header_divider {
+    background: url('/assets/img/noise2.gif');
+    cursor: pointer;
+}
+
+.header_spans {
+    margin: 1rem auto;
+    gap: 1rem;
+}
+
+.settings_page_content {
+    flex: 1;
+    overflow: hidden;
+}
+
+.settings_tab_active {
+    background: var(--grey-slate-20);
+}
+
+.tab_span_container {
+    color: var(--primary-color);
+    width: 90%;
+    height: 60%;
+}
+
+.tab_span_container span {
+    color: var(--primary-color);
+}
+
+#settingsCloseButton .tab_span_container {
+    border-top-right-radius: var(--curve-radius);
+    border-top-left-radius: var(--curve-radius);
+    border-bottom-right-radius: calc(var(--smooth-radius) * 30);
+    border-bottom-left-radius: calc(var(--smooth-radius) * 30);
+}
+
+.settings_header_divider {
+    flex: 1;
+    background: url('/assets/img/noise.gif');
+    outline: 2px double black;
+    border-radius: var(--smooth-radius);
+    min-width: 10%;
+}
+
+.settings_slider_label {
+    color: var(--primary-color);
+    flex: 0.25;
+    justify-content: end;
+}
+
+.settings_item {
+    width: 100%;
+    flex: 1;
+    justify-content: flex-end;
+}
+
+.settings_slider {
+    gap: 1rem;
+}
+
+.sound_slider {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+.sound_slider:hover {
+    cursor: pointer;
+    background-color: var(--black-05);
+}
+
+.sound_slider:hover .sound_fill {
+    background: url('/assets/img/noise2.gif');
+}
+
+.sound_fill {
+    width: 100%;
+    height: 100%;
+    background: url('/assets/img/noise.gif');
+    transition: 0s all;
+}
+
+#masterSlider {
+    flex: 0.5;
+}
+
+#interfaceSlider {
+    flex: 0.55;
+}
+
+#musicSlider {
+    flex: 0.65;
+}
+
+#sfxSlider {
+    flex: 0.8;
+}
+
+#voiceSlider {
+    flex: 1;
+}
+
+.settings_slider_value {
+    transform: translateY(120%);
+}
+
+.settings_fill {
+    color: var(--secondary-color);
+    justify-content: end;
+}
+
+/**/
+/* #endregion */
+
+/* #region [ Animations ] */
+/**/
 @keyframes rotate-background {
     from {
         transform: rotate(0deg);
@@ -1501,3 +1740,6 @@ toggle[checked]::before {
         transform: rotate3d(3, 5, 3, 360deg);
     }
 }
+
+/**/
+/* #endregion */

@@ -225,7 +225,10 @@ export interface GameSettings {
   audio: {
     mixer: {
       master: number;
+      interface: number;
+      music: number;
       sfx: number;
+      voice: number;
     }
   }
   controls: {
@@ -238,6 +241,13 @@ export interface GameSettings {
       moveUp: string;
       reload: string;
       sprint: string;
+    },
+    gamepad: {
+      attack: number;
+      dash: number;
+      melee: number;
+      reload: number;
+      sprint: number;
     }
   }
 }

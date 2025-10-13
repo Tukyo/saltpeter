@@ -430,6 +430,47 @@ export const CANVAS = {
     BORDER_MARGIN: 15,
 };
 
+export const XBOX_CONTROLLER_MAPPING = {
+    // Face buttons
+    A: 0,
+    B: 1,
+    X: 2,
+    Y: 3,
+    
+    // Bumpers
+    LB: 4,
+    RB: 5,
+    
+    // Triggers
+    LT: 6,
+    RT: 7,
+    
+    // System buttons
+    SELECT: 8,
+    START: 9,
+    
+    // Stick clicks
+    L_STICK: 10,
+    R_STICK: 11,
+    
+    // D-Pad
+    DPAD_UP: 12,
+    DPAD_DOWN: 13,
+    DPAD_LEFT: 14,
+    DPAD_RIGHT: 15,
+    
+    // Home/Guide button
+    HOME: 16,
+    
+    // Axes
+    AXES: {
+        LEFT_STICK_X: 0,
+        LEFT_STICK_Y: 1,
+        RIGHT_STICK_X: 2,
+        RIGHT_STICK_Y: 3
+    }
+};
+
 export const GAME = {
     CHARACTER_SIZE: 650,
     CONNECTION_TIMEOUT: 1000,
@@ -445,6 +486,13 @@ export const GAME = {
             ATTACK: 'mouse1',
             DASH: ' '
         },
+        GAMEPAD: {
+            MELEE: XBOX_CONTROLLER_MAPPING.A,
+            DASH: XBOX_CONTROLLER_MAPPING.B,
+            RELOAD: XBOX_CONTROLLER_MAPPING.X,
+            SPRINT: XBOX_CONTROLLER_MAPPING.LB,
+            ATTACK: XBOX_CONTROLLER_MAPPING.RT
+        }
     },
     GAME_END_DELAY: 5000,
     MAX_PLAYERS: 4,
@@ -478,7 +526,10 @@ export const NETWORK = {
 export const AUDIO = {
     MIXER: {
         MASTER: 1.0,
-        SFX: 0.5
+        INTERFACE: 0.85,
+        MUSIC: 0.75,
+        SFX: 0.9,
+        VOICE: 1.0
     },
     SETTINGS: {
         MAX_CONCURRENT: 5, // Max simultaneous instances of same sound

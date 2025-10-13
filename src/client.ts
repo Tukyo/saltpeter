@@ -33,6 +33,7 @@ import { ObjectsManager } from './ObjectsManager';
 import { PlayerController } from './player/PlayerController';
 import { PlayerState } from './player/PlayerState';
 import { StaminaController } from './player/StaminaController';
+import { CacheManager } from './CacheManager';
 
 class Client {
     private userId: string;
@@ -45,6 +46,7 @@ class Client {
     private ammoReservesUIController: AmmoReservesUIController;
     private animator: Animator;
     private audioManager: AudioManager;
+    private cacheManager: CacheManager;
     private charConfig: CharacterConfig;
     private charManager: CharacterManager;
     private chatManager: ChatManager;
@@ -75,12 +77,14 @@ class Client {
     // #region [ Initialization ]
     //
     constructor() {
-        this.settingsManager = new SettingsManager();
+        this.cacheManager = new CacheManager();
+        this.settingsManager = new SettingsManager(this.cacheManager);
         this.utility = new Utility();
         this.ui = new UserInterface();
         this.upgradeManager = new UpgradeManager();
-        this.controlsManager = new ControlsManager();
         this.gameState = new GameState();
+
+        this.controlsManager = new ControlsManager(this.settingsManager);
 
         this.charConfig = new CharacterConfig();
         this.charManager = new CharacterManager(this.charConfig);
@@ -88,8 +92,6 @@ class Client {
         this.userId = this.utility.generateUID(PLAYER_DEFAULTS.DATA.ID_LENGTH);
 
         this.playerState = new PlayerState(this.userId, this.utility);
-
-        this.settingsManager.initSettings();
 
         this.objectsManager = new ObjectsManager(
             this.playerState,
@@ -206,7 +208,7 @@ class Client {
         }
     }
 
-    private initClient(): void {
+    private async initClient(): Promise<void> {
         this.ui.initInterface();
         this.eventsManager.initEventListeners();
         this.initGlobalEvents();
@@ -221,6 +223,11 @@ class Client {
             value: this.userId
         }
         this.utility.setSpan(spanParams);
+
+        await this.settingsManager.loadSettings();
+
+        const audioSettings = this.settingsManager.getSettings().audio.mixer;
+        this.ui.initSoundSliders(audioSettings);
 
         if (AUDIO.SETTINGS.PRELOAD_SOUNDS) {
             this.audioManager.preloadAudioAssets(SFX, '.ogg');
@@ -244,7 +251,12 @@ class Client {
     }
     //
     // #endregion
-
+    //
+    //
+    //
+    //
+    //
+    //
     // #region [ Client <> Server ]
     //
     private handleRoomMessage(message: RoomMessage): void {
@@ -801,8 +813,13 @@ class Client {
     }
     //
     // #endregion
-
-    // #region [ Lobby Management ]
+    //
+    //
+    //
+    //
+    //
+    //
+    // #region [ Lobby ]
     //
     /**
      * Return to the lobby for this room from the game.
@@ -832,8 +849,13 @@ class Client {
     }
     //
     // #endregion
-
-    // #region [ Round Management ]
+    //
+    //
+    //
+    //
+    //
+    //
+    // #region [ Round ]
     //
     /**
      * Responsible for checking if the round should end.
@@ -1060,7 +1082,12 @@ class Client {
     }
     //
     // #endregion
-
+    //
+    //
+    //
+    //
+    //
+    //
     // #region [ Game ]
     //
     /**
@@ -1366,8 +1393,13 @@ class Client {
 
     //
     // #endregion
-
-    // #region [ Upgrade ]
+    //
+    //
+    //
+    //
+    //
+    //
+    // #region [ Upgrades ]
     //
     /**
      * Start the upgrade phase by showing the relative UI for winners/losers.
@@ -1635,8 +1667,6 @@ class Client {
     }
     //
     // #endregion
-
-
 }
 
 // Initialize the game client

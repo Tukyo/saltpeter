@@ -1,3 +1,4 @@
+import { CacheManager } from "./CacheManager";
 import { AUDIO, GAME } from "./Config";
 
 import { GameSettings } from "./Types";
@@ -5,7 +6,7 @@ import { GameSettings } from "./Types";
 export class SettingsManager {
     private gameSettings: GameSettings
 
-    constructor() {
+    constructor(private cacheManager: CacheManager) {
         this.gameSettings = this.initSettings();
     }
 
@@ -18,7 +19,10 @@ export class SettingsManager {
             audio: {
                 mixer: {
                     master: AUDIO.MIXER.MASTER,
-                    sfx: AUDIO.MIXER.SFX
+                    interface: AUDIO.MIXER.INTERFACE,
+                    music: AUDIO.MIXER.MUSIC,
+                    sfx: AUDIO.MIXER.SFX,
+                    voice: AUDIO.MIXER.VOICE
                 }
             },
             controls: {
@@ -31,10 +35,40 @@ export class SettingsManager {
                     moveUp: GAME.CONTROLS.KEYBINDS.MOVE_UP,
                     reload: GAME.CONTROLS.KEYBINDS.RELOAD,
                     sprint: GAME.CONTROLS.KEYBINDS.SPRINT,
+                },
+                gamepad: {
+                    melee: GAME.CONTROLS.GAMEPAD.MELEE,
+                    dash: GAME.CONTROLS.GAMEPAD.DASH,
+                    reload: GAME.CONTROLS.GAMEPAD.RELOAD,
+                    sprint: GAME.CONTROLS.GAMEPAD.SPRINT,
+                    attack: GAME.CONTROLS.GAMEPAD.ATTACK
                 }
             }
         };
     }
 
     public getSettings(): GameSettings { return this.gameSettings }
+
+    public updateSettings(settings: any): void {
+        const merge = (target: any, source: any): void => {
+            for (const key in source) {
+                if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+                    if (!target[key]) target[key] = {};
+                    merge(target[key], source[key]);
+                } else {
+                    target[key] = source[key];
+                }
+            }
+        };
+
+        merge(this.gameSettings, settings);
+        this.cacheManager.write('gameSettings', this.gameSettings);
+    }
+
+    public async loadSettings(): Promise<void> {
+        const cached = await this.cacheManager.read('gameSettings');
+        if (cached) {
+            this.gameSettings = cached;
+        }
+    }
 }

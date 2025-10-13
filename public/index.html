@@ -181,7 +181,6 @@
     </div>
   </div>
 
-  <!-- Join Room Modal -->
   <div id="modal" class="modal hidden">
     <div id="modalContent">
       <span id="modalText">Join Room</span>
@@ -218,6 +217,115 @@
       </thead>
       <tbody id="leaderboardBody"></tbody>
     </table>
+  </div>
+
+  <div id="settingsContainer" class="modal hidden">
+    <div id="settingsTabs" class="container row">
+      <div id="controlsTab" class="settings_tab">
+        <div class="tab_span_container">
+          <span>Controls</span>
+        </div>
+      </div>
+      <div id="graphicsTab" class="settings_tab">
+        <div class="tab_span_container">
+          <span>Graphics</span>
+        </div>
+      </div>
+      <div id="soundTab" class="settings_tab">
+        <div class="tab_span_container">
+          <span>Sound</span>
+        </div>
+      </div>
+    </div>
+    <div id="settingsBody" class="container row">
+      <div id="controlsBody" class="settings_page container row">
+        <div class="settings_page_header container">
+          <div class="header_spans container">
+            <span>C</span>
+            <span>O</span>
+            <span>N</span>
+            <span>T</span>
+            <span>R</span>
+            <span>O</span>
+            <span>L</span>
+            <span>S</span>
+          </div>
+          <div class="settings_header_divider"></div>
+        </div>
+        <div class="settings_page_content container row">
+
+        </div>
+      </div>
+      <div id="graphicsBody" class="settings_page container row">
+        <div class="settings_page_header container">
+          <div class="header_spans container">
+            <span>G</span>
+            <span>R</span>
+            <span>A</span>
+            <span>P</span>
+            <span>H</span>
+            <span>I</span>
+            <span>C</span>
+            <span>S</span>
+          </div>
+          <div class="settings_header_divider"></div>
+        </div>
+        <div class="settings_page_content container row">
+
+        </div>
+      </div>
+      <div id="soundBody" class="settings_page container row">
+        <div class="settings_page_header container">
+          <div class="header_spans container">
+            <span>S</span>
+            <span>O</span>
+            <span>U</span>
+            <span>N</span>
+            <span>D</span>
+          </div>
+          <div class="settings_header_divider"></div>
+        </div>
+        <div class="settings_page_content container">
+          <div id="masterSliderContainer" class="settings_item settings_slider">
+            <div class="settings_slider_label">MASTER</div>
+            <div id="masterSlider" class="sound_slider">
+              <div id="masterFill" class="sound_fill settings_fill"><div id="masterValue" class="settings_slider_value"></div></div>
+            </div>
+          </div>
+          <div id="interfaceSliderContainer" class="settings_item settings_slider">
+            <div class="settings_slider_label">USER INTERFACE</div>
+            <div id="interfaceSlider" class="sound_slider">
+              <div id="interfaceFill" class="sound_fill settings_fill"><div id="interfaceValue" class="settings_slider_value"></div></div>
+            </div>
+          </div>
+          <div id="musicSliderContainer" class="settings_item settings_slider">
+            <div class="settings_slider_label">MUSIC</div>
+            <div id="musicSlider" class="sound_slider">
+              <div id="musicFill" class="sound_fill settings_fill"><div id="musicValue" class="settings_slider_value"></div></div>
+            </div>
+          </div>
+          <div id="sfxSliderContainer" class="settings_item settings_slider">
+            <div class="settings_slider_label">SOUND EFFECTS</div>
+            <div id="sfxSlider" class="sound_slider">
+              <div id="sfxFill" class="sound_fill settings_fill"><div id="sfxValue" class="settings_slider_value"></div></div>
+            </div>
+          </div>
+          <div id="voiceSliderContainer" class="settings_item settings_slider">
+            <div class="settings_slider_label">VOICE</div>
+            <div id="voiceSlider" class="sound_slider">
+              <div id="voiceFill" class="sound_fill settings_fill"><div id="voiceValue" class="settings_slider_value"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="settingsFooter" class="container row">
+      <div id="settingsCloseButton" class="settings_tab">
+        <div class="tab_span_container">
+          <span>Close Settings</span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="/app.js"></script>
