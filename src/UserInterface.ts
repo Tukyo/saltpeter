@@ -1,7 +1,8 @@
-import { CANVAS } from "./Config";
+import { CANVAS, GAMEPAD_MAP } from "./Config";
 
 import { Leaderboard, Players } from "./Types";
 import { LobbyManager } from "./LobbyManager";
+import { SettingsManager } from "./SettingsManager";
 
 export class UserInterface {
     // [ Canvas ]
@@ -105,7 +106,7 @@ export class UserInterface {
     public voiceFill: HTMLDivElement | null = null;
     public voiceValue: HTMLDivElement | null = null;
 
-    constructor() { }
+    constructor(private settingsManager: SettingsManager) { }
 
     // #region [ Init ]
     //
@@ -371,20 +372,14 @@ export class UserInterface {
             !this.modalCancelButton || !this.modalErrorDiv) return;
 
         this.modal.classList.remove('hidden');
+        this.modalConfirmButton.classList.remove('hidden');
+
         this.modalInput.value = '';
         this.modalErrorDiv.textContent = '';
 
+        this.modalConfirmButton.textContent = 'Join'
+
         this.modalInput.focus();
-
-        const closeModal = () => {
-            if (!this.modal || !this.modalInput || !this.modalConfirmButton ||
-                !this.modalCancelButton || !this.modalErrorDiv) return;
-
-            this.modal.classList.add('hidden');
-            this.modalConfirmButton.onclick = null;
-            this.modalCancelButton.onclick = null;
-            this.modalInput.onkeydown = null;
-        };
 
         this.modalConfirmButton.onclick = () => {
             if (!this.modalInput || !this.modalErrorDiv) return;
@@ -414,11 +409,11 @@ export class UserInterface {
                 return;
             }
 
-            closeModal();
+            this.closeModal();
             onConfirm(roomId); // pass back the parsed roomId
         };
 
-        this.modalCancelButton.onclick = closeModal;
+        this.modalCancelButton.onclick = () => this.closeModal();
     }
 
     /**
@@ -430,6 +425,8 @@ export class UserInterface {
             !this.modalErrorDiv || !this.modalButtons) return;
 
         this.modal.classList.remove('hidden');
+        this.modalConfirmButton.classList.remove('hidden');
+        
         this.modalInput.style.display = 'none';
         this.modalErrorDiv.textContent = ' ';
         this.modalButtons.style.display = 'flex';
@@ -439,23 +436,12 @@ export class UserInterface {
         this.modalConfirmButton.textContent = 'Start Game';
         this.modalCancelButton.textContent = 'Cancel';
 
-        const closeModal = () => {
-            if (!this.modal || !this.modalInput || !this.modalConfirmButton ||
-                !this.modalCancelButton || !this.modalText) return;
-
-            this.modal.classList.add('hidden');
-            this.modalInput.style.display = 'flex';
-            this.modalText.textContent = 'Join Room';
-            this.modalConfirmButton.onclick = null;
-            this.modalCancelButton.onclick = null;
-        };
-
         this.modalConfirmButton.onclick = () => {
-            closeModal();
+            this.closeModal();
             onConfirm(); // Proceed with starting the game
         };
 
-        this.modalCancelButton.onclick = closeModal;
+        this.modalCancelButton.onclick = () => this.closeModal();
     }
 
     // [ Settings ]
@@ -533,6 +519,209 @@ export class UserInterface {
         const position = mouseX - rect.left;
         const width = rect.width;
         return Math.max(0, Math.min(1, position / width));
+    }
+
+    // Update initKeybindsInterface in UserInterface.ts
+
+    public initKeybindsInterface(controlsSettings: { keybinds: Record<string, string>, gamepad: Record<string, number> }, onKeybindChange: (action: string, type: 'keybind' | 'gamepad', newBinding: string | number) => void): void {
+        // [ Keys ]
+        Object.keys(controlsSettings.keybinds).forEach(action => {
+            const elementId = `${action}Keybind`;
+            const element = document.getElementById(elementId);
+            if (element) {
+                const key = controlsSettings.keybinds[action];
+                element.textContent = key === ' ' ? 'SPACE' : key.toUpperCase();
+
+                element.addEventListener('click', () => {
+                    this.showRebindModal(action, 'keybind', (newBinding) => {
+                        onKeybindChange(action, 'keybind', newBinding as string);
+                    });
+                });
+            }
+        });
+
+        // [ Gamepad ]
+        Object.keys(controlsSettings.gamepad).forEach(action => {
+            const elementId = `${action}Gamepad`;
+            const element = document.getElementById(elementId);
+
+            if (element && controlsSettings.gamepad[action] !== undefined) {
+                const buttonValue = controlsSettings.gamepad[action];
+                const buttonName = Object.keys(GAMEPAD_MAP).find(
+                    key => typeof GAMEPAD_MAP[key as keyof typeof GAMEPAD_MAP] === 'number'
+                        && GAMEPAD_MAP[key as keyof typeof GAMEPAD_MAP] === buttonValue
+                );
+                element.textContent = buttonName || buttonValue.toString();
+
+                element.addEventListener('click', () => {
+                    this.showRebindModal(action, 'gamepad', (newBinding) => {
+                        onKeybindChange(action, 'gamepad', newBinding as number);
+                    });
+                });
+            }
+        });
+    }
+
+    // Add to UserInterface.ts
+
+    public showRebindModal(action: string, type: 'keybind' | 'gamepad', onRebind: (newBinding: string | number) => void): void {
+        if (!this.modal || !this.modalText || !this.modalInput || !this.modalConfirmButton || !this.modalCancelButton || !this.modalErrorDiv) return;
+
+        const duplicateWarnings = [
+            "Binding already assigned!",
+            "Binding already in use!",
+            "That binding is assigned already!",
+            "Binding already being used!",
+            "Already bound to another action!"
+        ];
+        let warningIndex = 0;
+
+        // Check for gamepad if type is gamepad
+        if (type === 'gamepad') {
+            const gamepads = navigator.getGamepads();
+            const hasGamepad = Array.from(gamepads).some(gp => gp !== null);
+
+            if (!hasGamepad) {
+                this.modal.classList.remove('hidden');
+                this.modalErrorDiv.textContent = '';
+                this.modalText.textContent = 'No gamepad detected';
+                this.modalInput.style.display = 'none';
+                this.modalConfirmButton.classList.add('hidden');
+                this.modalCancelButton.textContent = 'Close';
+
+                this.modalCancelButton.onclick = () => this.closeModal();
+
+                setTimeout(() => {
+                    this.closeModal();
+                }, 3000);
+
+                return;
+            }
+        }
+
+        this.modal.classList.remove('hidden');
+        this.modalErrorDiv.textContent = '';
+        this.modalInput.style.display = 'none';
+        this.modalText.textContent = `Press any ${type === 'keybind' ? 'key' : 'button'} for ${action.toUpperCase()}`;
+        this.modalConfirmButton.classList.add('hidden');
+        this.modalCancelButton.textContent = 'Cancel';
+
+        const checkDuplicate = (binding: string | number): boolean => {
+            if (type === 'keybind') {
+                const allKeybinds = Object.entries(this.settingsManager?.getSettings().controls.keybinds || {});
+                return allKeybinds.some(([key, value]) => key !== action && value === binding);
+            } else {
+                const allGamepad = Object.entries(this.settingsManager?.getSettings().controls.gamepad || {});
+                return allGamepad.some(([key, value]) => key !== action && value === binding);
+            }
+        };
+
+        const handleKeyPress = (e: KeyboardEvent) => {
+            e.preventDefault();
+            if (e.key === 'Escape') {
+                cleanup();
+                this.closeModal();
+                return;
+            }
+
+            const newKey = e.key.toLowerCase();
+
+            if (checkDuplicate(newKey)) {
+                if (!this.modalErrorDiv) return;
+                this.modalErrorDiv.textContent = duplicateWarnings[warningIndex % duplicateWarnings.length];
+                warningIndex++;
+                return;
+            }
+
+            cleanup();
+            onRebind(newKey);
+            this.closeModal();
+        };
+
+        const handleMouseDown = (e: MouseEvent) => {
+            // Check if click is on cancel button
+            if (e.target === this.modalCancelButton || this.modalCancelButton?.contains(e.target as Node)) {
+                return;
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            let mouseKey = '';
+            if (e.button === 0) mouseKey = 'mouse1';
+            else if (e.button === 1) mouseKey = 'mouse3';
+            else if (e.button === 2) mouseKey = 'mouse2';
+
+            if (mouseKey) {
+                if (checkDuplicate(mouseKey)) {
+                    if (!this.modalErrorDiv) return;
+                    this.modalErrorDiv.textContent = duplicateWarnings[warningIndex % duplicateWarnings.length];
+                    warningIndex++;
+                    return;
+                }
+
+                cleanup();
+                onRebind(mouseKey);
+                this.closeModal();
+            }
+        };
+
+        const handleGamepadPress = () => {
+            const gamepads = navigator.getGamepads();
+            for (const gamepad of gamepads) {
+                if (!gamepad) continue;
+
+                for (let i = 0; i < gamepad.buttons.length; i++) {
+                    if (gamepad.buttons[i].pressed) {
+                        if (checkDuplicate(i)) {
+                            if (!this.modalErrorDiv) return;
+                            this.modalErrorDiv.textContent = duplicateWarnings[warningIndex % duplicateWarnings.length];
+                            warningIndex++;
+                            requestAnimationFrame(handleGamepadPress);
+                            return;
+                        }
+
+                        cleanup();
+                        onRebind(i);
+                        this.closeModal();
+                        return;
+                    }
+                }
+            }
+            requestAnimationFrame(handleGamepadPress);
+        };
+
+        const cleanup = () => {
+            if (type === 'keybind') {
+                document.removeEventListener('keydown', handleKeyPress);
+                document.removeEventListener('mousedown', handleMouseDown);
+            }
+            this.modalCancelButton!.onclick = null;
+        };
+
+        if (type === 'keybind') {
+            document.addEventListener('keydown', handleKeyPress);
+            document.addEventListener('mousedown', handleMouseDown);
+        } else {
+            requestAnimationFrame(handleGamepadPress);
+        }
+
+        this.modalCancelButton.onclick = () => {
+            cleanup();
+            this.closeModal();
+        };
+    }
+
+    private closeModal(): void {
+        if (!this.modal || !this.modalInput || !this.modalConfirmButton ||
+            !this.modalCancelButton || !this.modalText) return;
+
+        this.modal.classList.add('hidden');
+        this.modalInput.style.display = 'flex';
+        this.modalText.textContent = 'Join Room';
+        this.modalConfirmButton.onclick = null;
+        this.modalCancelButton.onclick = null;
+        this.modalInput.onkeydown = null;
     }
 
     //

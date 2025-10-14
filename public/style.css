@@ -201,6 +201,10 @@ toggle[checked]::before {
     display: none;
 }
 
+.blocked:hover {
+    background-color: #ff000030 !important;
+    cursor: not-allowed !important;
+}
 /**/
 /* #endregion */
 
@@ -1376,6 +1380,7 @@ toggle[checked]::before {
     flex-direction: column;
     align-items: center;
     gap: 1rem;
+    z-index: 1000;
 }
 
 #settingsTabs,
@@ -1492,6 +1497,10 @@ toggle[checked]::before {
     cursor: pointer;
 }
 
+.settings_page_hidden .settings_page_content {
+    flex: 0
+}
+
 .header_spans {
     margin: 1rem auto;
     gap: 1rem;
@@ -1539,6 +1548,7 @@ toggle[checked]::before {
 
 .settings_item {
     width: 100%;
+    height: 100%;
     flex: 1;
     justify-content: flex-end;
 }
@@ -1595,6 +1605,61 @@ toggle[checked]::before {
 .settings_fill {
     color: var(--secondary-color);
     justify-content: end;
+}
+
+.controls_mapping_header {
+    width: 100%;
+    padding: 0rem 0.5rem;
+    border-bottom: 2px solid var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.controls_mapping_row {
+    width: 100%;
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--black-40);
+}
+
+.controls_mapping_row:hover {
+    background-color: var(--black-05);
+}
+
+.controls_mapping_cell {
+    flex: 1;
+    justify-content: center;
+    align-items: center;
+    padding: 0.5rem;
+}
+
+.controls_mapping_label {
+    color: var(--primary-color);
+    justify-content: flex-start;
+    font-weight: bold;
+    pointer-events: none;
+}
+
+.controls_mapping_value {
+    color: var(--secondary-color);
+    font-family: monospace;
+    user-select: none;
+}
+
+.controls_mapping_value:hover {
+    background-color: var(--black-05);
+    cursor: pointer;
+}
+
+.controls_mapping_icon {
+    font-size: 1.5rem;
+}
+
+.controls_mapping_icon img {
+    max-width: 40px;
+}
+
+#controlsMappingContainer {
+    align-content: flex-start;
+    transform: translateY(5%);
 }
 
 /**/

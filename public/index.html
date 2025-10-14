@@ -253,7 +253,80 @@
           <div class="settings_header_divider"></div>
         </div>
         <div class="settings_page_content container row">
+          <div id="controlsMappingContainer" class="settings_item">
+            <div class="controls_mapping_header container row">
+              <div class="controls_mapping_cell"></div>
+              <div class="controls_mapping_cell controls_mapping_icon">
+                <img id="keyboardIcon" src="/assets/img/icon/elements/settings/keyboard.png" alt="Keyboard Icon"></img>
+              </div>
+              <div class="controls_mapping_cell controls_mapping_icon">
+                <img id="controllerIcon" src="/assets/img/icon/elements/settings/controller.png"
+                  alt="Controller Icon"></img>
+              </div>
+            </div>
 
+            <div class="controls_mapping_row container row">
+              <div class="controls_mapping_cell controls_mapping_label">ATTACK</div>
+              <div id="attackKeybind" class="controls_mapping_cell controls_mapping_value"></div>
+              <div id="attackGamepad" class="controls_mapping_cell controls_mapping_value"></div>
+            </div>
+
+            <div class="controls_mapping_row container row">
+              <div class="controls_mapping_cell controls_mapping_label">MELEE</div>
+              <div id="meleeKeybind" class="controls_mapping_cell controls_mapping_value"></div>
+              <div id="meleeGamepad" class="controls_mapping_cell controls_mapping_value"></div>
+            </div>
+
+            <div class="controls_mapping_row container row">
+              <div class="controls_mapping_cell controls_mapping_label">RELOAD</div>
+              <div id="reloadKeybind" class="controls_mapping_cell controls_mapping_value"></div>
+              <div id="reloadGamepad" class="controls_mapping_cell controls_mapping_value"></div>
+            </div>
+
+            <div class="controls_mapping_row container row">
+              <div class="controls_mapping_cell controls_mapping_label">DASH</div>
+              <div id="dashKeybind" class="controls_mapping_cell controls_mapping_value"></div>
+              <div id="dashGamepad" class="controls_mapping_cell controls_mapping_value"></div>
+            </div>
+
+            <div class="controls_mapping_row container row">
+              <div class="controls_mapping_cell controls_mapping_label">SPRINT</div>
+              <div id="sprintKeybind" class="controls_mapping_cell controls_mapping_value"></div>
+              <div id="sprintGamepad" class="controls_mapping_cell controls_mapping_value"></div>
+            </div>
+
+            <div class="controls_mapping_row container row">
+              <div class="controls_mapping_cell controls_mapping_label">MOVE UP</div>
+              <div id="moveUpKeybind" class="controls_mapping_cell controls_mapping_value"></div>
+              <div id="moveUpGamepad" class="controls_mapping_cell controls_mapping_value blocked">LS ↑</div>
+            </div>
+
+            <div class="controls_mapping_row container row">
+              <div class="controls_mapping_cell controls_mapping_label">MOVE DOWN</div>
+              <div id="moveDownKeybind" class="controls_mapping_cell controls_mapping_value"></div>
+              <div id="moveDownGamepad" class="controls_mapping_cell controls_mapping_value blocked">LS ↓</div>
+            </div>
+
+            <div class="controls_mapping_row container row">
+              <div class="controls_mapping_cell controls_mapping_label">MOVE LEFT</div>
+              <div id="moveLeftKeybind" class="controls_mapping_cell controls_mapping_value"></div>
+              <div id="moveLeftGamepad" class="controls_mapping_cell controls_mapping_value blocked">LS ←</div>
+            </div>
+
+            <div class="controls_mapping_row container row">
+              <div class="controls_mapping_cell controls_mapping_label">MOVE RIGHT</div>
+              <div id="moveRightKeybind" class="controls_mapping_cell controls_mapping_value"></div>
+              <div id="moveRightGamepad" class="controls_mapping_cell controls_mapping_value blocked">LS →</div>
+            </div>
+
+            <div class="controls_mapping_row container row">
+              <div class="controls_mapping_cell controls_mapping_label">ROTATE</div>
+              <div id="moveRightKeybind" class="controls_mapping_cell controls_mapping_value blocked">MOUSE</div>
+              <div id="moveRightGamepad" class="controls_mapping_cell controls_mapping_value blocked">RS ✣</div>
+            </div>
+          </div>
+
+          <div id="controlsOtherContainer" class="settings_item"></div>
         </div>
       </div>
       <div id="graphicsBody" class="settings_page container row">
@@ -289,31 +362,41 @@
           <div id="masterSliderContainer" class="settings_item settings_slider">
             <div class="settings_slider_label">MASTER</div>
             <div id="masterSlider" class="sound_slider">
-              <div id="masterFill" class="sound_fill settings_fill"><div id="masterValue" class="settings_slider_value"></div></div>
+              <div id="masterFill" class="sound_fill settings_fill">
+                <div id="masterValue" class="settings_slider_value"></div>
+              </div>
             </div>
           </div>
           <div id="interfaceSliderContainer" class="settings_item settings_slider">
             <div class="settings_slider_label">USER INTERFACE</div>
             <div id="interfaceSlider" class="sound_slider">
-              <div id="interfaceFill" class="sound_fill settings_fill"><div id="interfaceValue" class="settings_slider_value"></div></div>
+              <div id="interfaceFill" class="sound_fill settings_fill">
+                <div id="interfaceValue" class="settings_slider_value"></div>
+              </div>
             </div>
           </div>
           <div id="musicSliderContainer" class="settings_item settings_slider">
             <div class="settings_slider_label">MUSIC</div>
             <div id="musicSlider" class="sound_slider">
-              <div id="musicFill" class="sound_fill settings_fill"><div id="musicValue" class="settings_slider_value"></div></div>
+              <div id="musicFill" class="sound_fill settings_fill">
+                <div id="musicValue" class="settings_slider_value"></div>
+              </div>
             </div>
           </div>
           <div id="sfxSliderContainer" class="settings_item settings_slider">
             <div class="settings_slider_label">SOUND EFFECTS</div>
             <div id="sfxSlider" class="sound_slider">
-              <div id="sfxFill" class="sound_fill settings_fill"><div id="sfxValue" class="settings_slider_value"></div></div>
+              <div id="sfxFill" class="sound_fill settings_fill">
+                <div id="sfxValue" class="settings_slider_value"></div>
+              </div>
             </div>
           </div>
           <div id="voiceSliderContainer" class="settings_item settings_slider">
             <div class="settings_slider_label">VOICE</div>
             <div id="voiceSlider" class="sound_slider">
-              <div id="voiceFill" class="sound_fill settings_fill"><div id="voiceValue" class="settings_slider_value"></div></div>
+              <div id="voiceFill" class="sound_fill settings_fill">
+                <div id="voiceValue" class="settings_slider_value"></div>
+              </div>
             </div>
           </div>
         </div>

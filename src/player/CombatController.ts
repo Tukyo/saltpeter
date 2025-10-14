@@ -4,9 +4,8 @@ import { AmmoReservesUIController } from "./AmmoReservesUIController";
 import { Animator } from "../Animator";
 import { AudioManager } from "../AudioManager";
 import { CollisionsManager } from "../CollisionsManager";
-import { ControlsManager } from "../ControlsManager";
 import { DecalsManager } from "../DecalsManager";
-import { AttackType, Direction, Projectile, SetSliderParams, Vec2 } from "../Types";
+import { AttackType, Projectile, SetSliderParams, Vec2 } from "../Types";
 import { GameState } from "../GameState";
 import { LuckController } from "./LuckController";
 import { ParticlesManager } from "../ParticlesManager";
@@ -23,7 +22,6 @@ export class CombatController {
         private animator: Animator,
         private audioManager: AudioManager,
         private collisionsManager: CollisionsManager,
-        private controlsManager: ControlsManager,
         private decalsManager: DecalsManager,
         private gameState: GameState,
         private luckController: LuckController,
@@ -74,22 +72,10 @@ export class CombatController {
             // Check if we still have ammo and haven't finished the intended burst amount
             const ammoNeeded = this.playerState.myPlayer.actions.primary.burst.amount;
             if (this.playerState.myPlayer.actions.primary.magazine.currentAmmo > 0 && this.playerState.currentBurstShot < ammoNeeded) {
-                const mousePos = this.controlsManager.getMousePos();
+                const angle = this.playerState.myPlayer.transform.rot - Math.PI / 2;
+                const targetDir = { x: Math.cos(angle), y: Math.sin(angle) };
 
-                const params: Direction = {
-                    rootPos: {
-                        x: this.playerState.myPlayer.transform.pos.x,
-                        y: this.playerState.myPlayer.transform.pos.y
-                    },
-                    targetPos: {
-                        x: mousePos.x,
-                        y: mousePos.y
-                    }
-                }
-                const dir = this.utility.getDirection(params);
-                if (dir.x === 0 && dir.y === 0) return;
-
-                this.launchProjectile(dir, true);
+                this.launchProjectile(targetDir, true);
 
                 this.playerState.currentBurstShot++;
                 this.playerState.myPlayer.actions.primary.magazine.currentAmmo--; // Use 1 ammo per shot in burst
@@ -252,23 +238,11 @@ export class CombatController {
         this.playerState.isBurstActive = true;
         this.playerState.currentBurstShot = 0;
 
-        const mousePos = this.controlsManager.getMousePos();
+        // Calculate direction from player's current rotation instead of mouse
+        const angle = this.playerState.myPlayer.transform.rot - Math.PI / 2; // Subtract PI/2 to convert from visual rotation to direction
+        const targetDir = { x: Math.cos(angle), y: Math.sin(angle) };
 
-        const params: Direction = {
-            rootPos: {
-                x: this.playerState.myPlayer.transform.pos.x,
-                y: this.playerState.myPlayer.transform.pos.y
-            },
-            targetPos: {
-                x: mousePos.x,
-                y: mousePos.y
-            }
-        }
-
-        // Fire first shot immediately
-        const dir = this.utility.getDirection(params);
-        if (dir.x === 0 && dir.y === 0) return;
-        this.launchProjectile(dir, true);
+        this.launchProjectile(targetDir, true);
 
         this.playerState.currentBurstShot++;
         this.playerState.myPlayer.actions.primary.magazine.currentAmmo--; // Use 1 ammo per shot in burst

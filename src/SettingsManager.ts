@@ -27,6 +27,7 @@ export class SettingsManager {
             },
             controls: {
                 keybinds: {
+                    attack: GAME.CONTROLS.KEYBINDS.ATTACK,
                     dash: GAME.CONTROLS.KEYBINDS.DASH,
                     melee: GAME.CONTROLS.KEYBINDS.MELEE,
                     moveDown: GAME.CONTROLS.KEYBINDS.MOVE_DOWN,
@@ -37,11 +38,11 @@ export class SettingsManager {
                     sprint: GAME.CONTROLS.KEYBINDS.SPRINT,
                 },
                 gamepad: {
-                    melee: GAME.CONTROLS.GAMEPAD.MELEE,
+                    attack: GAME.CONTROLS.GAMEPAD.ATTACK,
                     dash: GAME.CONTROLS.GAMEPAD.DASH,
+                    melee: GAME.CONTROLS.GAMEPAD.MELEE,
                     reload: GAME.CONTROLS.GAMEPAD.RELOAD,
-                    sprint: GAME.CONTROLS.GAMEPAD.SPRINT,
-                    attack: GAME.CONTROLS.GAMEPAD.ATTACK
+                    sprint: GAME.CONTROLS.GAMEPAD.SPRINT            
                 }
             }
         };

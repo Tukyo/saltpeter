@@ -3,34 +3,34 @@ import { Vec2 } from "./Types";
 
 export class ControlsManager {
     private activeKeys: Set<string> = new Set();
+    private gamepadKeys: Set<string> = new Set();
+    private previousKeys: Set<string> = new Set();
+    
     private mousePos: Vec2 = { x: 0, y: 0 };;
 
     private gamepadConnected: boolean = false;
-    private gamepadConnectionEnabled: boolean = true;
+    public gamepadConnectionEnabled: boolean = true;
+
+    private gamepadRAxis: number | null = null;
 
     constructor(private settingsManager: SettingsManager) {
         this.initGamepad();
-        if (this.gamepadConnectionEnabled) this.startPolling();
     }
 
-    private initGamepad(): void {
-        window.addEventListener("gamepadconnected", () => {
-            console.log("Gamepad connected!");
-            this.gamepadConnected = true;
-        });
-
-        window.addEventListener("gamepaddisconnected", () => {
-            console.log("Gamepad disconnected!");
-            this.gamepadConnected = false;
-        });
+    // #region [ Keys ]
+    //
+    /**
+     * Returns true if the key is currently being held down.
+     */
+    public held(key: string): boolean {
+        return this.activeKeys.has(key);
     }
 
-    private startPolling(): void {
-        const poll = () => {
-            this.pollGamepad();
-            requestAnimationFrame(poll);
-        };
-        poll();
+    /**
+     * Returns true if the key was pressed this frame.
+     */
+    public triggered(key: string): boolean {
+        return this.activeKeys.has(key) && !this.previousKeys.has(key);
     }
 
     /**
@@ -62,6 +62,17 @@ export class ControlsManager {
     }
 
     /**
+     * Monitors the previous keys set, allowing for action triggers.
+     */
+    public updatePreviousKeys(): void {
+        this.previousKeys = new Set(this.activeKeys);
+    }
+    //
+    // #endregion
+
+    // #region [ Mouse ]
+    //
+    /**
      * Returns the current mouse position as a read-only Vec2.
      */
     public getMousePos(): Readonly<Vec2> {
@@ -75,7 +86,31 @@ export class ControlsManager {
         this.mousePos.x = pos.x;
         this.mousePos.y = pos.y;
     }
+    //
+    // #endregion
 
+    // #region [ Gamepad ]
+    //
+    /**
+     * Initializes gamepad connection listeners.
+     */
+    private initGamepad(): void {
+        window.addEventListener("gamepadconnected", () => {
+            console.log("Gamepad connected!");
+            this.gamepadConnected = true;
+        });
+
+        window.addEventListener("gamepaddisconnected", () => {
+            console.log("Gamepad disconnected!");
+            this.gamepadConnected = false;
+        });
+    }
+
+    /**
+     * Used to poll for gamepad inputs when one is connected.
+     * 
+     * Gamepad bindings map to the keyboard bindings to trigger actions.
+     */
     public pollGamepad(): void {
         if (!this.gamepadConnected) return;
 
@@ -87,36 +122,76 @@ export class ControlsManager {
         const gamepadMap = this.settingsManager.getSettings().controls.gamepad;
         const deadzone = 0.2;
 
-        // Map left stick to movement keys
+        // Clear previous gamepad keys
+        this.gamepadKeys.forEach(key => this.activeKeys.delete(key));
+        this.gamepadKeys.clear();
+
         const xAxis = gamepad.axes[0];
         const yAxis = gamepad.axes[1];
 
-        if (xAxis > deadzone) this.activeKeys.add(keybinds.moveRight);
-        else this.activeKeys.delete(keybinds.moveRight);
+        if (xAxis > deadzone) {
+            this.activeKeys.add(keybinds.moveRight);
+            this.gamepadKeys.add(keybinds.moveRight);
+        }
 
-        if (xAxis < -deadzone) this.activeKeys.add(keybinds.moveLeft);
-        else this.activeKeys.delete(keybinds.moveLeft);
+        if (xAxis < -deadzone) {
+            this.activeKeys.add(keybinds.moveLeft);
+            this.gamepadKeys.add(keybinds.moveLeft);
+        }
 
-        if (yAxis > deadzone) this.activeKeys.add(keybinds.moveDown);
-        else this.activeKeys.delete(keybinds.moveDown);
+        if (yAxis > deadzone) {
+            this.activeKeys.add(keybinds.moveDown);
+            this.gamepadKeys.add(keybinds.moveDown);
+        }
 
-        if (yAxis < -deadzone) this.activeKeys.add(keybinds.moveUp);
-        else this.activeKeys.delete(keybinds.moveUp);
+        if (yAxis < -deadzone) {
+            this.activeKeys.add(keybinds.moveUp);
+            this.gamepadKeys.add(keybinds.moveUp);
+        }
 
-        // Map buttons using gamepad config
-        if (gamepad.buttons[gamepadMap.melee].pressed) this.activeKeys.add(keybinds.melee);
-        else this.activeKeys.delete(keybinds.melee);
+        if (gamepad.buttons[gamepadMap.melee].pressed) {
+            this.activeKeys.add(keybinds.melee);
+            this.gamepadKeys.add(keybinds.melee);
+        }
 
-        if (gamepad.buttons[gamepadMap.dash].pressed) this.activeKeys.add(keybinds.dash);
-        else this.activeKeys.delete(keybinds.dash);
+        if (gamepad.buttons[gamepadMap.dash].pressed) {
+            this.activeKeys.add(keybinds.dash);
+            this.gamepadKeys.add(keybinds.dash);
+        }
 
-        if (gamepad.buttons[gamepadMap.reload].pressed) this.activeKeys.add(keybinds.reload);
-        else this.activeKeys.delete(keybinds.reload);
+        if (gamepad.buttons[gamepadMap.reload].pressed) {
+            this.activeKeys.add(keybinds.reload);
+            this.gamepadKeys.add(keybinds.reload);
+        }
 
-        if (gamepad.buttons[gamepadMap.attack].pressed) this.activeKeys.add('mouse1');
-        else this.activeKeys.delete('mouse1');
+        if (gamepad.buttons[gamepadMap.attack].pressed) {
+            this.activeKeys.add(keybinds.attack);
+            this.gamepadKeys.add(keybinds.attack);
+        }
 
-        if (gamepad.buttons[gamepadMap.sprint].pressed) this.activeKeys.add(keybinds.sprint);
-        else this.activeKeys.delete(keybinds.sprint);
+        if (gamepad.buttons[gamepadMap.sprint].pressed) {
+            this.activeKeys.add(keybinds.sprint);
+            this.gamepadKeys.add(keybinds.sprint);
+        }
+
+        // Right stick aiming
+        const rightX = gamepad.axes[2];
+        const rightY = gamepad.axes[3];
+        const aimMagnitude = Math.sqrt(rightX * rightX + rightY * rightY);
+
+        if (aimMagnitude > deadzone) {
+            this.gamepadRAxis = Math.atan2(rightY, rightX) + Math.PI / 2;
+        } else {
+            this.gamepadRAxis = null;
+        }
     }
+
+    /**
+     * Returns the current right axis input.
+     */
+    public getGamepadRAxis(): number | null {
+        return this.gamepadRAxis;
+    }
+    //
+    // #endregion
 }

@@ -5,6 +5,7 @@ export class CacheManager {
 
     constructor() {
         this.initDB();
+        this.initDevKeybind(); // TODO: Delete
     }
 
     /**
@@ -90,6 +91,21 @@ export class CacheManager {
 
             request.onerror = () => reject(request.error);
             request.onsuccess = () => resolve();
+        });
+    }
+
+    /**
+     * DEV ONLY - Clears cache with tilde key
+     * TODO: Remove this before production
+     */
+    private initDevKeybind(): void {
+        document.addEventListener('keydown', (e) => {
+            if (e.key === '`') {
+                this.clear().then(() => {
+                    console.log('Cache cleared! Reload the page.');
+                    location.reload();
+                });
+            }
         });
     }
 }

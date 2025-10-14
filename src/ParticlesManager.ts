@@ -228,7 +228,7 @@ export class ParticlesManager {
     /**
      * Stamps local particles onto the decal canvas.
      */
-    private stampParticle(stampId: string, particle: any): void {
+    private stampParticle(stampId: string, particle: Particle): void {
         if (!this.ui.decalCtx) return;
 
         const rgb = this.utility.hexToRgb(particle.color);
@@ -239,13 +239,13 @@ export class ParticlesManager {
 
         // Paint with rotation if particle had torque
         if (particle.torque !== 0) {
-            this.ui.decalCtx.translate(particle.x + particle.size / 2, particle.y + particle.size / 2);
+            this.ui.decalCtx.translate(particle.pos.x + particle.size / 2, particle.pos.y + particle.size / 2);
             this.ui.decalCtx.rotate(particle.rotation);
             this.ui.decalCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${particle.opacity})`;
             this.ui.decalCtx.fillRect(-particle.size / 2, -particle.size / 2, particle.size, particle.size);
         } else {
             this.ui.decalCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${particle.opacity})`;
-            this.ui.decalCtx.fillRect(Math.floor(particle.x), Math.floor(particle.y), particle.size, particle.size);
+            this.ui.decalCtx.fillRect(Math.floor(particle.pos.x), Math.floor(particle.pos.y), particle.size, particle.size);
         }
 
         this.ui.decalCtx.restore();
@@ -253,8 +253,8 @@ export class ParticlesManager {
         this.decalsManager.decals.set(stampId, {
             params: null,
             pos: {
-                x: particle.x,
-                y: particle.y
+                x: particle.pos.x,
+                y: particle.pos.y
             }
         });
     }

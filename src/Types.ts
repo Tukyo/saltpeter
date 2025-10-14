@@ -233,6 +233,7 @@ export interface GameSettings {
   }
   controls: {
     keybinds: {
+      attack: string;
       dash: string;
       melee: string;
       moveDown: string;

@@ -1,32 +1,23 @@
-import { NETWORK } from "./Config";
-
 import { Animator } from "./Animator";
 import { ChatManager } from "./ChatManager";
+import { GAMEPAD_MAP } from "./Config";
 import { ControlsManager } from "./ControlsManager";
 import { GameState } from "./GameState";
 import { LobbyManager } from "./LobbyManager";
 import { RoomController } from "./RoomController";
-import { RoomManager } from "./RoomManager";
 import { SettingsManager } from "./SettingsManager";
 import { UserInterface } from "./UserInterface";
 
-import { CombatController } from "./player/CombatController";
-import { DashController } from "./player/DashController";
-import { MoveController } from "./player/MoveController";
 import { PlayerState } from "./player/PlayerState";
 
 export class EventsManager {
     constructor(
         private animator: Animator,
         private chatManager: ChatManager,
-        private combatController: CombatController,
         private controlsManager: ControlsManager,
-        private dashController: DashController,
         private gameState: GameState,
         private lobbyManager: LobbyManager,
-        private moveController: MoveController,
         private roomController: RoomController,
-        private roomManager: RoomManager,
         private playerState: PlayerState,
         private settingsManager: SettingsManager,
         private ui: UserInterface,
@@ -85,6 +76,11 @@ export class EventsManager {
         this.ui.settingsCloseButton?.addEventListener('click', () => {
             this.ui.hideSettingsPage();
         })
+
+        // Prevent right-click context menu on the entire window
+        window.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
 
         // Listen on document for events, not canvas.
         // If this presents issues, swap "document." with "this.interface.canvas"
@@ -154,22 +150,6 @@ export class EventsManager {
 
         e.preventDefault();
         this.controlsManager.addKey(key);
-
-        switch (key) {
-            case keybinds.dash:
-                this.dashController.startDash();
-                break;
-            case keybinds.melee:
-                if (this.combatController.canMelee()) this.combatController.triggerAttack("melee");
-                break;
-            case keybinds.reload:
-                this.combatController.startReload();
-                break;
-            case keybinds.sprint:
-                if (this.moveController.isMoving()) this.playerState.isSprinting = true;
-                break;
-            // TODO: Add more actions here as needed
-        }
     }
 
     /**
@@ -186,10 +166,6 @@ export class EventsManager {
 
         e.preventDefault();
         this.controlsManager.removeKey(key);
-
-        if (key === keybinds.sprint) {
-            this.playerState.isSprinting = false;
-        }
     }
 
     /**
@@ -199,10 +175,14 @@ export class EventsManager {
         if (this.ui.chatInput === document.activeElement) return;
         if (!this.gameState.gameInProgress || this.gameState.isPaused || !this.ui.canvas) return;
 
-        if (e.button === 0 && this.playerState.canShoot && !this.playerState.isBurstActive && !this.playerState.isMelee) { // Left mouse button
+        if (e.button === 0) {
             this.updateMouse(e);
-            this.combatController.triggerAttack('ranged');
-            this.playerState.canShoot = false; // Prevent shooting until mouse up
+            this.controlsManager.addKey('mouse1'); // Left Click
+        } else if (e.button === 1) {
+            this.controlsManager.addKey('mouse3'); // Middle Click
+        } else if (e.button === 2) {
+            this.updateMouse(e);
+            this.controlsManager.addKey('mouse2'); // Right Click
         }
     }
 
@@ -213,8 +193,12 @@ export class EventsManager {
         if (this.ui.chatInput === document.activeElement) return;
         if (!this.gameState.gameInProgress) return;
 
-        if (e.button === 0) { // Left mouse button
-            this.playerState.canShoot = true; // Allow shooting again
+        if (e.button === 0) {
+            this.controlsManager.removeKey('mouse1'); // Left Click
+        } else if (e.button === 1) {
+            this.controlsManager.addKey('mouse3'); // Middle Click
+        } else if (e.button === 2) {
+            this.controlsManager.removeKey('mouse2'); // Right Click
         }
     }
 
@@ -235,20 +219,6 @@ export class EventsManager {
 
         // Rotate my character
         this.animator.rotateCharacterPart(this.userId, rotation);
-
-        const now = Date.now();
-        const rotationDiff = Math.abs(rotation - this.playerState.lastSentRotation);
-        if (rotationDiff > 0.1 && now - this.playerState.lastSentRotationTime >= NETWORK.ROTATE_INTERVAL) {
-            this.roomManager.sendMessage(JSON.stringify({
-                type: 'player-move',
-                transform: {
-                    rot: this.playerState.myPlayer.transform.rot
-                }
-            }));
-
-            this.playerState.lastSentRotation = rotation;
-            this.playerState.lastSentRotationTime = now;
-        }
     }
 
     /**
@@ -315,5 +285,49 @@ export class EventsManager {
                 e.preventDefault();
             });
         });
+    }
+
+    // EventsManager.ts - new method
+
+    public initKeybindListeners(): void {
+        const controlsSettings = this.settingsManager.getSettings().controls;
+        this.ui.initKeybindsInterface(
+            controlsSettings,
+            (action, type, newBinding) => this.onKeybindChange(action, type, newBinding)
+        );
+    }
+
+    public onKeybindChange(action: string, type: 'keybind' | 'gamepad', newBinding: string | number): void {
+        if (type === 'keybind') {
+            this.settingsManager.updateSettings({
+                controls: {
+                    keybinds: {
+                        [action]: newBinding as string
+                    }
+                }
+            });
+
+            const element = document.getElementById(`${action}Keybind`);
+            if (element) {
+                element.textContent = newBinding === ' ' ? 'SPACE' : (newBinding as string).toUpperCase();
+            }
+        } else {
+            this.settingsManager.updateSettings({
+                controls: {
+                    gamepad: {
+                        [action]: newBinding as number
+                    }
+                }
+            });
+
+            const element = document.getElementById(`${action}Gamepad`);
+            if (element) {
+                const buttonName = Object.keys(GAMEPAD_MAP).find(
+                    key => typeof GAMEPAD_MAP[key as keyof typeof GAMEPAD_MAP] === 'number'
+                        && GAMEPAD_MAP[key as keyof typeof GAMEPAD_MAP] === newBinding
+                );
+                element.textContent = buttonName || newBinding.toString();
+            }
+        }
     }
 }

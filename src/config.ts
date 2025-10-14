@@ -430,7 +430,7 @@ export const CANVAS = {
     BORDER_MARGIN: 15,
 };
 
-export const XBOX_CONTROLLER_MAPPING = {
+export const GAMEPAD_MAP = {
     // Face buttons
     A: 0,
     B: 1,
@@ -476,7 +476,7 @@ export const GAME = {
     CONNECTION_TIMEOUT: 1000,
     CONTROLS: {
         KEYBINDS: {
-            MELEE: 'f',
+            MELEE: 'mouse2',
             MOVE_UP: 'w',
             MOVE_LEFT: 'a',
             MOVE_DOWN: 's',
@@ -487,11 +487,11 @@ export const GAME = {
             DASH: ' '
         },
         GAMEPAD: {
-            MELEE: XBOX_CONTROLLER_MAPPING.A,
-            DASH: XBOX_CONTROLLER_MAPPING.B,
-            RELOAD: XBOX_CONTROLLER_MAPPING.X,
-            SPRINT: XBOX_CONTROLLER_MAPPING.LB,
-            ATTACK: XBOX_CONTROLLER_MAPPING.RT
+            MELEE: GAMEPAD_MAP.RB,
+            DASH: GAMEPAD_MAP.LB,
+            RELOAD: GAMEPAD_MAP.A,
+            SPRINT: GAMEPAD_MAP.LT,
+            ATTACK: GAMEPAD_MAP.RT
         }
     },
     GAME_END_DELAY: 5000,

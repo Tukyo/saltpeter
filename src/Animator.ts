@@ -3,12 +3,13 @@ import { AnimationParams, CharacterAnimation, Vec2 } from "./Types";
 import { RoomManager } from "./RoomManager";
 
 import { PlayerState } from "./player/PlayerState";
+import { NETWORK } from "./Config";
 
 export class Animator {
     private characterAnimations: CharacterAnimation = new Map();
     public characterOffsets: Map<string, Vec2> = new Map();
 
-    constructor(private playerState: PlayerState, private roomController: RoomManager, private userId: string) { }
+    constructor(private playerState: PlayerState, private roomManager: RoomManager, private userId: string) { }
 
     // #region [ Animation ]
     /**
@@ -17,7 +18,7 @@ export class Animator {
     public animateCharacterPart(params: AnimationParams): void {
         this.generateCharacterAnimation(params);
 
-        this.roomController.sendMessage(JSON.stringify({
+        this.roomManager.sendMessage(JSON.stringify({
             type: 'character-animation',
             params: params
         }));
@@ -33,6 +34,20 @@ export class Animator {
             const player = this.playerState.players.get(playerId);
             if (!player) return;
             player.transform.rot = rotation;
+        }
+
+        const now = Date.now();
+        const rotationDiff = Math.abs(rotation - this.playerState.lastSentRotation);
+        if (rotationDiff > 0.1 && now - this.playerState.lastSentRotationTime >= NETWORK.ROTATE_INTERVAL) {
+            this.roomManager.sendMessage(JSON.stringify({
+                type: 'player-move',
+                transform: {
+                    rot: this.playerState.myPlayer.transform.rot
+                }
+            }));
+
+            this.playerState.lastSentRotation = rotation;
+            this.playerState.lastSentRotationTime = now;
         }
     }
 

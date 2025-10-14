@@ -78,12 +78,12 @@ class Client {
     //
     constructor() {
         this.cacheManager = new CacheManager();
-        this.settingsManager = new SettingsManager(this.cacheManager);
         this.utility = new Utility();
-        this.ui = new UserInterface();
         this.upgradeManager = new UpgradeManager();
         this.gameState = new GameState();
 
+        this.settingsManager = new SettingsManager(this.cacheManager);
+        this.ui = new UserInterface(this.settingsManager);
         this.controlsManager = new ControlsManager(this.settingsManager);
 
         this.charConfig = new CharacterConfig();
@@ -172,7 +172,6 @@ class Client {
             this.animator,
             this.audioManager,
             this.collisionsManager,
-            this.controlsManager,
             this.decalsManager,
             this.gameState,
             this.luckController,
@@ -187,14 +186,10 @@ class Client {
         this.eventsManager = new EventsManager(
             this.animator,
             this.chatManager,
-            this.combatController,
             this.controlsManager,
-            this.dashController,
             this.gameState,
             this.lobbyManager,
-            this.moveController,
             this.roomController,
-            this.roomManager,
             this.playerState,
             this.settingsManager,
             this.ui,
@@ -208,6 +203,9 @@ class Client {
         }
     }
 
+    /**
+     * Main initializer for the game client.
+     */
     private async initClient(): Promise<void> {
         this.ui.initInterface();
         this.eventsManager.initEventListeners();
@@ -229,9 +227,13 @@ class Client {
         const audioSettings = this.settingsManager.getSettings().audio.mixer;
         this.ui.initSoundSliders(audioSettings);
 
+        this.eventsManager.initKeybindListeners();
+
         if (AUDIO.SETTINGS.PRELOAD_SOUNDS) {
             this.audioManager.preloadAudioAssets(SFX, '.ogg');
         }
+
+        this.watchForInputs();
     }
 
     /**
@@ -1390,7 +1392,75 @@ class Client {
         // Reset upgrades and equipment
         this.upgradeManager.resetUpgrades(this.playerState.myPlayer);
     }
+    //
+    // #endregion
+    //
+    //
+    //
+    //
+    //
+    //
+    // #region [ Actions / Inputs ]
+    //
+    /**
+     * Provides polling for inputs and keybinds - checking for any actions assigned.
+     */
+    private watchForInputs(): void {
+        const poll = () => {
+            if (this.controlsManager.gamepadConnectionEnabled) {
+                this.controlsManager.pollGamepad();
+            }
+            this.checkActions();
+            requestAnimationFrame(poll);
+        };
+        poll();
+    }
 
+    /**
+     * Checks for keybinds and input actions during polling.
+     */
+    public checkActions(): void {
+        // TODO: MAYBE add menu navigation with keyboard/gamepad here
+
+        if (!this.gameState.gameInProgress || this.gameState.isPaused) return;
+
+        const keybinds = this.settingsManager.getSettings().controls.keybinds;
+
+        if (this.controlsManager.triggered(keybinds.dash)) {
+            this.dashController.startDash();
+        }
+
+        if (this.controlsManager.triggered(keybinds.melee)) {
+            if (this.combatController.canMelee()) {
+                this.combatController.triggerAttack('melee');
+            }
+        }
+
+        if (this.controlsManager.triggered(keybinds.reload)) {
+            this.combatController.startReload();
+        }
+
+        if (this.controlsManager.held(keybinds.sprint)) {
+            if (this.moveController.isMoving()) {
+                this.playerState.isSprinting = true;
+            }
+        } else {
+            this.playerState.isSprinting = false;
+        }
+
+        if (this.controlsManager.triggered(keybinds.attack)) {
+            if (this.playerState.canShoot && !this.playerState.isBurstActive && !this.playerState.isMelee) {
+                this.combatController.triggerAttack('ranged');
+            }
+        }
+
+        const gamepadRAxis = this.controlsManager.getGamepadRAxis();
+        if (gamepadRAxis !== null) {
+            this.animator.rotateCharacterPart(this.userId, gamepadRAxis);
+        }
+
+        this.controlsManager.updatePreviousKeys();
+    }
     //
     // #endregion
     //
