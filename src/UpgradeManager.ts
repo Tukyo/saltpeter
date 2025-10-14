@@ -2,6 +2,7 @@ import { Player, Upgrade, UpgradeRarity, UpgradeType } from './Types';
 
 /**
  Upgrade Ideas:
+ ionic compound
  > [ Resources ]
   - Reserves ++
   - 

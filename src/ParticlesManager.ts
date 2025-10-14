@@ -371,7 +371,7 @@ export class ParticlesManager {
      */
     public generateGore(playerId: string, centerX: number, centerY: number, playerSize: number): void {
         // Sample unique gore assets
-        const goreCount = 2 + Math.floor(Math.random() * 4); // 2-5 pieces
+        const goreCount = this.utility.getRandomInt(2, 5);
         const gorePool = [...this.charConfig.CHARACTER_DECALS.GORE];
         for (let i = 0; i < goreCount && gorePool.length > 0; i++) {
             const idx = Math.floor(Math.random() * gorePool.length);
@@ -400,7 +400,7 @@ export class ParticlesManager {
         }
 
         // Sample unique blood assets
-        const bloodCount = 1 + Math.floor(Math.random() * 2); // 1-2 pieces
+        const bloodCount = this.utility.getRandomInt(1, 3);
         const bloodPool = [...this.charConfig.CHARACTER_DECALS.BLOOD];
         for (let i = 0; i < bloodCount && bloodPool.length > 0; i++) {
             const idx = Math.floor(Math.random() * bloodPool.length);

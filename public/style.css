@@ -57,6 +57,14 @@
     --rarity-4: #ff9500;
 
     --center: translate(-50%, -50%);
+
+    --z-max: 9999;
+    --z-popup: 2000;
+    --z-foreground: 1000;
+    --z-hud: 100;
+    --z-plus-one: 1;
+    --z-minus-one: -1;
+    --z-min: -9999;
 }
 
 * {
@@ -156,7 +164,7 @@ toggle::after {
     background-size: contain;
     opacity: 0;
     transition: opacity 0.3s ease;
-    z-index: 1;
+    z-index: var(--z-plus-one);
 }
 
 toggle[checked]::after {
@@ -284,7 +292,7 @@ toggle[checked]::before {
     border: 2px solid var(--primary-color);
     border-radius: 12px;
     padding: 30px;
-    z-index: 1000;
+    z-index: var(--z-foreground);
     backdrop-filter: blur(10px);
     gap: 20px;
     justify-content: center;
@@ -392,7 +400,7 @@ toggle[checked]::before {
     border-radius: 8px;
     backdrop-filter: blur(5px);
     padding: 10px;
-    z-index: 50;
+    z-index: var(--z-hud);
 }
 
 /* Inventory Section - 20% */
@@ -525,7 +533,7 @@ toggle[checked]::before {
     width: 20px;
     height: 20px;
     pointer-events: none;
-    z-index: 9999;
+    z-index: var(--z-max);
     transform: var(--center);
     transition: none;
 }
@@ -559,7 +567,7 @@ toggle[checked]::before {
 /* #region [ Visuals ] */
 /**/
 #saltpeterTitle {
-    z-index: -1;
+    z-index: var(--z-minus-one);
 }
 
 #background {
@@ -568,7 +576,7 @@ toggle[checked]::before {
     left: 0;
     width: 100%;
     height: 110%;
-    z-index: -1000;
+    z-index: var(--z-min);
     background: url(./assets/img/bg_dark.png);
     background-position: center;
 }
@@ -582,7 +590,7 @@ toggle[checked]::before {
     background: url(./assets/img/noise.gif) center;
     background-size: 50%;
     pointer-events: none;
-    z-index: 1000;
+    z-index: var(--z-foreground);
     opacity: 0.075;
     mix-blend-mode: hard-light;
 }
@@ -593,7 +601,7 @@ toggle[checked]::before {
     left: 0;
     height: 100px;
     width: 50%;
-    z-index: -1;
+    z-index: var(--z-minus-one);
     background-color: black;
 }
 
@@ -765,7 +773,7 @@ toggle[checked]::before {
     bottom: 0;
     background: var(--black-20);
     backdrop-filter: blur(8px);
-    z-index: 2000;
+    z-index: var(--z-popup);
 }
 
 .modal.hidden {
@@ -905,7 +913,7 @@ toggle[checked]::before {
     border: 2px solid var(--primary-color);
     border-radius: 8px;
     flex-direction: column;
-    z-index: 100;
+    z-index: var(--z-hud);
     backdrop-filter: blur(5px);
 }
 
@@ -1024,7 +1032,7 @@ toggle[checked]::before {
     background: rgba(0, 0, 0, 0.9);
     border: 2px solid var(--primary-color);
     border-radius: 8px;
-    z-index: 99;
+    z-index: var(--z-hud);
     backdrop-filter: blur(5px);
     font-family: var(--font-mono);
 }
@@ -1133,7 +1141,7 @@ toggle[checked]::before {
 
 .atom_background {
     opacity: 0%;
-    z-index: 1;
+    z-index: var(--z-plus-one);
 }
 
 .atom_base {
@@ -1380,7 +1388,7 @@ toggle[checked]::before {
     flex-direction: column;
     align-items: center;
     gap: 1rem;
-    z-index: 1000;
+    z-index: var(--z-foreground);
 }
 
 #settingsTabs,
@@ -1629,6 +1637,8 @@ toggle[checked]::before {
     justify-content: center;
     align-items: center;
     padding: 0.5rem;
+    white-space: nowrap;
+    overflow: hidden;
 }
 
 .controls_mapping_label {

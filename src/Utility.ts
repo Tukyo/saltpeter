@@ -100,44 +100,44 @@ export class Utility {
         switch (mode) {
             case 'primary':
                 const primaries = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#00FFFF', '#FF00FF'];
-                hexColor = primaries[Math.floor(Math.random() * primaries.length)];
+                hexColor = this.getRandomInArray(primaries);
                 break;
 
             case 'pastel':
-                const r = Math.floor(Math.random() * 128 + 127);
-                const g = Math.floor(Math.random() * 128 + 127);
-                const b = Math.floor(Math.random() * 128 + 127);
+                const r = this.getRandomInt(127, 254);
+                const g = this.getRandomInt(127, 254);
+                const b = this.getRandomInt(127, 254);
                 hexColor = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
                 break;
 
             case 'vibrant':
-                const channels = [255, Math.floor(Math.random() * 256), Math.floor(Math.random() * 256)];
+                const channels = [255, this.getRandomInt(0, 255), this.getRandomInt(0, 255)];
                 channels.sort(() => Math.random() - 0.5);
                 hexColor = `#${channels[0].toString(16).padStart(2, '0')}${channels[1].toString(16).padStart(2, '0')}${channels[2].toString(16).padStart(2, '0')}`;
                 break;
 
             case 'dark':
-                const dr = Math.floor(Math.random() * 128);
-                const dg = Math.floor(Math.random() * 128);
-                const db = Math.floor(Math.random() * 128);
+                const dr = this.getRandomInt(0, 127);
+                const dg = this.getRandomInt(0, 127);
+                const db = this.getRandomInt(0, 127);
                 hexColor = `#${dr.toString(16).padStart(2, '0')}${dg.toString(16).padStart(2, '0')}${db.toString(16).padStart(2, '0')}`;
                 break;
 
             case 'light':
-                const lr = Math.floor(Math.random() * 128 + 128);
-                const lg = Math.floor(Math.random() * 128 + 128);
-                const lb = Math.floor(Math.random() * 128 + 128);
+                const lr = this.getRandomInt(128, 255);
+                const lg = this.getRandomInt(128, 255);
+                const lb = this.getRandomInt(128, 255);
                 hexColor = `#${lr.toString(16).padStart(2, '0')}${lg.toString(16).padStart(2, '0')}${lb.toString(16).padStart(2, '0')}`;
                 break;
 
             case 'grayscale':
-                const gray = Math.floor(Math.random() * 256);
+                const gray = this.getRandomInt(0, 255);
                 hexColor = `#${gray.toString(16).padStart(2, '0')}${gray.toString(16).padStart(2, '0')}${gray.toString(16).padStart(2, '0')}`;
                 break;
 
             case 'any':
             default:
-                hexColor = "#" + Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, "0");
+                hexColor = "#" + this.getRandomInt(0, 0xFFFFFF).toString(16).padStart(6, "0");
                 break;
         }
 
@@ -170,7 +170,7 @@ export class Utility {
         const table = new Uint8Array(512);
         for (let k = 0; k < 256; k++) table[k] = k;
         for (let k = 0; k < 256; k++) {
-            const r = k + Math.floor(Math.random() * (256 - k));
+            const r = k + this.getRandomInt(0, 255 - k);
             [table[k], table[r]] = [table[r], table[k]];
         }
         for (let k = 0; k < 256; k++) table[256 + k] = table[k];
@@ -244,7 +244,7 @@ export class Utility {
         const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
         let result = prefix ?? '';
         for (let i = 0; i < length; i++) {
-            result += chars[Math.floor(Math.random() * chars.length)];
+            result += chars[this.getRandomInt(0, chars.length - 1)];
         }
         return result;
     }
