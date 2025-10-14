@@ -712,7 +712,7 @@ export class UserInterface {
         };
     }
 
-    private closeModal(): void {
+    public closeModal(): void {
         if (!this.modal || !this.modalInput || !this.modalConfirmButton ||
             !this.modalCancelButton || !this.modalText) return;
 

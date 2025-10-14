@@ -1,10 +1,39 @@
+
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const WebSocket = require("ws");
 
-// Room management - now includes game state
-const rooms = new Map(); // roomId -> { hostUserId, participants: Set<ws>, gameActive: boolean }
+// =============================================================================
+// #region CONFIGURATION
+// =============================================================================
+
+const PORT = process.env.PORT || 8080;
+const ADMIN_KEY = process.env.ADMIN_KEY || "123";
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+const CLEANUP_INTERVAL = 60000;   // 60 seconds
+const SPAWN_MIN_DISTANCE = 120;
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 600;
+const BORDER_MARGIN = 15;
+
+//
+// #endregion
+// =============================================================================
+
+// =============================================================================
+// #region STATE
+// =============================================================================
+
+const rooms = new Map(); // roomId -> RoomState
+
+//
+// #endregion
+// =============================================================================
+
+// =============================================================================
+// #region HTTP SERVER
+// =============================================================================
 
 // Create HTTP server to serve files
 const server = http.createServer((req, res) => {
@@ -31,8 +60,8 @@ const server = http.createServer((req, res) => {
     const availableRooms = [];
 
     rooms.forEach((room, roomId) => {
-      // Only consider rooms in lobby state with available slots
-      if (!room.gameActive && !room.isPrivate && room.participants.size < room.maxPlayers) {
+      // FIX: Only consider rooms with at least 1 connected player
+      if (!room.gameActive && !room.isPrivate && room.participants.size > 0 && room.participants.size < room.maxPlayers) {
         availableRooms.push({
           roomId: roomId,
           playerCount: room.participants.size
@@ -85,6 +114,14 @@ const server = http.createServer((req, res) => {
   });
 });
 
+//
+// #endregion
+// =============================================================================
+
+// =============================================================================
+// #region WEBSOCKET
+// =============================================================================
+
 // Attach WebSocket server to the same HTTP server
 const wss = new WebSocket.Server({ server });
 
@@ -92,6 +129,11 @@ wss.on("connection", (ws) => {
   console.log("New client connected!");
   ws.currentRoom = null;
   ws.userId = null;
+
+  ws.isAlive = true;
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
 
   ws.on("message", (data) => {
     try {
@@ -118,125 +160,194 @@ wss.on("connection", (ws) => {
   });
 });
 
-function handleRoomMessage(ws, message) {
-  console.log('Received room message:', message);
+//
+// #endregion
+// =============================================================================
 
-  switch (message.type) {
-    case 'create-room':
-      createRoom(ws, message.roomId, message.userId);
-      break;
-    case 'join-room':
-      joinRoom(ws, message.roomId, message.userId);
-      break;
-    case 'leave-room':
-      leaveRoom(ws, message.roomId);
-      break;
-    case 'room-message':
-      if (ws.currentRoom === message.roomId) {
-        // Handle special messages
-        if (message.message) {
-          try {
-            const gameData = JSON.parse(message.message);
+// =============================================================================
+// #region CONNECTIONS
+// =============================================================================
 
-            // [ Spawn Generation ]
-            //
-            if (gameData.type === 'start-game') {
-              const room = rooms.get(message.roomId);
-              if (!room) break;
-
-              // Generate spawn points for all participants
-              const usedSpawns = [];
-              const minDist = 120;
-              room.spawnMap = room.spawnMap || {};
-
-              room.spawnMap[message.userId] = gameData.hostSpawn;
-              usedSpawns.push(gameData.hostSpawn);
-
-              room.participants.forEach(client => {
-                if (room.spawnMap[client.userId]) return;
-
-                let spawn, tries = 0;
-                do {
-                  spawn = {
-                    x: Math.random() * (800 - 2 * 15) + 15, // Use your CANVAS.WIDTH and BORDER_MARGIN
-                    y: Math.random() * (600 - 2 * 15) + 15
-                  };
-                  tries++;
-                } while (
-                  usedSpawns.some(s => Math.hypot(s.x - spawn.x, s.y - spawn.y) < minDist) &&
-                  tries < 1000
-                );
-                usedSpawns.push(spawn);
-                room.spawnMap[client.userId] = spawn;
-              });
-
-              // Attach spawnMap to the outgoing message
-              gameData.spawnMap = room.spawnMap;
-              message.message = JSON.stringify(gameData);
-              console.log("Spawn map generated!")
-              console.log(gameData.spawnMap);
-            }
-
-            if (gameData.type === 'new-round') {
-              if (!gameData.spawnMap) return;
-
-              gameData.spawnMap = gameData.spawnMap;
-              message.message = JSON.stringify(gameData);
-
-              console.log("Spawn map received.");
-              console.log(gameData.spawnMap);
-            }
-
-            // [ Lobby Options Changes ]
-            //
-            if (gameData.type === 'lobby-options') {
-              const room = rooms.get(message.roomId);
-              if (room && room.hostUserId === message.userId) {
-                if (gameData.privateRoom !== undefined) {
-                  room.isPrivate = gameData.privateRoom;
-                  console.log(`Room ${message.roomId} privacy changed to: ${room.isPrivate ? 'Private' : 'Public'}`);
-                }
-                if (gameData.maxWins !== undefined) {
-                  room.maxWins = gameData.maxWins;
-                  console.log(`Room ${message.roomId} max wins changed to: ${room.maxWins}`);
-                }
-
-                if (gameData.maxPlayers !== undefined) {
-                  room.maxPlayers = gameData.maxPlayers;
-                  console.log(`Room ${message.roomId} max players changed to: ${room.maxPlayers}`);
-                }
-
-                if (gameData.upgradesEnabled !== undefined) {
-                  room.upgradesEnabled = gameData.upgradesEnabled;
-                  console.log(`Room ${message.roomId} upgrades toggled: ${room.upgradesEnabled}`);
-                }
-              }
-            }
-
-            if (gameData.type === 'start-game') {
-              // Mark room as having active game
-              const room = rooms.get(message.roomId);
-              if (room) {
-                room.gameActive = true;
-                console.log(`Game started in room ${message.roomId}`);
-              }
-            }
-          } catch (e) {
-            // Not JSON, continue normally
-          }
-        }
-
-
-        broadcastToRoom(message.roomId, {
-          type: 'room-message',
-          userId: message.userId,
-          message: message.message,
-          roomId: message.roomId
-        }, ws);
+// Detect dead connections
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      console.log('Terminating dead connection for user:', ws.userId);
+      if (ws.currentRoom) {
+        leaveRoom(ws, ws.currentRoom);
       }
-      break;
+      return ws.terminate();
+    }
+
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, HEARTBEAT_INTERVAL);
+
+// Cleanup stale rooms
+const cleanupInterval = setInterval(() => {
+  let cleanedRooms = 0;
+
+  console.log(`Checking ${rooms.size} rooms for cleanup.`);
+
+  rooms.forEach((room, roomId) => {
+    // Check if all participants are actually connected
+    const connectedParticipants = new Set();
+
+    room.participants.forEach(ws => {
+      if (ws.readyState === WebSocket.OPEN) {
+        connectedParticipants.add(ws);
+      } else {
+        console.log(`Removing disconnected participant ${ws.userId} from room ${roomId}`);
+      }
+    });
+
+    // Update participants to only include connected clients
+    room.participants = connectedParticipants;
+
+    // Delete room if empty
+    if (room.participants.size === 0) {
+      rooms.delete(roomId);
+      cleanedRooms++;
+      console.log(`Cleaned up stale room ${roomId}`);
+    }
+  });
+
+  if (cleanedRooms > 0) {
+    console.log(`Cleanup complete: removed ${cleanedRooms} stale room(s). Active rooms: ${rooms.size}`);
+  }
+}, CLEANUP_INTERVAL);
+
+wss.on('close', () => {
+  clearInterval(heartbeatInterval);
+  clearInterval(cleanupInterval);
+});
+
+//
+// #endregion
+// =============================================================================
+
+// =============================================================================
+// #region ROOM MESSAGE
+// =============================================================================
+
+function handleRoomMessage(ws, message) {
+  const handlers = {
+    'create-room': () => createRoom(ws, message.roomId, message.userId),
+    'join-room': () => joinRoom(ws, message.roomId, message.userId),
+    'leave-room': () => leaveRoom(ws, message.roomId),
+    'room-message': () => handleGameMessage(ws, message),
+    'admin-command': () => handleAdminCommand(ws, message)
+  };
+
+  const handler = handlers[message.type];
+  if (handler) {
+    handler();
   }
 }
+
+function handleGameMessage(ws, message) {
+  if (ws.currentRoom !== message.roomId || !message.message) return;
+
+  try {
+    const gameData = JSON.parse(message.message);
+    
+    // Process special game messages
+    if (gameData.type === 'start-game') {
+      handleStartGame(message.roomId, message.userId, gameData);
+    } else if (gameData.type === 'new-round') {
+      message.message = JSON.stringify(gameData); // Pass through spawn map
+    } else if (gameData.type === 'lobby-options') {
+      handleLobbyOptions(message.roomId, message.userId, gameData);
+    }
+  } catch (e) {
+    // Not JSON, just pass through
+  }
+
+  broadcastToRoom(message.roomId, {
+    type: 'room-message',
+    userId: message.userId,
+    message: message.message,
+    roomId: message.roomId
+  }, ws);
+}
+
+//
+// #endregion
+// =============================================================================
+
+// =============================================================================
+// #region GAME LOGIC
+// =============================================================================
+
+function handleStartGame(roomId, userId, gameData) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+
+  room.gameActive = true;
+  room.spawnMap = generateSpawnMap(room, userId, gameData.hostSpawn);
+  gameData.spawnMap = room.spawnMap;
+
+  console.log(`Game started in room ${roomId}`);
+}
+
+function generateSpawnMap(room, hostUserId, hostSpawn) {
+  const spawnMap = { [hostUserId]: hostSpawn };
+  const usedSpawns = [hostSpawn];
+
+  room.participants.forEach(client => {
+    if (spawnMap[client.userId]) return;
+
+    const spawn = findValidSpawn(usedSpawns);
+    usedSpawns.push(spawn);
+    spawnMap[client.userId] = spawn;
+  });
+
+  return spawnMap;
+}
+
+function findValidSpawn(usedSpawns) {
+  let spawn, tries = 0;
+
+  do {
+    spawn = {
+      x: Math.random() * (CANVAS_WIDTH - 2 * BORDER_MARGIN) + BORDER_MARGIN,
+      y: Math.random() * (CANVAS_HEIGHT - 2 * BORDER_MARGIN) + BORDER_MARGIN
+    };
+    tries++;
+  } while (
+    usedSpawns.some(s => Math.hypot(s.x - spawn.x, s.y - spawn.y) < SPAWN_MIN_DISTANCE) &&
+    tries < 1000
+  );
+
+  return spawn;
+}
+
+function handleLobbyOptions(roomId, userId, gameData) {
+  const room = rooms.get(roomId);
+  if (!room || room.hostUserId !== userId) return;
+
+  const optionUpdates = {
+    privateRoom: (val) => { room.isPrivate = val; console.log(`Room ${roomId} privacy: ${val ? 'Private' : 'Public'}`); },
+    maxWins: (val) => { room.maxWins = val; console.log(`Room ${roomId} max wins: ${val}`); },
+    maxPlayers: (val) => { room.maxPlayers = val; console.log(`Room ${roomId} max players: ${val}`); },
+    upgradesEnabled: (val) => { room.upgradesEnabled = val; console.log(`Room ${roomId} upgrades: ${val}`); }
+  };
+
+  Object.entries(gameData).forEach(([key, value]) => {
+    if (optionUpdates[key] && value !== undefined) {
+      optionUpdates[key](value);
+    }
+  });
+}
+
+//
+// #endregion
+// =============================================================================
+
+// =============================================================================
+// #region ROOM
+// =============================================================================
 
 function createRoom(ws, roomId, userId) {
   if (rooms.has(roomId)) {
@@ -407,8 +518,131 @@ function broadcastToRoom(roomId, message, sender = null) {
   });
 }
 
+//
+// #endregion
+// =============================================================================
+
+// =============================================================================
+// #region ADMIN COMMANDS
+// =============================================================================
+
+function handleAdminCommand(ws, message) {
+  if (message.key !== ADMIN_KEY) { // Verify admin key
+    console.log(`❌ Unauthorized admin command attempt from ${ws.userId}`);
+    return sendError(ws, 'Unauthorized');
+  }
+
+  const commands = {
+    'clear_rooms': clearAllRooms,
+    'list_rooms': () => listRooms(ws),
+    'close_room': () => closeRoom(message.data?.roomId),
+    'server_stats': () => sendServerStats(ws)
+  };
+
+  const command = commands[message.id];
+  if (command) {
+    console.log(`🔧 Admin command executed: ${message.id} by ${ws.userId}`);
+    command();
+    ws.send(JSON.stringify({
+      type: 'admin-response',
+      success: true,
+      command: message.id,
+      userId: 'server'
+    }));
+  } else {
+    sendError(ws, `Unknown admin command: ${message.id}`);
+  }
+}
+
+function clearAllRooms() {
+  const count = rooms.size;
+  
+  rooms.forEach((room, roomId) => {
+    room.participants.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({
+          type: 'room-message',
+          userId: 'server',
+          message: JSON.stringify({
+            type: 'kick-player',
+            targetPlayerId: client.userId
+          }),
+          roomId: roomId
+        }));
+      }
+    });
+  });
+  
+  rooms.clear();
+  console.log(`🧹 Cleared ${count} rooms via admin command`);
+}
+
+function listRooms(ws) {
+  const roomList = [];
+  rooms.forEach((room, roomId) => {
+    roomList.push({
+      roomId,
+      host: room.hostUserId,
+      players: room.participants.size,
+      maxPlayers: room.maxPlayers,
+      gameActive: room.gameActive,
+      isPrivate: room.isPrivate
+    });
+  });
+  
+  console.log('📋 Room List:', roomList);
+  
+  ws.send(JSON.stringify({
+    type: 'admin-response',
+    command: 'list_rooms',
+    data: roomList,
+    userId: 'server'
+  }));
+}
+
+function closeRoom(roomId) {
+  if (!roomId || !rooms.has(roomId)) return;
+  
+  const room = rooms.get(roomId);
+  room.participants.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify({
+        type: 'room-message',
+        userId: 'server',
+        message: JSON.stringify({
+          type: 'return-to-lobby',
+          reason: 'admin-close'
+        })
+      }));
+      leaveRoom(client, roomId);
+    }
+  });
+  
+  rooms.delete(roomId);
+  console.log(`🚫 Closed room: ${roomId}`);
+}
+
+function sendServerStats(ws) {
+  const stats = {
+    totalRooms: rooms.size,
+    totalPlayers: wss.clients.size,
+    activeGames: Array.from(rooms.values()).filter(r => r.gameActive).length,
+    uptime: process.uptime()
+  };
+  
+  console.log('📊 Server Stats:', stats);
+  
+  ws.send(JSON.stringify({
+    type: 'admin-response',
+    command: 'server_stats',
+    data: stats,
+    userId: 'server'
+  }));
+}
+
+//
+// #endregion
+// =============================================================================
+
 // Start the server
-const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-});
+server.listen(PORT, () => { console.log(`Server running at http://localhost:${PORT}`); });

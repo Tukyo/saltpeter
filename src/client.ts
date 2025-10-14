@@ -34,6 +34,7 @@ import { PlayerController } from './player/PlayerController';
 import { PlayerState } from './player/PlayerState';
 import { StaminaController } from './player/StaminaController';
 import { CacheManager } from './CacheManager';
+import { Admin } from './Admin';
 
 class Client {
     private userId: string;
@@ -43,6 +44,7 @@ class Client {
     private roundWinner: string | null = null;
     private gameWinner: string | null = null; // TODO: Use the game winner to display lobby historical wins
 
+    private admin: Admin;
     private ammoReservesUIController: AmmoReservesUIController;
     private animator: Animator;
     private audioManager: AudioManager;
@@ -85,6 +87,8 @@ class Client {
         this.settingsManager = new SettingsManager(this.cacheManager);
         this.ui = new UserInterface(this.settingsManager);
         this.controlsManager = new ControlsManager(this.settingsManager);
+
+        this.admin = new Admin(this.ui);
 
         this.charConfig = new CharacterConfig();
         this.charManager = new CharacterManager(this.charConfig);
@@ -234,6 +238,10 @@ class Client {
         }
 
         this.watchForInputs();
+
+        this.admin.onAdminCommand = (command, key) => {
+            this.roomManager.sendAdminCommand(command, key);
+        };
     }
 
     /**

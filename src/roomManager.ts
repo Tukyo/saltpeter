@@ -81,21 +81,37 @@ export class RoomManager {
 
     this.ws.send(JSON.stringify(message));
   }
-  
+
+  /**
+   * Sends an admin command from the frontend to backend.
+   */
+  public sendAdminCommand(command: string, key: string): void {
+    if (!this.ws) return;
+
+    const message = {
+      type: 'admin-command',
+      id: command,
+      key: key,
+      userId: this.userId
+    };
+
+    this.ws.send(JSON.stringify(message));
+  }
+
   /**
    * Returns the ID of the current active room.
    */
   public getCurrentRoom(): string | null {
     return this.currentRoom;
   }
-  
+
   /**
    * Generates a shareable link for the current room.
    */
   public getRoomLink(param?: string): string | null {
     return this.currentRoom ? this.utility.generateLink(this.currentRoom, param) : null;
   }
-  
+
   /**
    * Registers a callback to handle incoming room messages.
    */
