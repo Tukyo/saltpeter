@@ -134,6 +134,18 @@ export interface Projectile extends GameObject {
   velocity: Vec2;
 }
 
+export type ProjectileOverrides = {
+    canTriggerUnique?: boolean;
+    color?: string;
+    damage?: number;
+    length?: number;
+    range?: number;
+    size?: number;
+    speed?: number;
+    spread?: number;
+    amount?: number;
+};
+
 export interface AmmoBox extends GameObject {
   ammoAmount: number;
   isOpen: boolean;
@@ -251,6 +263,10 @@ export interface GameSettings {
       sprint: number;
     }
   }
+  // graphics: {
+  //   renderBackgroundParticles: boolean;
+  //   showStaticOverlay: boolean;
+  // }
 }
 //
 // #endregion
@@ -341,6 +357,15 @@ export type Particle = {
   velocity: Vec2
 }
 
+export type EmitterParams = {
+  id: string;
+  interval: number;
+  lifetime: number;
+  offset: Vec2;
+  playerId: string;
+  pos: Vec2;
+}
+
 export type Emitter = {
   age: number;
   direction: number;
@@ -356,6 +381,52 @@ export type Decal = {
   pos: Vec2;
 }
 
+export type Shrapnel = {
+  amount: number;
+  damage: number;
+  images: string[];
+  lifetime: { min: number, max: number };
+  pos: Vec2;
+  size: { min: number, max: number };
+  speed: { min: number, max: number };
+  torque: { min: number, max: number };
+}
+
+export type ShrapnelPiece = {
+  id: string;
+  image: string;
+  pos: Vec2;
+  velocity: Vec2;
+  rotation: number;
+  rotationSpeed: number;
+  size: number;
+  age: number;
+  lifetime: number;
+  ownerId: string;
+  damage: number;
+}
+
+export type DeathDecal = { // TODO: Somehow pass the pool based on current charConfig
+  gore: {
+    amount: number;
+    // pool: string;
+  }
+  blood: {
+    amount: number;
+    // pool: string;
+  }
+  ownerId: string;
+  pos: Vec2;
+  radius: number;
+}
+
+export type DeathStamp = {
+  transform: Transform;
+  type: string;
+  scale: number;
+  src: string;
+}
+
 export type ReserveBulletParticle = {
   transform: Transform;
   velocity: Vec2;
@@ -364,7 +435,7 @@ export type ReserveBulletParticle = {
   height: number;
 }
 
-export type CharacterLayer = 'BODY' | 'WEAPON' | 'HEAD' | 'HEADWEAR';
+export type CharacterLayer = 'BODY' | 'WEAPON' | 'HEAD' | 'HEADWEAR' | 'UPGRADES';
 //
 // #endregion
 
@@ -378,9 +449,10 @@ export enum UpgradeRarity {
   LEGENDARY = 4
 }
 export enum UpgradeType {
+  EQUIPMENT = 'equipment',
+  RESOURCE = 'resource',
   STAT = 'stat',
   UNIQUE = 'unique',
-  EQUIPMENT = 'equipment'
 }
 
 export interface Upgrade {

@@ -84,7 +84,7 @@ export const OBJECT_DEFAULTS = {
     DATA: {
         ID_LENGTH: 8
     },
-}
+};
 
 export const DECALS = {
     PROJECTILE: {
@@ -416,6 +416,17 @@ export const PARTICLES = {
     }
 };
 
+export const SHRAPNEL = {
+    PIECE: [
+        '/assets/img/effects/shrapnel/shrapnel_00.png',
+        '/assets/img/effects/shrapnel/shrapnel_01.png',
+        '/assets/img/effects/shrapnel/shrapnel_02.png',
+        '/assets/img/effects/shrapnel/shrapnel_03.png',
+        '/assets/img/effects/shrapnel/shrapnel_04.png',
+        '/assets/img/effects/shrapnel/shrapnel_05.png'
+    ]
+};
+
 export const AMMO_BOX = {
     BASE: '/assets/img/object/ammobox/base.png',
     BULLETS: '/assets/img/object/ammobox/bullets.png',
@@ -436,32 +447,32 @@ export const GAMEPAD_MAP = {
     B: 1,
     X: 2,
     Y: 3,
-    
+
     // Bumpers
     LB: 4,
     RB: 5,
-    
+
     // Triggers
     LT: 6,
     RT: 7,
-    
+
     // System buttons
     SELECT: 8,
     START: 9,
-    
+
     // Stick clicks
     L_STICK: 10,
     R_STICK: 11,
-    
+
     // D-Pad
     DPAD_UP: 12,
     DPAD_DOWN: 13,
     DPAD_LEFT: 14,
     DPAD_RIGHT: 15,
-    
+
     // Home/Guide button
     HOME: 16,
-    
+
     // Axes
     AXES: {
         LEFT_STICK_X: 0,

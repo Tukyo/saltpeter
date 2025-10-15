@@ -1,6 +1,7 @@
 # SaltPeter
 ### An Online Competitive Top-down Roguelike.
 
+[Saltpeter.xyz](https://saltpeter.xyz/)
 
 ## Lore
 
@@ -10,7 +11,9 @@
 
 Saltpeter takes place in the future after we have discovered a layer of processing for computers, smaller than microprocessors and nanoprocessors, called picoprocessors.
 
-These electronics are so small that they can be installed between ions and atoms, on molecules. This allows us to manipulate the molecule with the processor installed physically on it. **The entire game takes place in a potassium nitrate molecule.**
+These electronics are so small that they can be installed between ions and atoms, on molecules and even ionic compounds. This allows us to manipulate the molecule with the processor installed physically on it.
+
+**The entire game takes place in a potassium nitrate ionic compound.**
 
 **Picoboards** are molecular level motherboards. They are powered by “picolinks” - which consist of two "picobatteries" and a P380 connector.
 

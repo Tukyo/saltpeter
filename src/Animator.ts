@@ -131,6 +131,14 @@ export class Animator {
             }
         });
     }
+
+    /**
+     * Clears all active character animations and offsets.
+     */
+    public clearAllAnimations(): void {
+        this.characterAnimations.clear();
+        this.characterOffsets.clear();
+    }
     //
     // #endregion
 }

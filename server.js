@@ -251,7 +251,7 @@ function handleGameMessage(ws, message) {
 
   try {
     const gameData = JSON.parse(message.message);
-    
+
     // Process special game messages
     if (gameData.type === 'start-game') {
       handleStartGame(message.roomId, message.userId, gameData);
@@ -259,6 +259,12 @@ function handleGameMessage(ws, message) {
       message.message = JSON.stringify(gameData); // Pass through spawn map
     } else if (gameData.type === 'lobby-options') {
       handleLobbyOptions(message.roomId, message.userId, gameData);
+    } else if (gameData.type === 'promote-player') {
+      const room = rooms.get(message.roomId);
+      if (room) {
+        room.hostUserId = gameData.targetPlayerId;
+        console.log(`${gameData.targetPlayerId} promoted to host of ${message.roomId}`);
+      }
     }
   } catch (e) {
     // Not JSON, just pass through
@@ -523,7 +529,7 @@ function broadcastToRoom(roomId, message, sender = null) {
 // =============================================================================
 
 // =============================================================================
-// #region ADMIN COMMANDS
+// #region ADMIN
 // =============================================================================
 
 function handleAdminCommand(ws, message) {
@@ -556,7 +562,7 @@ function handleAdminCommand(ws, message) {
 
 function clearAllRooms() {
   const count = rooms.size;
-  
+
   rooms.forEach((room, roomId) => {
     room.participants.forEach(client => {
       if (client.readyState === WebSocket.OPEN) {
@@ -572,7 +578,7 @@ function clearAllRooms() {
       }
     });
   });
-  
+
   rooms.clear();
   console.log(`🧹 Cleared ${count} rooms via admin command`);
 }
@@ -589,9 +595,9 @@ function listRooms(ws) {
       isPrivate: room.isPrivate
     });
   });
-  
+
   console.log('📋 Room List:', roomList);
-  
+
   ws.send(JSON.stringify({
     type: 'admin-response',
     command: 'list_rooms',
@@ -602,7 +608,7 @@ function listRooms(ws) {
 
 function closeRoom(roomId) {
   if (!roomId || !rooms.has(roomId)) return;
-  
+
   const room = rooms.get(roomId);
   room.participants.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
@@ -617,7 +623,7 @@ function closeRoom(roomId) {
       leaveRoom(client, roomId);
     }
   });
-  
+
   rooms.delete(roomId);
   console.log(`🚫 Closed room: ${roomId}`);
 }
@@ -629,9 +635,9 @@ function sendServerStats(ws) {
     activeGames: Array.from(rooms.values()).filter(r => r.gameActive).length,
     uptime: process.uptime()
   };
-  
+
   console.log('📊 Server Stats:', stats);
-  
+
   ws.send(JSON.stringify({
     type: 'admin-response',
     command: 'server_stats',

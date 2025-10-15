@@ -6,7 +6,7 @@ import { Utility } from "../Utility";
 export class PlayerState {
     public myPlayer: Player; // My player object
     public players: Players = new Map(); // Other players in game
-    
+
     public isHost = false;
 
     public canShoot = true;
@@ -159,5 +159,11 @@ export class PlayerState {
         this.currentBurstShot = 0;
         this.lastStaminaDrainTime = 0;
         this.staminaRecoveryBlockedUntil = 0;
+
+        this.lastSentX = 0;
+        this.lastSentY = 0;
+        this.lastSentRotation = 0;
+        this.lastSentRotationTime = 0;
+        this.lastSentMoveTime = 0;
     }
 }

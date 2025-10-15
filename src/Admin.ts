@@ -1,12 +1,26 @@
+import { CacheManager } from "./CacheManager";
 import { UserInterface } from "./UserInterface";
+
+const ADMIN_KEYS = {
+    KEYS: ['Control', 'Shift', 'Alt', '-', '+'],
+    REQUIRED_COUNT: 5
+} as const;
+
+const CONSOLE_KEY = 'Control';
 
 export class Admin {
     private adminKeysHeld: Set<string> = new Set();
 
-    constructor(private ui: UserInterface) {
+    constructor(private cacheManager: CacheManager, private ui: UserInterface) {
         this.initKeyListener();
+        this.initConsoleKeybinds();
     }
 
+    // #region [ Admin (Locked) ]
+    //
+    /**
+     * Listens for admin key combo and shows modal when detected.
+     */
     private initKeyListener(): void {
         window.addEventListener('keydown', (e) => {
             this.adminKeysHeld.add(e.key);
@@ -18,19 +32,21 @@ export class Admin {
         });
     }
 
+    /**
+     * Checks held keys against the ADMIN_KEYS configuration.
+     */
     private checkAdminCombo(): void {
-        const hasCtrl = this.adminKeysHeld.has('Control');
-        const hasShift = this.adminKeysHeld.has('Shift');
-        const hasAlt = this.adminKeysHeld.has('Alt');
-        const hasMinus = this.adminKeysHeld.has('-');
-        const hasPlus = this.adminKeysHeld.has('+');
+        const hasAllKeys = ADMIN_KEYS.KEYS.every(key => this.adminKeysHeld.has(key));
 
-        if (hasCtrl && hasShift && hasAlt && hasMinus && hasPlus) {
+        if (hasAllKeys && this.adminKeysHeld.size === ADMIN_KEYS.REQUIRED_COUNT) {
             this.adminKeysHeld.clear(); // Prevent repeated triggers
             this.showAdminModal();
         }
     }
 
+    /**
+     * Shows the admin modal using the general website modal.
+     */
     private showAdminModal(): void {
         if (!this.ui.modal || !this.ui.modalInput || !this.ui.modalConfirmButton ||
             !this.ui.modalCancelButton || !this.ui.modalErrorDiv || !this.ui.modalText) return;
@@ -69,14 +85,41 @@ export class Admin {
         this.ui.modalCancelButton.onclick = () => this.ui.closeModal();
     }
 
+    /**
+     * Executes a command that is in the input field of the admin modal.
+     */
     private executeAdminCommand(command: string, key: string): void {
         // This will be called from your main game class with the WebSocket
         console.log(`Admin command: ${command} with key: ${key}`);
-        
+
         // You'll expose this via a callback or event system
         this.onAdminCommand?.(command, key);
     }
 
-    // Public callback that your main game class will set
+    // Public callback for Client.ts
     public onAdminCommand?: (command: string, key: string) => void;
+
+    //
+    // #endregion
+
+    // #region [ Console ]
+    //
+    /**
+     * Clears cache with tilde key
+     */
+    private initConsoleKeybinds(): void {
+        document.addEventListener('keydown', (e) => {
+            if (!e.getModifierState(CONSOLE_KEY)) return;
+            if (e.key === '`') { e.preventDefault(); this.clearCacheCommand(); }
+        });
+    }
+
+    private clearCacheCommand(): void {
+        this.cacheManager.clear().then(() => {
+            console.log('Cache cleared! Reload the page.');
+            location.reload();
+        });
+    }
+    //
+    // #endregion
 }

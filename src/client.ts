@@ -1,7 +1,7 @@
 
 import { PLAYER_DEFAULTS, CANVAS, GAME, SFX, AUDIO } from './Config';
 
-import { Player, RoomMessage, LobbyPlayer, LeaderboardEntry, ResetType, SetSliderParams, SetSpanParams } from './Types';
+import { Player, RoomMessage, LobbyPlayer, LeaderboardEntry, ResetType, SetSliderParams, SetSpanParams, DeathDecal, EmitterParams } from './Types';
 
 import { Animator } from './Animator';
 import { AudioManager } from './AudioManager';
@@ -81,14 +81,16 @@ class Client {
     constructor() {
         this.cacheManager = new CacheManager();
         this.utility = new Utility();
-        this.upgradeManager = new UpgradeManager();
         this.gameState = new GameState();
 
         this.settingsManager = new SettingsManager(this.cacheManager);
         this.ui = new UserInterface(this.settingsManager);
         this.controlsManager = new ControlsManager(this.settingsManager);
 
-        this.admin = new Admin(this.ui);
+        this.ammoReservesUIController = new AmmoReservesUIController(this.ui);
+        this.upgradeManager = new UpgradeManager(this.ammoReservesUIController);
+
+        this.admin = new Admin(this.cacheManager, this.ui);
 
         this.charConfig = new CharacterConfig();
         this.charManager = new CharacterManager(this.charConfig);
@@ -118,8 +120,6 @@ class Client {
         );
 
         this.chatManager = new ChatManager(this.roomManager, this.ui);
-
-        this.ammoReservesUIController = new AmmoReservesUIController(this.ui);
 
         this.collisionsManager = new CollisionsManager(
             this.ammoReservesUIController,
@@ -152,6 +152,7 @@ class Client {
 
         this.particlesManager = new ParticlesManager(
             this.charConfig,
+            this.collisionsManager,
             this.decalsManager,
             this.playerState,
             this.renderingManager,
@@ -163,12 +164,14 @@ class Client {
 
         this.playerController = new PlayerController(
             this.gameState,
+            this.luckController,
             this.moveController,
             this.objectsManager,
             this.particlesManager,
             this.playerState,
             this.roomManager,
-            this.userId
+            this.userId,
+            this.utility
         );
 
         this.combatController = new CombatController(
@@ -401,6 +404,14 @@ class Client {
                         console.log('I am now the host due to host migration');
                     }
 
+                    this.lobbyManager.setupLobbyOptions(
+                        this.gameState.gameMaxPlayers,
+                        this.gameState.gameMaxWins,
+                        this.playerState.isHost,
+                        this.roomManager.isPrivateRoom,
+                        this.upgradeManager.isUpgradesEnabled
+                    );
+
                     this.ui.displayLobbyPlayers(this.playerState.isHost, this.lobbyManager, this.userId);
                     this.ui.updateHostDisplay(this.playerState.isHost, this.lobbyManager);
                     break;
@@ -583,8 +594,10 @@ class Client {
                         this.utility.setSlider(healthSliderParams);
 
                         if (this.playerState.myPlayer.stats.health.value <= 0) {
-                            this.playerController.playerDeath();
-                            this.checkRoundEnd();
+                            const actuallyDied = this.playerController.playerDeath();
+                            if (actuallyDied) {
+                                this.checkRoundEnd();
+                            }
                         }
                     } else if (this.playerState.players.has(gameData.targetId)) {
                         const hitPlayer = this.playerState.players.get(gameData.targetId)!;
@@ -616,7 +629,22 @@ class Client {
                         console.log(`Ammo box spawned at death of ${message.userId}`);
                     }
 
-                    this.particlesManager.generateGore(message.userId, gameData.x, gameData.y, gameData.size); // Spawn gore
+                    const gore: DeathDecal = {
+                        gore: {
+                            amount: this.utility.getRandomInt(2, 5)
+                        },
+                        blood: {
+                            amount: this.utility.getRandomInt(1, 3)
+                        },
+                        ownerId: message.userId,
+                        pos: {
+                            x: gameData.x,
+                            y: gameData.y
+                        },
+                        radius: gameData.size
+                    }
+                    this.particlesManager.generateGore(gore); // Spawn gore
+
                     console.log(`Generated gore for ${message.userId}`);
                     break;
                 case 'ammo-pickup':
@@ -653,6 +681,19 @@ class Client {
                 case 'projectile-remove':
                     if (!this.lobbyManager.inLobby) {
                         this.combatController.projectiles.delete(gameData.projectileId);
+                    }
+                    break;
+                case 'projectile-deflect':
+                    if (!this.lobbyManager.inLobby && this.combatController.projectiles.has(gameData.projectileId)) {
+                        const projectile = this.combatController.projectiles.get(gameData.projectileId)!;
+
+                        // Update projectile properties
+                        projectile.ownerId = gameData.newOwnerId;
+                        projectile.velocity = gameData.velocity;
+                        projectile.color = gameData.color;
+                        projectile.transform.rot = Math.atan2(projectile.velocity.y, projectile.velocity.x);
+
+                        console.log(`Projectile ${gameData.projectileId} deflected by ${gameData.newOwnerId}`);
                     }
                     break;
                 //
@@ -794,23 +835,31 @@ class Client {
                     break;
                 case 'particle-emitter':
                     if (message.userId !== this.userId) {
-                        this.particlesManager.emitters.set(gameData.emitterId, {
-                            age: 0,
-                            direction: gameData.direction || 0,
-                            emissionInterval: 200 + Math.random() * 300,
-                            lastEmission: 0,
+                        const emission: EmitterParams = {
+                            id: gameData.emitterId,
+                            interval: gameData.interval,
                             lifetime: gameData.lifetime,
                             offset: {
-                                x: gameData.offsetX,
-                                y: gameData.offsetY
+                                x: gameData.offset.x,
+                                y: gameData.offset.y
                             },
                             playerId: gameData.playerId,
-                        });
+                            pos: {
+                                x: gameData.pos.x,
+                                y: gameData.pos.y
+                            }
+                        }
+                        this.particlesManager.generateEmitter(emission);
                     }
                     break;
                 case 'character-animation':
                     if (gameData.params.playerId !== this.userId) {
                         this.animator.animateCharacterPartNetwork(gameData.params);
+                    }
+                    break;
+                case 'shrapnel-spawn':
+                    if (message.userId !== this.userId) {
+                        this.particlesManager.generateShrapnel(gameData.pieces);
                     }
                     break;
                 //
@@ -1293,6 +1342,7 @@ class Client {
         this.combatController.updateProjectiles(dt);
         this.particlesManager.updateParticles(dt);
         this.particlesManager.updateEmitters(dt);
+        this.particlesManager.updateShrapnel(dt);
         this.animator.updateCharacterAnimations(dt);
         this.staminaController.updateStamina(dt);
         this.dashController.updateDash(dt);
@@ -1326,6 +1376,7 @@ class Client {
 
         this.renderingManager.drawCharacter(this.playerState.myPlayer, true);
         this.particlesManager.drawParticles();
+        this.particlesManager.drawShrapnel();
 
         // Continue game loop
         requestAnimationFrame(() => this.gameLoop());
@@ -1363,6 +1414,7 @@ class Client {
     private resetGameState(resetType: ResetType): void {
         // Clear game flags
         this.gameState.gameInProgress = false;
+        this.gameState.isPaused = false;
         this.isRoundInProgress = false;
         this.gameWinner = null;
         this.roundWinner = null;
@@ -1382,6 +1434,7 @@ class Client {
         this.decalsManager.decals.clear();
         this.particlesManager.particles.clear();
         this.particlesManager.emitters.clear();
+        this.particlesManager.shrapnel.clear();
         this.upgradeManager.upgradesCompleted.clear();
 
         this.ammoReservesUIController.reserveBulletParticles = [];
@@ -1396,6 +1449,8 @@ class Client {
         this.ui.clearLeaderboard();
         this.playerState.resetPlayerState();
         this.playerState.initPlayer(this.userId);
+        this.controlsManager.clearActiveKeys();
+        this.animator.clearAllAnimations();
 
         // Reset upgrades and equipment
         this.upgradeManager.resetUpgrades(this.playerState.myPlayer);
@@ -1560,7 +1615,7 @@ class Client {
 
         availableUpgrades.forEach(upgrade => {
             const upgradeDiv = document.createElement('div');
-            upgradeDiv.className = 'upgrade_card';
+            upgradeDiv.className = 'upgrade_card container';
             upgradeDiv.setAttribute('data-rarity', upgrade.rarity.toString());
 
             // Create image element

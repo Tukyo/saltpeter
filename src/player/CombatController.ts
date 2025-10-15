@@ -1,11 +1,11 @@
-import { CANVAS, DECALS, OBJECT_DEFAULTS, PARTICLES, SFX } from "../Config";
+import { CANVAS, DECALS, OBJECT_DEFAULTS, PARTICLES, SFX, SHRAPNEL } from "../Config";
 
 import { AmmoReservesUIController } from "./AmmoReservesUIController";
 import { Animator } from "../Animator";
 import { AudioManager } from "../AudioManager";
 import { CollisionsManager } from "../CollisionsManager";
 import { DecalsManager } from "../DecalsManager";
-import { AttackType, Projectile, SetSliderParams, Vec2 } from "../Types";
+import { AttackType, EmitterParams, Projectile, ProjectileOverrides, SetSliderParams, Shrapnel, Vec2 } from "../Types";
 import { GameState } from "../GameState";
 import { LuckController } from "./LuckController";
 import { ParticlesManager } from "../ParticlesManager";
@@ -75,7 +75,7 @@ export class CombatController {
                 const angle = this.playerState.myPlayer.transform.rot - Math.PI / 2;
                 const targetDir = { x: Math.cos(angle), y: Math.sin(angle) };
 
-                this.launchProjectile(targetDir, true);
+                this.launchProjectile(targetDir);
 
                 this.playerState.currentBurstShot++;
                 this.playerState.myPlayer.actions.primary.magazine.currentAmmo--; // Use 1 ammo per shot in burst
@@ -242,7 +242,7 @@ export class CombatController {
         const angle = this.playerState.myPlayer.transform.rot - Math.PI / 2; // Subtract PI/2 to convert from visual rotation to direction
         const targetDir = { x: Math.cos(angle), y: Math.sin(angle) };
 
-        this.launchProjectile(targetDir, true);
+        this.launchProjectile(targetDir);
 
         this.playerState.currentBurstShot++;
         this.playerState.myPlayer.actions.primary.magazine.currentAmmo--; // Use 1 ammo per shot in burst
@@ -290,7 +290,7 @@ export class CombatController {
     /**
      * Calculates physics for projectile and adds them to mapping.
      */
-    private launchProjectile(dir: Vec2, canTriggerUnique: boolean): void {
+    private launchProjectile(dir: Vec2, overrides?: ProjectileOverrides): void {
         console.log(`Fired shot!`);
 
         // Use the passed direction and normalize it
@@ -313,8 +313,18 @@ export class CombatController {
             partIndex: 1
         });
 
+        const canTriggerUnique = overrides?.canTriggerUnique ?? true;
+        const projectileAmount = overrides?.amount ?? this.playerState.myPlayer.actions.primary.projectile.amount;
+        const projectileColor = overrides?.color ?? this.playerState.myPlayer.actions.primary.projectile.color;
+        const projectileDamage = overrides?.damage ?? this.playerState.myPlayer.actions.primary.projectile.damage;
+        const projectileLength = overrides?.length ?? this.playerState.myPlayer.actions.primary.projectile.length;
+        const projectileRange = overrides?.range ?? this.playerState.myPlayer.actions.primary.projectile.range;
+        const projectileSize = overrides?.size ?? this.playerState.myPlayer.actions.primary.projectile.size;
+        const projectileSpeed = overrides?.speed ?? this.playerState.myPlayer.actions.primary.projectile.speed;
+        const projectileSpread = overrides?.spread ?? this.playerState.myPlayer.actions.primary.projectile.spread;
+
         // Calculate spawn offset
-        const spawnOffset = this.collisionsManager.getPlayerCollider(this.playerState.myPlayer) + this.playerState.myPlayer.actions.primary.projectile.size + this.playerState.myPlayer.actions.primary.offset;
+        const spawnOffset = this.collisionsManager.getPlayerCollider(this.playerState.myPlayer) + projectileSize + this.playerState.myPlayer.actions.primary.offset;
         const bulletSpawnX = this.playerState.myPlayer.transform.pos.x + dirX * spawnOffset;
         const bulletSpawnY = this.playerState.myPlayer.transform.pos.y + dirY * spawnOffset;
         const rightX = -dirY;
@@ -379,13 +389,12 @@ export class CombatController {
                 blend: 1.0,
                 pos: { x: this.playerState.myPlayer.transform.pos.x, y: this.playerState.myPlayer.transform.pos.y }
             },
-            volume: { min: 0.675, max: 1 }
+            volume: { min: 0.375, max: 0.85 }
         });
 
         // Create projectiles
-        for (let i = 0; i < this.playerState.myPlayer.actions.primary.projectile.amount; i++) {
+        for (let i = 0; i < projectileAmount; i++) {
             if (this.playerState.myPlayer.unique.length > 0 && canTriggerUnique) {
-                // Shuffle the uniques so that we don't always check them in the same order
                 const shuffledUniques = this.utility.getShuffledArray(this.playerState.myPlayer.unique);
 
                 for (const unique of shuffledUniques) {
@@ -396,7 +405,7 @@ export class CombatController {
                 }
             }
 
-            const spread = (Math.random() - 0.5) * (this.playerState.myPlayer.actions.primary.projectile.spread / 100);
+            const spread = (Math.random() - 0.5) * (projectileSpread / 100);
             const angle = Math.atan2(dirY, dirX) + spread;
             const dir = this.utility.forward(angle);
 
@@ -410,16 +419,16 @@ export class CombatController {
                     rot: angle
                 },
                 timestamp: Date.now(),
-                color: this.playerState.myPlayer.actions.primary.projectile.color,
-                damage: this.playerState.myPlayer.actions.primary.projectile.damage,
+                color: projectileColor,
+                damage: projectileDamage,
                 distanceTraveled: 0,
-                length: this.playerState.myPlayer.actions.primary.projectile.length,
+                length: projectileLength,
                 ownerId: this.userId,
-                range: this.playerState.myPlayer.actions.primary.projectile.range * 100, // Convert to px
-                size: this.playerState.myPlayer.actions.primary.projectile.size,
+                range: projectileRange * 100, // Convert to px
+                size: projectileSize,
                 velocity: {
-                    x: dir.x * this.playerState.myPlayer.actions.primary.projectile.speed,
-                    y: dir.y * this.playerState.myPlayer.actions.primary.projectile.speed,
+                    x: dir.x * projectileSpeed,
+                    y: dir.y * projectileSpeed,
                 },
             };
 
@@ -456,7 +465,53 @@ export class CombatController {
                 const dy = projectile.transform.pos.y - this.playerState.myPlayer.transform.pos.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
 
-                if (distance <= this.collisionsManager.getPlayerCollider(this.playerState.myPlayer) + projectile.size) { // Projectile collided with my player
+                const playerCollider = this.collisionsManager.getPlayerCollider(this.playerState.myPlayer);
+                const canDeflect = this.playerState.myPlayer.unique.includes('kinetic_brain') &&
+                    distance <= playerCollider * 4 &&
+                    distance > playerCollider + projectile.size &&
+                    projectile.ownerId !== this.userId;
+
+
+                const tehe = true;
+
+                if (canDeflect) {
+                    if (tehe) {
+                        console.log('Kinetic Brain activated! Deflecting projectile.');
+
+                        // Calculate normal from player center to projectile
+                        const normal = {
+                            x: (projectile.transform.pos.x - this.playerState.myPlayer.transform.pos.x) / distance,
+                            y: (projectile.transform.pos.y - this.playerState.myPlayer.transform.pos.y) / distance
+                        };
+
+                        const speedReduction = this.utility.getRandomNum(0.85, 0.95);
+
+                        // Reflect velocity off the normal
+                        const reflected = this.utility.getReflection(projectile.velocity, normal);
+                        projectile.velocity.x = reflected.x * speedReduction; // Slow down
+                        projectile.velocity.y = reflected.y * speedReduction;
+
+                        // Change ownership
+                        projectile.ownerId = this.userId;
+                        projectile.color = this.playerState.myPlayer.actions.primary.projectile.color;
+
+                        // Update rotation
+                        projectile.transform.rot = Math.atan2(projectile.velocity.y, projectile.velocity.x);
+
+                        // Broadcast deflection
+                        this.roomManager.sendMessage(JSON.stringify({
+                            type: 'projectile-deflect',
+                            projectileId: projectile.id,
+                            newOwnerId: this.userId,
+                            velocity: projectile.velocity,
+                            color: projectile.color
+                        }));
+
+                        return;
+                    }
+                }
+
+                if (distance <= playerCollider + projectile.size) { // Projectile collided with my player
                     projectilesToRemove.push(id);
 
                     this.playerState.myPlayer.stats.health.value -= projectile.damage;
@@ -504,7 +559,23 @@ export class CombatController {
 
                             this.decalsManager.createDecal(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, DECALS.BLOOD);
                             this.particlesManager.createParticles(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
-                            this.particlesManager.createEmitter(playerId, projectile.transform.pos.x, projectile.transform.pos.y, player.transform.pos.x, player.transform.pos.y);
+
+
+                            const emission: EmitterParams = {
+                                id: `particle_emitter_${playerId}_${Date.now()}`,
+                                interval: this.utility.getRandomNum(200, 400), // ms
+                                lifetime: this.utility.getRandomNum(1000, 3000), // ms
+                                offset: {
+                                    x: player.transform.pos.x,
+                                    y: player.transform.pos.y
+                                },
+                                playerId: playerId,
+                                pos: {
+                                    x: projectile.transform.pos.x,
+                                    y: projectile.transform.pos.y
+                                }
+                            };
+                            this.particlesManager.createEmitter(emission);
 
                             this.audioManager.playAudioNetwork({
                                 src: this.utility.getRandomInArray(SFX.IMPACT.FLESH.BULLET), // TODO: User current body material
@@ -535,6 +606,7 @@ export class CombatController {
                                 }
 
                                 this.ui.updateLeaderboardDisplay(this.userId);
+                                window.dispatchEvent(new CustomEvent("customEvent_checkRoundEnd"));
                             }
 
                             // Notify everyone about the hit
@@ -547,10 +619,6 @@ export class CombatController {
                                 projectileId: id,
                                 wasKill: newHealth <= 0
                             }));
-
-                            if (newHealth <= 0) {
-                                window.dispatchEvent(new CustomEvent("customEvent_checkRoundEnd"));
-                            }
                         }
                     }
                 });
@@ -565,6 +633,10 @@ export class CombatController {
 
                 // Create burn mark where projectile expired (only for my projectiles)
                 if (projectile.ownerId === this.userId) {
+                    const triggeredUniques = this.triggerUniques(projectile.transform.pos);
+
+                    // TODO: Catch the triggered uniques, and use that string array, might be a bouncing bullet or something that makes it not get destroyed yet
+
                     if (projectile.distanceTraveled >= projectile.range) {
                         this.decalsManager.createDecal(projectile.transform.pos.x, projectile.transform.pos.y, `impact_${id}`, DECALS.PROJECTILE);
                     }
@@ -603,16 +675,84 @@ export class CombatController {
     }
 
     /**
-     * Triggers a unique effect when called.
+     * Responsible for checking specific uniques that can effect projectiles.
      */
-    private triggerUnique(unique: string): void {
+    private triggerUniques(pos?: Vec2): string[] {
+        if (this.playerState.myPlayer.unique.length === 0) return [];
+
+        const succeededUniques: string[] = [];
+
+        for (const unique of this.playerState.myPlayer.unique) {
+            if (unique === 'cluster_module') {
+                const succeeded = this.luckController.luckRoll();
+
+                if (succeeded) {
+                    this.triggerUnique(unique, pos);
+                    succeededUniques.push('cluster_module');
+                }
+            }
+        }
+        return succeededUniques;
+    }
+
+    /**
+     * Manually triggers a specific unique effect when called.
+     */
+    private triggerUnique(unique: string, pos?: Vec2): void {
+        if (unique === "cluster_module") {
+            if (pos) {
+                const amount = this.utility.getRandomInt(3, 6);
+                const images: string[] = [];
+                for (let i = 0; i < amount; i++) {
+                    images.push(this.utility.getRandomInArray(SHRAPNEL.PIECE));
+                }
+                const shrapnel: Shrapnel = {
+                    amount: amount,
+                    damage: 1,
+                    images: images,
+                    lifetime: { // ms
+                        min: 100,
+                        max: 500
+                    },
+                    pos: {
+                        x: pos.x,
+                        y: pos.y
+                    },
+                    size: { // px^2
+                        min: 8,
+                        max: 14
+                    },
+                    speed: { // px/frame*(dt)
+                        min: 10,
+                        max: 15
+                    },
+                    torque: { // deg/frame*dt
+                        min: -360,
+                        max: 360
+                    }
+                }
+                this.particlesManager.spawnShrapnel(shrapnel);
+            }
+        }
+
         if (unique === "projectile_array") {
             const amount = this.utility.getRandomInt(1, 3);
             for (let i = 0; i < amount; i++) {
                 const dir = this.utility.getRandomDirection(360);
-                this.launchProjectile(dir, false);
+
+                const params: ProjectileOverrides = {
+                    canTriggerUnique: false,
+                    damage: this.playerState.myPlayer.actions.primary.projectile.damage / 2,
+                    range: this.utility.getRandomNum((this.playerState.myPlayer.actions.primary.projectile.range / 2), this.playerState.myPlayer.actions.primary.projectile.range),
+                    spread: this.utility.getRandomNum(this.playerState.myPlayer.actions.primary.projectile.spread, (this.playerState.myPlayer.actions.primary.projectile.spread * 2))
+                }
+
+
+                this.launchProjectile(dir, params);
             }
         }
+
+        console.log(`Triggered Unique: ${unique}`)
     }
     //
     // #endregion

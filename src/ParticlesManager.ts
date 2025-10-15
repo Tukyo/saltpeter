@@ -1,25 +1,28 @@
-import { CANVAS, DECALS, PARTICLES } from "./Config";
+import { CANVAS, DECALS, OBJECT_DEFAULTS, PARTICLES } from "./Config";
 
 import { CharacterConfig } from "./CharacterConfig";
 import { DecalsManager } from "./DecalsManager";
-import { Emitter, Particle, Vec2 } from "./Types";
+import { DeathDecal, DeathStamp, Emitter, EmitterParams, Particle, Shrapnel, ShrapnelPiece, Vec2 } from "./Types";
 import { RenderingManager } from "./RenderingManager";
 import { RoomManager } from "./RoomManager";
 import { UserInterface } from "./UserInterface";
 import { Utility } from "./Utility";
 
 import { PlayerState } from "./player/PlayerState";
+import { CollisionsManager } from "./CollisionsManager";
 
 
 export class ParticlesManager {
     public particles: Map<string, Particle> = new Map();
     public emitters: Map<string, Emitter> = new Map();
+    public shrapnel: Map<string, ShrapnelPiece> = new Map();
 
     constructor(
         private charConfig: CharacterConfig,
+        private collisionsManager: CollisionsManager,
         private decalsManager: DecalsManager,
         private playerState: PlayerState,
-        private renderdingManager: RenderingManager,
+        private renderingManager: RenderingManager,
         private roomManager: RoomManager,
         private ui: UserInterface,
         private userId: string,
@@ -137,7 +140,7 @@ export class ParticlesManager {
             // Handle staining during extended collision life
             if (particle.hasCollided && particle.stain) {
                 // Paint every frame during extended life
-                this.stampParticle(`stain_${id}_${Date.now()}`, particle);
+                this.stampParticle(particle);
 
                 // Calculate how far we are through the extended life
                 const extendedLifeRatio = (particle.age - (particle.lifetime - particle.lifetime * 0.5)) / (particle.lifetime * 0.5);
@@ -183,7 +186,7 @@ export class ParticlesManager {
                     particle.pos.x >= 0 && particle.pos.x <= CANVAS.WIDTH &&
                     particle.pos.y >= 0 && particle.pos.y <= CANVAS.HEIGHT) {
 
-                    this.stampParticle(`stamp_${id}`, particle);
+                    this.stampParticle(particle);
                 }
 
                 particlesToRemove.push(id);
@@ -222,13 +225,14 @@ export class ParticlesManager {
         });
     }
     //
+    // #endregion
 
-    // [ Particle Persistence ]
+    // #region [ Persistence ]
     //
     /**
      * Stamps local particles onto the decal canvas.
      */
-    private stampParticle(stampId: string, particle: Particle): void {
+    private stampParticle(particle: Particle): void {
         if (!this.ui.decalCtx) return;
 
         const rgb = this.utility.hexToRgb(particle.color);
@@ -250,7 +254,9 @@ export class ParticlesManager {
 
         this.ui.decalCtx.restore();
 
-        this.decalsManager.decals.set(stampId, {
+        const id = `stamp_${Date.now()}`;
+
+        this.decalsManager.decals.set(id, {
             params: null,
             pos: {
                 x: particle.pos.x,
@@ -259,55 +265,59 @@ export class ParticlesManager {
         });
     }
     //
+    // #endregion
 
-    // [ Particle Emitters ]
+    // #region [ Emitters ]
     //
     /**
      * Creates a particle emitter in the game, and syncs this action via websocket message "particle-emitter".
      */
-    public createEmitter(playerId: string, hitX: number, hitY: number, centerX: number, centerY: number): void {
-        const emitterId = `particle_emitter_${playerId}_${Date.now()}`;
-        const emitterLifetime = 1000 + Math.random() * 2000;
-
-        this.generateEmitter(emitterId, playerId, hitX, hitY, centerX, centerY, emitterLifetime);
+    public createEmitter(params: EmitterParams): void {
+        // Create an emitter locally
+        this.generateEmitter(params);
 
         // Broadcast to other clients
-        this.roomManager.sendMessage(JSON.stringify({
-            type: 'particle-emitter',
-            emitterId: emitterId,
-            playerId: playerId,
-            hitX: hitX,
-            hitY: hitY,
-            centerX: centerX,
-            centerY: centerY,
-            lifetime: emitterLifetime
-        }));
+        const message: EmitterParams = {
+            id: params.id,
+            interval: params.interval,
+            lifetime: params.lifetime,
+            offset: {
+                x: params.offset.x,
+                y: params.offset.y
+            },
+            pos: {
+                x: params.pos.x,
+                y: params.pos.y
+            },
+            playerId: params.playerId
+        };
+        this.roomManager.sendMessage(JSON.stringify(message));
 
-        console.log(`Emitter created on ${playerId} for ${emitterLifetime}ms`);
+        console.log(`Emitter created on ${params.playerId} for ${params.lifetime}ms`);
     }
 
     /**
      * Actual generation of the emitter object into the emitter mapping.
      */
-    private generateEmitter(emitterId: string, playerId: string, hitX: number, hitY: number, centerX: number, centerY: number, lifetime: number): void {
+    public generateEmitter(params: EmitterParams): void {
         // Calculate offset from center
-        const offsetX = hitX - centerX;
-        const offsetY = hitY - centerY;
+        const offsetX = params.pos.x - params.offset.x;
+        const offsetY = params.pos.y - params.offset.y;
 
         // Calculate direction (away from center towards hit point)
         const angle = Math.atan2(offsetY, offsetX);
 
-        this.emitters.set(emitterId, {
+        this.emitters.set(params.id, {
             age: 0,
             direction: angle,
-            emissionInterval: 200 + Math.random() * 300,
+            emissionInterval: params.interval,
             lastEmission: 0,
-            lifetime: lifetime,
+            lifetime: params.lifetime,
             offset: {
                 x: offsetX,
                 y: offsetY
             },
-            playerId: playerId
+            playerId: params.playerId
         });
     }
     /**
@@ -364,66 +374,73 @@ export class ParticlesManager {
 
         emittersToRemove.forEach(id => this.emitters.delete(id));
     }
-    // [ Gore ]
+    //
+    // #endregion
+
+    // #region [ Gore ]
     //
     /**
      * Generates gore particles using the decals for the character object.
      */
-    public generateGore(playerId: string, centerX: number, centerY: number, playerSize: number): void {
-        // Sample unique gore assets
-        const goreCount = this.utility.getRandomInt(2, 5);
-        const gorePool = [...this.charConfig.CHARACTER_DECALS.GORE];
-        for (let i = 0; i < goreCount && gorePool.length > 0; i++) {
-            const idx = Math.floor(Math.random() * gorePool.length);
-            const goreAsset = gorePool.splice(idx, 1)[0];
-            const angle = Math.random() * Math.PI * 2;
-            const distance = Math.random() * playerSize;
+    public generateGore(params: DeathDecal): void {
+        const gorePool = [...this.charConfig.CHARACTER_DECALS.DEFAULT.GORE]; // TODO: Get current pool for gore
+        for (let i = 0; i < params.gore.amount && gorePool.length > 0; i++) {
+            const goreAsset = this.utility.getRandomInArray(gorePool);
+            gorePool.splice(gorePool.indexOf(goreAsset), 1);
+            const angle = this.utility.getRandomNum(0, Math.PI * 2);
+            const distance = this.utility.getRandomNum(0, params.radius);
 
-            const goreDecal = {
+            const goreDecal: DeathStamp = {
                 type: 'gore',
-                assetPath: goreAsset,
-                x: centerX + Math.cos(angle) * distance,
-                y: centerY + Math.sin(angle) * distance,
-                rotation: Math.random() * Math.PI * 2,
-                scale: 0.65 + Math.random() * 0.4
+                src: goreAsset,
+                transform: {
+                    pos: {
+                        x: params.pos.x + Math.cos(angle) * distance,
+                        y: params.pos.y + Math.sin(angle) * distance
+                    },
+                    rot: this.utility.getRandomNum(0, Math.PI * 2),
+                },
+                scale: this.utility.getRandomNum(0.65, 1.05)
             };
 
-            const decalId = `death_gore_${playerId}_${Date.now()}_${i}`;
+            const decalId = `death_gore_${params.ownerId}_${Date.now()}_${i}`;
             this.stampGore(goreDecal);
             this.decalsManager.decals.set(decalId, {
                 params: null,
                 pos: {
-                    x: goreDecal.x,
-                    y: goreDecal.y
+                    x: goreDecal.transform.pos.x,
+                    y: goreDecal.transform.pos.y
                 }
             });
         }
 
-        // Sample unique blood assets
-        const bloodCount = this.utility.getRandomInt(1, 3);
-        const bloodPool = [...this.charConfig.CHARACTER_DECALS.BLOOD];
-        for (let i = 0; i < bloodCount && bloodPool.length > 0; i++) {
-            const idx = Math.floor(Math.random() * bloodPool.length);
-            const bloodAsset = bloodPool.splice(idx, 1)[0];
-            const angle = Math.random() * Math.PI * 2;
-            const distance = Math.random() * (playerSize * 0.7);
+        const bloodPool = [...this.charConfig.CHARACTER_DECALS.DEFAULT.BLOOD]; // TODO: Get current pool for blood
+        for (let i = 0; i < params.blood.amount && bloodPool.length > 0; i++) {
+            const bloodAsset = this.utility.getRandomInArray(bloodPool);
+            bloodPool.splice(bloodPool.indexOf(bloodAsset), 1);
+            const angle = this.utility.getRandomNum(0, Math.PI * 2);
+            const distance = this.utility.getRandomNum(0, params.radius * 0.7);
 
-            const bloodDecal = {
+            const bloodDecal: DeathStamp = {
                 type: 'blood',
-                assetPath: bloodAsset,
-                x: centerX + Math.cos(angle) * distance,
-                y: centerY + Math.sin(angle) * distance,
-                rotation: Math.random() * Math.PI * 2,
-                scale: 1.25 + Math.random() * 0.2
+                src: bloodAsset,
+                transform: {
+                    pos: {
+                        x: params.pos.x + Math.cos(angle) * distance,
+                        y: params.pos.y + Math.sin(angle) * distance
+                    },
+                    rot: this.utility.getRandomNum(0, Math.PI * 2),
+                },
+                scale: this.utility.getRandomNum(1.25, 1.45)
             };
 
-            const decalId = `death_blood_${playerId}_${Date.now()}_${i}`;
+            const decalId = `death_blood_${params.ownerId}_${Date.now()}_${i}`;
             this.stampGore(bloodDecal);
             this.decalsManager.decals.set(decalId, {
                 params: null,
                 pos: {
-                    x: bloodDecal.x,
-                    y: bloodDecal.y
+                    x: bloodDecal.transform.pos.x,
+                    y: bloodDecal.transform.pos.y
                 }
             });
         }
@@ -432,19 +449,19 @@ export class ParticlesManager {
     /**
      * Persists gore on the decal canvas.
      */
-    private stampGore(decalData: any): void { // TODO: Type protect
+    private stampGore(params: DeathStamp): void {
         if (!this.ui.decalCtx) return;
 
-        let image = this.renderdingManager.characterImages.get(decalData.assetPath);
+        let image = this.renderingManager.characterImages.get(params.src);
 
         if (!image) {
             image = new Image();
-            image.src = decalData.assetPath;
-            this.renderdingManager.characterImages.set(decalData.assetPath, image);
+            image.src = params.src;
+            this.renderingManager.characterImages.set(params.src, image);
 
             if (!image.complete) {
                 image.onload = () => {
-                    this.stampGore(decalData);
+                    this.stampGore(params);
                 };
                 return;
             }
@@ -453,10 +470,10 @@ export class ParticlesManager {
         if (!image.complete || image.naturalWidth === 0) return;
 
         this.ui.decalCtx.save();
-        this.ui.decalCtx.translate(decalData.x, decalData.y);
-        this.ui.decalCtx.rotate(decalData.rotation);
+        this.ui.decalCtx.translate(params.transform.pos.x, params.transform.pos.y);
+        this.ui.decalCtx.rotate(params.transform.rot);
 
-        const drawSize = 32 * decalData.scale;
+        const drawSize = 32 * params.scale;
         this.ui.decalCtx.drawImage(
             image,
             -drawSize / 2,
@@ -466,6 +483,230 @@ export class ParticlesManager {
         );
 
         this.ui.decalCtx.restore();
+    }
+    //
+    // #endregion
+
+    // #region [ Shrapnel ]
+    //
+    /**
+     * Creates shrapnel pieces and sends network message with Shrapnel data.
+     */
+    public spawnShrapnel(params: Shrapnel): void {
+        const pieces: ShrapnelPiece[] = [];
+
+        // Generate all pieces locally
+        for (let i = 0; i < params.amount; i++) {
+            const angle = this.utility.getRandomNum(0, Math.PI * 2);
+            const speed = this.utility.getRandomNum(params.speed.min, params.speed.max);
+            const lifetime = this.utility.getRandomNum(params.lifetime.min, params.lifetime.max);
+            const size = this.utility.getRandomNum(params.size.min, params.size.max);
+            const torque = this.utility.getRandomNum(params.torque.min, params.torque.max) * (Math.PI / 180); // Convert radians > deg
+
+            const piece: ShrapnelPiece = {
+                id: this.utility.generateUID(OBJECT_DEFAULTS.DATA.ID_LENGTH),
+                image: params.images[i], // Already randomly selected in triggerUnique
+                pos: {
+                    x: params.pos.x,
+                    y: params.pos.y
+                },
+                velocity: {
+                    x: Math.cos(angle) * speed,
+                    y: Math.sin(angle) * speed
+                },
+                rotation: this.utility.getRandomNum(0, Math.PI * 2), // Random start rot
+                rotationSpeed: torque, // Random spin
+                size: size,
+                age: 0,
+                lifetime: lifetime,
+                ownerId: this.userId,
+                damage: params.damage
+            };
+
+            pieces.push(piece);
+            this.shrapnel.set(piece.id, piece);
+        }
+
+        // Send ONE message with all pieces
+        this.roomManager.sendMessage(JSON.stringify({
+            type: 'shrapnel-spawn',
+            pieces: pieces
+        }));
+
+        console.log(`Spawned ${pieces.length} shrapnel pieces`);
+    }
+
+    /**
+     * Generates shrapnel baed on received network message 'shrapnel-spawn' data.
+     */
+    public generateShrapnel(params: ShrapnelPiece[]): void {
+        params.forEach(piece => {
+            this.shrapnel.set(piece.id, piece);
+        });
+
+        console.log(`Received ${params.length} shrapnel pieces from network`);
+    }
+
+    /**
+     * When shrapnel exists, handles updating of each piece via Client udpate loop.
+     */
+    public updateShrapnel(delta: number): void {
+        if (this.shrapnel.size === 0) return;
+
+        const shrapnelToRemove: string[] = [];
+
+        this.shrapnel.forEach((piece, id) => {
+            // Update physics
+            piece.pos.x += piece.velocity.x * delta;
+            piece.pos.y += piece.velocity.y * delta;
+            piece.rotation += piece.rotationSpeed * delta;
+            piece.age += 16.67 * delta;
+
+            // Apply friction
+            // TODO: Add world friction
+            piece.velocity.x *= 0.98;
+            piece.velocity.y *= 0.98;
+
+            // Only owner checks collisions and deals damage
+            if (piece.ownerId === this.userId) {
+                // Check collision with all players
+                this.playerState.players.forEach((player, playerId) => {
+                    if (player.stats.health.value > 0) {
+                        const dx = piece.pos.x - player.transform.pos.x;
+                        const dy = piece.pos.y - player.transform.pos.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+
+                        // Collision detection (using player collider + shrapnel size for padding)
+                        if (distance <= this.collisionsManager.getPlayerCollider(player, piece.size)) {
+                            const newHealth = Math.max(0, player.stats.health.value - piece.damage);
+                            player.stats.health.value = newHealth;
+
+                            if (newHealth <= 0) {
+                                const me = this.ui.leaderboard.get(this.userId);
+                                if (me) {
+                                    me.kills++;
+                                }
+
+                                const other = this.ui.leaderboard.get(playerId);
+                                if (other) {
+                                    other.deaths++;
+                                }
+
+                                this.ui.updateLeaderboardDisplay(this.userId);
+                                window.dispatchEvent(new CustomEvent("customEvent_checkRoundEnd"));
+                            }
+
+                            // Remove this shrapnel piece after hit
+                            shrapnelToRemove.push(id);
+                            console.log(`Shrapnel hit ${playerId} for ${piece.damage} damage`);
+
+                            const bloodDirection = {
+                                x: -piece.velocity.x / Math.sqrt(piece.velocity.x ** 2 + piece.velocity.y ** 2),
+                                y: -piece.velocity.y / Math.sqrt(piece.velocity.x ** 2 + piece.velocity.y ** 2)
+                            };
+                            this.createParticles(piece.pos.x, piece.pos.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
+
+                            // Send damage message
+                            this.roomManager.sendMessage(JSON.stringify({
+                                type: 'player-hit',
+                                targetId: playerId,
+                                shooterId: this.userId,
+                                damage: piece.damage,
+                                newHealth: newHealth,
+                                wasKill: newHealth <= 0
+                            }));
+                        }
+                    }
+                });
+            }
+
+            // Remove if lifetime expired or out of bounds
+            if (piece.age >= piece.lifetime ||
+                piece.pos.x < 0 || piece.pos.x > CANVAS.WIDTH ||
+                piece.pos.y < 0 || piece.pos.y > CANVAS.HEIGHT) {
+
+                // Stamp as decal if died in bounds
+                if (piece.pos.x >= 0 && piece.pos.x <= CANVAS.WIDTH &&
+                    piece.pos.y >= 0 && piece.pos.y <= CANVAS.HEIGHT) {
+                    this.stampShrapnel(piece);
+                }
+
+                shrapnelToRemove.push(id);
+            }
+        });
+
+        // Remove dead shrapnel
+        shrapnelToRemove.forEach(id => this.shrapnel.delete(id));
+    }
+
+    /**
+     * Draws the moving shrapnel to the canvas for rendering.
+     */
+    public drawShrapnel(): void {
+        if (!this.ui.ctx || this.shrapnel.size === 0) return;
+
+        this.shrapnel.forEach(piece => {
+            if (!this.ui.ctx) return;
+
+            let image = this.renderingManager.characterImages.get(piece.image);
+
+            if (!image) {
+                image = new Image();
+                image.src = piece.image;
+                this.renderingManager.characterImages.set(piece.image, image);
+
+                if (!image.complete) { return; }
+            }
+
+            if (!image.complete || image.naturalWidth === 0) return;
+
+            this.ui.ctx.save();
+            this.ui.ctx.translate(piece.pos.x, piece.pos.y);
+            this.ui.ctx.rotate(piece.rotation);
+
+            this.ui.ctx.drawImage(
+                image,
+                -piece.size / 2,
+                -piece.size / 2,
+                piece.size,
+                piece.size
+            );
+
+            this.ui.ctx.restore();
+        });
+    }
+
+    /**
+     * Stamps dead shrapnel to the decal canvas to persist visually.
+     */
+    private stampShrapnel(params: ShrapnelPiece): void {
+        if (!this.ui.decalCtx) return;
+
+        let image = this.renderingManager.characterImages.get(params.image);
+        if (!image || !image.complete || image.naturalWidth === 0) return;
+
+        this.ui.decalCtx.save();
+        this.ui.decalCtx.translate(params.pos.x, params.pos.y);
+        this.ui.decalCtx.rotate(params.rotation);
+
+        this.ui.decalCtx.drawImage(
+            image,
+            -params.size / 2,
+            -params.size / 2,
+            params.size,
+            params.size
+        );
+
+        this.ui.decalCtx.restore();
+
+        // Register decal
+        this.decalsManager.decals.set(`shrapnel_${params.id}`, {
+            params: null,
+            pos: {
+                x: params.pos.x,
+                y: params.pos.y
+            }
+        });
     }
     //
     // #endregion

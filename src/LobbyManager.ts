@@ -70,7 +70,7 @@ export class LobbyManager {
     /**
      * Sets up lobby toggles and input for game settings.
      */
-    private setupLobbyOptions(
+    public setupLobbyOptions(
         gameMaxPlayers: number,
         gameMaxWins: number,
         isHost: boolean,

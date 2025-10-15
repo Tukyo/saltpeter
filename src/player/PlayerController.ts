@@ -6,17 +6,22 @@ import { ParticlesManager } from "../ParticlesManager";
 import { PlayerState } from "./PlayerState";
 import { RoomManager } from "../RoomManager";
 import { MoveController } from "./MoveController";
+import { LuckController } from "./LuckController";
+import { DeathDecal, SetSliderParams } from "../Types";
+import { Utility } from "../Utility";
 
 export class PlayerController {
     constructor(
         private gameState: GameState,
+        private luckController: LuckController,
         private moveController: MoveController,
         private objectsManager: ObjectsManager,
         private particlesManager: ParticlesManager,
         private playerState: PlayerState,
         private roomManager: RoomManager,
-        private userId: string
-    ) {}
+        private userId: string,
+        private utility: Utility
+    ) { }
 
     /**
      * Updates the local player's position and movement state.
@@ -89,7 +94,14 @@ export class PlayerController {
     /**
      * Record the player's own death when they are the targetId of a player-hit message and their health reaches 0.
      */
-    public playerDeath(): void {
+    public playerDeath(): boolean {
+        const triggeredUniques = this.triggerUniques();
+
+        if (triggeredUniques.includes('phoenix_module')) {
+            console.log('Death prevented.');
+            return false;
+        }
+
         console.log('I died! Waiting for round to end...');
 
         this.playerState.resetPlayerState();
@@ -97,7 +109,21 @@ export class PlayerController {
         const ammoBox = this.objectsManager.spawnAmmoBox(10);
         this.objectsManager.ammoBoxes.set(ammoBox.id, ammoBox);
 
-        this.particlesManager.generateGore(this.userId, this.playerState.myPlayer.transform.pos.x, this.playerState.myPlayer.transform.pos.y, this.playerState.myPlayer.stats.size);
+        const gore: DeathDecal = {
+            gore: {
+                amount: this.utility.getRandomInt(2, 5)
+            },
+            blood: {
+                amount: this.utility.getRandomInt(1, 3)
+            },
+            ownerId: this.userId,
+            pos: {
+                x: this.playerState.myPlayer.transform.pos.x,
+                y: this.playerState.myPlayer.transform.pos.y
+            },
+            radius: this.playerState.myPlayer.stats.size
+        }
+        this.particlesManager.generateGore(gore);
 
         this.roomManager.sendMessage(JSON.stringify({
             type: 'player-death',
@@ -107,5 +133,46 @@ export class PlayerController {
             size: this.playerState.myPlayer.stats.size,
             ammoBox: ammoBox
         }));
+
+        return true;
+    }
+
+    private triggerUniques(): string[] {
+        if (this.playerState.myPlayer.unique.length === 0) return [];
+
+        const succeededUniques: string[] = [];
+
+        for (const unique of this.playerState.myPlayer.unique) {
+            if (unique === 'phoenix_module') {
+                const succeeded = this.luckController.luckRoll(1.5);
+
+                if (succeeded) {
+                    console.log('Phoenix Module activated! Preventing death and applying damage boost.');
+
+                    const healthSliderParams: SetSliderParams = {
+                        sliderId: 'healthBar',
+                        targetValue: this.playerState.myPlayer.stats.health.value,
+                        maxValue: this.playerState.myPlayer.stats.health.max,
+                        lerpTime: 300
+                    };
+                    this.utility.setSlider(healthSliderParams);
+
+                    // Heal player
+                    this.playerState.myPlayer.stats.health.value = this.playerState.myPlayer.stats.health.max * 0.25;
+
+                    // Double damage permanently
+                    this.playerState.myPlayer.actions.primary.projectile.damage *= 2;
+
+                    // Remove phoenix module so it can't trigger again
+                    const index = this.playerState.myPlayer.unique.indexOf('phoenix_module');
+                    if (index > -1) {
+                        this.playerState.myPlayer.unique.splice(index, 1);
+                    }
+
+                    succeededUniques.push('phoenix_module');
+                }
+            }
+        }
+        return succeededUniques;
     }
 }

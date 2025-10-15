@@ -1,8 +1,10 @@
+import { AmmoReservesUIController } from './player/AmmoReservesUIController';
 import { Player, Upgrade, UpgradeRarity, UpgradeType } from './Types';
 
 /**
  Upgrade Ideas:
  ionic compound
+ phoenix module, on death multiply 1.5 * luck to get chance and if hits, disallow further attempts and give player double damage
  > [ Resources ]
   - Reserves ++
   - 
@@ -64,6 +66,68 @@ export class UpgradeManager {
     };
 
     public upgrades: Upgrade[] = [ // TODO: Update all upgrades to use the player object instead of the olayer defaults
+        // #region [ EQUIPMENT ]
+        //
+        // {
+        //     id: "neural_target_interface",
+        //     name: "Neural Target Interface",
+        //     subtitle: "G.I.M.P. proprietary targeting module.",
+        //     icon: "/assets/img/icon/upgrades/crosshair.png",
+        //     type: UpgradeType.EQUIPMENT,
+        //     rarity: UpgradeRarity.UNCOMMON,
+        //     unique: false,
+        //     func: (player: Player) => {
+        //         // Add to equipment array if not already present
+        //         if (!player.equipment.includes('neural_target_interface')) {
+        //             player.equipment.push('neural_target_interface');
+        //         }
+
+        //         // Apply stat changes
+        //         player.actions.primary.projectile.spread *= 0.95;
+
+        //         console.log(`[Neural Target Interface] - Equipment added.`, "Spread:", player.actions.primary.projectile.spread);
+        //     }
+        // },
+        //
+        // #endregion
+        //
+        // #region [ RESOURCE ]
+        //
+        {
+            id: "care_package",
+            name: "Care Package",
+            subtitle: "These are hard to come by.",
+            icon: "/assets/img/icon/upgrades/carepackage.png",
+            type: UpgradeType.RESOURCE,
+            rarity: UpgradeRarity.COMMON,
+            unique: false,
+            func: (player: Player) => {
+                const ammo = 20;
+
+                player.actions.primary.magazine.currentReserve += ammo;
+                this.ammoReservesUI.spawnAmmoInReserveUI(ammo);
+
+                console.log(`Care package received. Primary Reserves: ${player.actions.primary.magazine.currentReserve}`);
+            }
+        },      
+        {
+            id: "hemoglobin_saturator",
+            name: "Hemoglobin Saturator",
+            subtitle: "Increases red blood cell density for extended durability.",
+            icon: "/assets/img/icon/upgrades/hemoglobinsaturator.png",
+            type: UpgradeType.RESOURCE,
+            rarity: UpgradeRarity.UNCOMMON,
+            unique: false,
+            func: (player: Player) => {
+                player.stats.health.max += 10;
+                player.stats.health.value = player.stats.health.max;
+
+                console.log(`Damage Buffer installed. New damage: ${player.actions.primary.projectile.damage} - New Buffer: ${player.actions.primary.buffer}`);
+            }
+        },  
+        //
+        // #endregion
+        //
         // #region [ STATS ]
         //
         {
@@ -99,40 +163,57 @@ export class UpgradeManager {
         //
         // #endregion
         //
-        // #region [ EQUIPMENT ]
-        //
-        // {
-        //     id: "neural_target_interface",
-        //     name: "Neural Target Interface",
-        //     subtitle: "G.I.M.P. proprietary targeting module.",
-        //     icon: "/assets/img/icon/upgrades/crosshair.png",
-        //     type: UpgradeType.EQUIPMENT,
-        //     rarity: UpgradeRarity.UNCOMMON,
-        //     unique: false,
-        //     func: (player: Player) => {
-        //         // Add to equipment array if not already present
-        //         if (!player.equipment.includes('neural_target_interface')) {
-        //             player.equipment.push('neural_target_interface');
-        //         }
-
-        //         // Apply stat changes
-        //         player.actions.primary.projectile.spread *= 0.95;
-
-        //         console.log(`[Neural Target Interface] - Equipment added.`, "Spread:", player.actions.primary.projectile.spread);
-        //     }
-        // },
-        //
-        // #endregion
-        //
         // #region [ UNIQUE ]
         //
         {
+            id: "cluster_module",
+            name: "Cluster Module",
+            subtitle: "Cluster enhancement module for primary attacks.",
+            icon: "/assets/img/icon/upgrades/clustermodule.png",
+            type: UpgradeType.UNIQUE,
+            rarity: UpgradeRarity.RARE,
+            unique: true,
+            func: (player: Player) => {
+                if (!player.unique.includes('cluster_module')) {
+                    player.unique.push('cluster_module');
+                }
+            }
+        },
+        {
+            id: "kinetic_brain",
+            name: "Kinetic Brain",
+            subtitle: "Cerebral kinetic stem implant, unable to function at maximum capacity.",
+            icon: "/assets/img/icon/upgrades/kineticbrain.png",
+            type: UpgradeType.UNIQUE,
+            rarity: UpgradeRarity.EPIC,
+            unique: true,
+            func: (player: Player) => {
+                if (!player.unique.includes('kinetic_brain')) {
+                    player.unique.push('kinetic_brain');
+                }
+            }
+        },
+        {
+            id: "phoenix_module",
+            name: "Phoenix Module",
+            subtitle: "Does its best to keep you alive.",
+            icon: "/assets/img/icon/upgrades/phoenixmodule.png",
+            type: UpgradeType.UNIQUE,
+            rarity: UpgradeRarity.UNCOMMON,
+            unique: true,
+            func: (player: Player) => {
+                if (!player.unique.includes('phoenix_module')) {
+                    player.unique.push('phoenix_module');
+                }
+            }
+        },
+        { // Luck based, chance to add extra projectiles on shot in random direction.
             id: "projectile_array",
             name: "Projectile Array",
             subtitle: "Chance to fire an array of extra projectiles.",
             icon: "/assets/img/icon/upgrades/projectilearray.png",
             type: UpgradeType.UNIQUE,
-            rarity: UpgradeRarity.UNCOMMON,
+            rarity: UpgradeRarity.RARE,
             unique: true,
             func: (player: Player) => {
                 if (!player.unique.includes('projectile_array')) {
@@ -145,7 +226,7 @@ export class UpgradeManager {
         //
     ]
 
-    constructor() { }
+    constructor(private ammoReservesUI: AmmoReservesUIController) { }
 
     /**
      * Returns a selected amount of upgrades for a specific player in the game.

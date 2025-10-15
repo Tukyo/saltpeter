@@ -15,7 +15,7 @@ export class RenderingManager {
         private charManager: CharacterManager,
         private objectsManager: ObjectsManager,
         private ui: UserInterface,
-    ) {}
+    ) { }
 
     /**
      * Clear all canvas rendering context in the game.
@@ -50,6 +50,8 @@ export class RenderingManager {
         this.drawCharacterLayer(player, 'WEAPON', player.rig.weapon);
         this.drawCharacterLayer(player, 'HEAD', player.rig.head);
         this.drawCharacterLayer(player, 'HEADWEAR', player.rig.headwear);
+
+        this.drawUpgradeLayers(player);
 
         // Draw player name/info (existing code)
         this.ui.ctx.fillStyle = UI.TEXT_COLOR;
@@ -133,6 +135,24 @@ export class RenderingManager {
         }
 
         this.ui.ctx.restore();
+    }
+
+    private drawUpgradeLayers(player: Player): void {
+        // Check unique upgrades
+        player.unique.forEach(uniqueName => {
+            const assetPath = this.charManager.getUpgradeVisual(uniqueName);
+            if (assetPath) {
+                this.drawCharacterPart(player, assetPath, 'UPGRADES');
+            }
+        });
+
+        // Check equipment upgrades
+        player.equipment.forEach(equipmentName => {
+            const assetPath = this.charManager.getUpgradeVisual(equipmentName);
+            if (assetPath) {
+                this.drawCharacterPart(player, assetPath, 'UPGRADES');
+            }
+        });
     }
     //
 

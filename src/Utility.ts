@@ -29,6 +29,9 @@ export class Utility {
     // #endregion
     //
     // #region [ Math ]
+    public getRandomNum(min: number, max: number): number {
+        return Math.random() * (max - min) + min;
+    }
     /**
      * Returns a random int between the passed min/max values.
      */
@@ -48,6 +51,25 @@ export class Utility {
      */
     public getShuffledArray<T>(array: T[]): T[] {
         return array.slice().sort(() => Math.random() - 0.5);
+    }
+
+    /**
+     * Returns the dot product of two 2D vectors.
+     */
+    public getDotProduct(v1: Vec2, v2: Vec2): number {
+        return v1.x * v2.x + v1.y * v2.y;
+    }
+
+    /**
+     * Reflects a velocity vector off a surface normal.
+     * Formula: V' = V - 2(V·N)N
+     */
+    public getReflection(velocity: Vec2, normal: Vec2): Vec2 {
+        const dot = this.getDotProduct(velocity, normal);
+        return {
+            x: velocity.x - 2 * dot * normal.x,
+            y: velocity.y - 2 * dot * normal.y
+        };
     }
     //
     // #endregion
