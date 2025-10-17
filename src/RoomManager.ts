@@ -23,7 +23,12 @@ export class RoomManager {
   /**
    * Creates a new room and automatically joins it as the host.
    */
-  public createRoom(): string {
+  public createRoom(): string | null {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      alert('Cannot create room: Not connected to server. Please refresh the page.');
+      return null;
+    }
+
     const roomId = this.utility.generateUID(ROOM.ID_LENGTH, ROOM.ID_PREFIX);
     this.joinRoom(roomId, true);
     return roomId;
@@ -34,7 +39,7 @@ export class RoomManager {
    */
   public joinRoom(roomId: string, isHost: boolean = false): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.error('WebSocket not connected');
+      alert('Cannot join room: Not connected to server. Please refresh the page.');
       return;
     }
 
@@ -71,6 +76,11 @@ export class RoomManager {
    */
   public sendMessage(text: string): void {
     if (!this.currentRoom || !this.ws) return;
+
+    if (this.ws.readyState !== WebSocket.OPEN) {
+      alert('Cannot send message: Not connected to server. Please refresh the page.');
+      return;
+    }
 
     const message: RoomMessage = {
       type: 'room-message',

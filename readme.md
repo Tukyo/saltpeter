@@ -7,11 +7,12 @@
 
 ![asd](public/assets/img/icon/upgrades/spatialtargeting.png) ![asd](public/assets/img/icon/upgrades/spectralimage.png) ![asd](public/assets/img/icon/upgrades/switch.png)
 
+
 ## Game
 **RULES:** Players spawn in a top-down arena with limited ammo reserves, a ranged weapon and a melee weapon. A free-for-all fight commences, and the winner is the last player standing. All losing players choose a random upgrade, making it harder for the winner to maintain their streak.
 
-## Lore
 
+## Lore
 **CURRENT_YEAR:** 2380
 
 **LOCATION:** Unknown *(Somewhere in Andromeda)*
@@ -30,6 +31,7 @@ Quantum mechanical pico computation powered by bonded energy differentials.
 
 ![asd](public/assets/img/icon/upgrades/locomotionmodule.png) ![asd](public/assets/img/icon/upgrades/muzzlesplitter.png) ![asd](public/assets/img/icon/upgrades/phoenixmodule.png) ![asd](public/assets/img/icon/upgrades/projectilearray.png)
 
+
 ## Tech
 Saltpeter does not rely on any engine or codebase. It is written using typescript, javascript, html, and css.
 
@@ -41,8 +43,24 @@ The only external package used is WebSocket for networking.
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6.svg?style=flat-square&logo=typescript&logoColor=white)
 ![WebSocket](https://img.shields.io/badge/WebSocket-333333.svg?style=flat-square&logo=socketdotio&logoColor=white)
 
-## Credits
 
+## Inspiration
+The tech design goals of this game are to create a top-down experience similar to [Hotline Miami](https://en.wikipedia.org/wiki/Hotline_Miami), with roguelike synergies akin to [The Binding of Isaac](https://en.wikipedia.org/wiki/The_Binding_of_Isaac_(video_game)). Finally, add a layer of persistence to visual effects like what we see in [Noita](https://en.wikipedia.org/wiki/Noita_(video_game)) or [Cortex Command](https://en.wikipedia.org/wiki/Cortex_Command) in an attempt to achieve **persistent particles and decals throughout rounds**.
+
+This is achieved using client-side stamping mechanisms, and using static pixel data on a separate rendering canvas. Influenced directly by Daniel Tabar's implementation of static voxel data in the [Atomontage](https://www.atomontage.com/) engine. Blood, gore, and all effects in the game will stain the canvas, narrating a story of your battles.
+
+## Crypto
+Everything was perfect until this part, right? Well, I hope that this game can alter your pre-conceived notion of that word. Saltpeter is fully free-to-play, with no microtransactions, subscriptions or purchases.
+
+### **Everything in the game can be accessed without spending any money, or worrying about this part at all if desired.**
+
+If you are curious however, the goal here is to define a more distinct use-case for cryptography, and the benefits that the blockchain provides. If you have a crypto wallet, you can connect to the website and after this, your **Neural ID** will update to your crypto wallet address.
+
+This allows you to retain a persistent neural id, and remain pseudonymous, or anonymous depending on your wallet's trace. If you have an ENS name, this will now become your displayed username.
+
+This allows me to bypass any required time needed to code server-side UID validation. And, everybody hates crypto so it is obviously cool.
+
+## Credits
 Designed by Tukyo and Bigf0ck.
 
 Built because we were tired of desyncing in isaac.

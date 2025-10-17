@@ -38,6 +38,8 @@ export class RoomController {
             this.wsManager.connectWebSocket();
             this.utility.safeTimeout(() => {
                 const roomId = this.roomManager.createRoom();
+                if (!roomId) return;
+
                 this.playerState.isHost = true;
                 this.lobbyManager.showLobbyControls(
                     this.gameState.gameMaxPlayers,
@@ -53,6 +55,8 @@ export class RoomController {
             }, GAME.CONNECTION_TIMEOUT);
         } else {
             const roomId = this.roomManager.createRoom();
+            if (!roomId) return;
+            
             this.playerState.isHost = true;
             this.lobbyManager.showLobbyControls(
                 this.gameState.gameMaxPlayers,
