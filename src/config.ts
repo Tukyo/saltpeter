@@ -79,7 +79,7 @@ export const PLAYER_DEFAULTS = {
             }
         }
     },
-    UNIQUE: ['spectral_image'],
+    UNIQUE: [],
     VISUAL: {
         ID_DISPLAY_OFFSET: 25
     }
