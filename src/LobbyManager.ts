@@ -1,4 +1,4 @@
-import { LobbyPlayer, Player, SetInputParams, SetToggleParams } from "./Types";
+import { LobbyControlsParams, LobbyOptionsParams, LobbyPlayer, SetInputParams, SetToggleParams } from "./Types";
 import { UserInterface } from "./UserInterface";
 import { RoomManager } from "./RoomManager";
 import { Utility } from "./Utility";
@@ -7,24 +7,17 @@ export class LobbyManager {
     public inLobby = false;
     public lobbyPlayers: Map<string, LobbyPlayer> = new Map(); // Temporary partial player object used for lobby only information
 
-    constructor(private utility: Utility, private ui: UserInterface, private roomManager: RoomManager) {}
+    constructor(private utility: Utility, private ui: UserInterface, private roomManager: RoomManager) { }
 
     // #region [ Lobby Controls ]
     //
     /**
      * Calls updateDisplay to show the lobby specific controls.
      */
-    public showLobbyControls(
-        gameMaxPlayers: number,
-        gameMaxWins: number,
-        isHost: boolean,
-        isPrivateRoom: boolean,
-        isUpgradesEnabled: boolean,
-        lobby: LobbyManager,
-        myPlayer: Player,
-        roomId: string,
-        userId: string,
-    ): void {
+    public showLobbyControls(params: LobbyControlsParams): void {
+        const { lobby, lobbyOptions, myPlayer, roomId, userId } = params;
+        const { isHost, maxWins, privateRoom, upgradesEnabled } = lobbyOptions;
+
         this.ui.updateDisplay(lobby, "lobby", roomId);
 
         // Add myself to lobby
@@ -34,29 +27,24 @@ export class LobbyManager {
             isHost: isHost
         });
 
-        this.setupLobbyOptions(
-            gameMaxPlayers,
-            gameMaxWins,
-            isHost,
-            isPrivateRoom,
-            isUpgradesEnabled
-        );
+        // Setup lobby inputs/toggles using nested options
+        this.setupLobbyOptions(lobbyOptions);
 
         const winsInputParams: SetInputParams = {
-            inputId: 'winsInput',
-            value: gameMaxWins
-        }
+            inputId: "winsInput",
+            value: maxWins
+        };
         const privateToggleParams: SetToggleParams = {
-            toggleId: 'privateToggle',
-            value: isPrivateRoom
-        }
+            toggleId: "privateToggle",
+            value: privateRoom
+        };
         const upgradesToggleParams: SetToggleParams = {
-            toggleId: 'upgradesToggle',
-            value: isUpgradesEnabled
-        }
+            toggleId: "upgradesToggle",
+            value: upgradesEnabled
+        };
 
         this.utility.setToggle(privateToggleParams);
-        this.utility.setToggle(upgradesToggleParams)
+        this.utility.setToggle(upgradesToggleParams);
         this.utility.setInput(winsInputParams);
 
         this.ui.displayLobbyPlayers(isHost, lobby, userId);
@@ -70,29 +58,17 @@ export class LobbyManager {
     /**
      * Sets up lobby toggles and input for game settings.
      */
-    public setupLobbyOptions(
-        gameMaxPlayers: number,
-        gameMaxWins: number,
-        isHost: boolean,
-        isPrivateRoom: boolean,
-        isUpgradesEnabled: boolean,
-    ): void {
-        this.setupLobbyToggle('privateToggle', isHost, 'privateRoom', () => isPrivateRoom, (val) => isPrivateRoom = val);
-        this.setupLobbyToggle('upgradesToggle', isHost, 'upgradesEnabled', () => isUpgradesEnabled, (val) => isUpgradesEnabled = val);
-        this.setupLobbyInput('winsInput', isHost, 'maxWins', () => gameMaxWins, (val) => gameMaxWins = val);
-        this.setupLobbyInput('playersInput', isHost, 'maxPlayers', () => gameMaxPlayers, (val) => gameMaxPlayers = val);
+    public setupLobbyOptions(params: LobbyOptionsParams): void {
+        this.setupLobbyToggle('privateToggle', params.isHost, 'privateRoom', () => params.privateRoom, (val) => params.privateRoom = val);
+        this.setupLobbyToggle('upgradesToggle', params.isHost, 'upgradesEnabled', () => params.upgradesEnabled, (val) => params.upgradesEnabled = val);
+        this.setupLobbyInput('winsInput', params.isHost, 'maxWins', () => params.maxWins, (val) => params.maxWins = val);
+        this.setupLobbyInput('playersInput', params.isHost, 'maxPlayers', () => params.maxPlayers, (val) => params.maxPlayers = val);
     }
 
     /**
      * Called by setupLobbyOptions - Responsible for toggles.
      */
-    private setupLobbyToggle(
-        elementProp: 'privateToggle' | 'upgradesToggle',
-        isHost: boolean,
-        messageKey: string,
-        getter: () => boolean,
-        setter: (val: boolean) => void
-    ): void {
+    private setupLobbyToggle(elementProp: 'privateToggle' | 'upgradesToggle', isHost: boolean, messageKey: string, getter: () => boolean, setter: (val: boolean) => void): void {
         const element = this.ui[elementProp];
         if (!element) return;
 
@@ -133,13 +109,7 @@ export class LobbyManager {
     /**
      * Called by setupLobbyOptions - Responsible for input fields.
      */
-    private setupLobbyInput(
-        elementProp: 'winsInput' | 'playersInput',
-        isHost: boolean,
-        messageKey: string,
-        getter: () => number,
-        setter: (val: number) => void
-    ): void {
+    private setupLobbyInput(elementProp: 'winsInput' | 'playersInput', isHost: boolean, messageKey: string, getter: () => number, setter: (val: number) => void): void {
         const element = this.ui[elementProp];
         if (!element) return;
 
@@ -195,15 +165,7 @@ export class LobbyManager {
     /**
      * [DO NOT CALL] Syncs a lobby option - called by syncLobbyOptions.
      */
-    private syncOption<T extends SetInputParams | SetToggleParams>(
-        options: any,
-        key: string,
-        prop: string,
-        elementId: string,
-        fn: (params: T) => void,
-        label: string,
-        format?: (v: any) => string
-    ): void {
+    private syncOption<T extends SetInputParams | SetToggleParams>(options: any, key: string, prop: string, elementId: string, fn: (params: T) => void, label: string, format?: (v: any) => string): void {
         if (options[key] === undefined) return;
 
         (this as any)[prop] = options[key];

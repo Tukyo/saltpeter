@@ -562,7 +562,6 @@ export const AUDIO = {
     }
 };
 
-// Standardized weapon SFX configuration structure example
 export const SFX = {
     IMPACT: {
         FLESH: {

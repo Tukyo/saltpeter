@@ -126,6 +126,9 @@ export class CollisionsManager {
         return col;
     }
     
+    /**
+     * Checks if the specific player's collisions are enabled.
+     */
     public collisionsEnabled(player: Player): boolean {
         if (player.stats.health.value <= 0) return false
         if (player.flags.hidden && player.flags.invulnerable) return false

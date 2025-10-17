@@ -214,6 +214,9 @@ export class RenderingManager {
         this.ui.ctx.restore();
     }
 
+    /**
+     * Draws the equipment and unique upgrades that have a character layer visual component.
+     */
     private drawUpgradeLayers(player: Player): void {
         // Check unique upgrades
         player.unique.forEach(uniqueName => {

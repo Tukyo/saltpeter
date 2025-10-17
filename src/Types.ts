@@ -1,4 +1,5 @@
 import { DECALS } from "./Config";
+import { LobbyManager } from "./LobbyManager";
 
 // #region [ Core ]
 //
@@ -234,6 +235,28 @@ export interface LobbyPlayer { // TODO: Consider just merging this into the stan
   color: string;
   isHost: boolean;
 }
+
+export type LobbyControlsParams = {
+  lobby: LobbyManager;
+  lobbyOptions: LobbyOptionsParams;
+  myPlayer: Player;
+  roomId: string;
+  userId: string;
+}
+
+export type LobbyOptionsParams = {
+  maxPlayers: number;
+  maxWins: number;
+  isHost: boolean;
+  privateRoom: boolean;
+  upgradesEnabled: boolean;
+}
+
+export type ChatMessage = {
+    senderId: string;
+    message: string;
+    isOwn?: boolean;
+};
 //
 // #endregion
 

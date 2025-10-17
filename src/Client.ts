@@ -310,17 +310,19 @@ class Client {
             case 'room-joined':
                 console.log('Joined room - lobby');
                 this.playerState.isHost = false;
-                this.lobbyManager.showLobbyControls(
-                    this.gameState.gameMaxPlayers,
-                    this.gameState.gameMaxWins,
-                    this.playerState.isHost,
-                    this.roomManager.isPrivateRoom,
-                    this.upgradeManager.isUpgradesEnabled,
-                    this.lobbyManager,
-                    this.playerState.myPlayer,
-                    this.roomManager.getCurrentRoom() || '',
-                    this.userId
-                );
+                this.lobbyManager.showLobbyControls({
+                    lobby: this.lobbyManager,
+                    lobbyOptions: {
+                        maxPlayers: this.gameState.gameMaxPlayers,
+                        maxWins: this.gameState.gameMaxWins,
+                        isHost: this.playerState.isHost,
+                        privateRoom: this.roomManager.isPrivateRoom,
+                        upgradesEnabled: this.upgradeManager.isUpgradesEnabled
+                    },
+                    myPlayer: this.playerState.myPlayer,
+                    roomId: this.roomManager.getCurrentRoom() || "",
+                    userId: this.userId
+                });
 
                 // Send my lobby info
                 this.roomManager.sendMessage(JSON.stringify({
@@ -434,13 +436,13 @@ class Client {
                         console.log('I am now the host due to host migration');
                     }
 
-                    this.lobbyManager.setupLobbyOptions(
-                        this.gameState.gameMaxPlayers,
-                        this.gameState.gameMaxWins,
-                        this.playerState.isHost,
-                        this.roomManager.isPrivateRoom,
-                        this.upgradeManager.isUpgradesEnabled
-                    );
+                    this.lobbyManager.setupLobbyOptions({
+                        maxPlayers: this.gameState.gameMaxPlayers,
+                        maxWins: this.gameState.gameMaxWins,
+                        isHost: this.playerState.isHost,
+                        privateRoom: this.roomManager.isPrivateRoom,
+                        upgradesEnabled: this.upgradeManager.isUpgradesEnabled
+                    });
 
                     this.ui.displayLobbyPlayers(this.playerState.isHost, this.lobbyManager, this.userId);
                     this.ui.updateHostDisplay(this.playerState.isHost, this.lobbyManager);
@@ -457,17 +459,19 @@ class Client {
                     this.resetGameState('Lobby');
 
                     // Show lobby
-                    this.lobbyManager.showLobbyControls(
-                        this.gameState.gameMaxPlayers,
-                        this.gameState.gameMaxWins,
-                        this.playerState.isHost,
-                        this.roomManager.isPrivateRoom,
-                        this.upgradeManager.isUpgradesEnabled,
-                        this.lobbyManager,
-                        this.playerState.myPlayer,
-                        this.roomManager.getCurrentRoom() || '',
-                        this.userId
-                    );
+                    this.lobbyManager.showLobbyControls({
+                        lobby: this.lobbyManager,
+                        lobbyOptions: {
+                            maxPlayers: this.gameState.gameMaxPlayers,
+                            maxWins: this.gameState.gameMaxWins,
+                            isHost: this.playerState.isHost,
+                            privateRoom: this.roomManager.isPrivateRoom,
+                            upgradesEnabled: this.upgradeManager.isUpgradesEnabled
+                        },
+                        myPlayer: this.playerState.myPlayer,
+                        roomId: this.roomManager.getCurrentRoom() || "",
+                        userId: this.userId
+                    });
                     break;
                 case 'kick-player':
                     if (gameData.targetPlayerId === this.userId) {
@@ -482,7 +486,11 @@ class Client {
                 //
                 case 'chat-message':
                     if (message.userId !== this.userId) {
-                        this.chatManager.displayChatMessage(message.userId, gameData.message, false);
+                        this.chatManager.displayChatMessage({
+                            senderId: message.userId,
+                            message: gameData.message,
+                            isOwn: false
+                        });
                     }
                     break;
                 //
@@ -940,17 +948,19 @@ class Client {
             reason: 'game-ended'
         }));
 
-        this.lobbyManager.showLobbyControls(
-            this.gameState.gameMaxPlayers,
-            this.gameState.gameMaxWins,
-            this.playerState.isHost,
-            this.roomManager.isPrivateRoom,
-            this.upgradeManager.isUpgradesEnabled,
-            this.lobbyManager,
-            this.playerState.myPlayer,
-            this.roomManager.getCurrentRoom() || '',
-            this.userId
-        );
+        this.lobbyManager.showLobbyControls({
+            lobby: this.lobbyManager,
+            lobbyOptions: {
+                maxPlayers: this.gameState.gameMaxPlayers,
+                maxWins: this.gameState.gameMaxWins,
+                isHost: this.playerState.isHost,
+                privateRoom: this.roomManager.isPrivateRoom,
+                upgradesEnabled: this.upgradeManager.isUpgradesEnabled
+            },
+            myPlayer: this.playerState.myPlayer,
+            roomId: this.roomManager.getCurrentRoom() || "",
+            userId: this.userId
+        });
     }
     //
     // #endregion

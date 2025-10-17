@@ -1,6 +1,7 @@
 import { CHAT } from "./Config";
 
 import { RoomManager } from "./RoomManager";
+import { ChatMessage } from "./Types";
 import { UserInterface } from "./UserInterface";
 
 export class ChatManager {
@@ -28,7 +29,7 @@ export class ChatManager {
         }));
 
         // Display own message immediately
-        this.displayChatMessage(userId, message, true);
+        this.displayChatMessage({senderId: userId, message: message, isOwn: true});
 
         // Clear input
         this.ui.chatInput.value = '';
@@ -37,8 +38,9 @@ export class ChatManager {
     /**
      * Displayes messages sent in the chat.
      */
-    public displayChatMessage(senderId: string, message: string, isOwn: boolean = false): void {
+    public displayChatMessage(params: ChatMessage): void {
         if (!this.ui.chatMessages) return;
+        const { senderId, message, isOwn = false } = params;
 
         const messageDiv = document.createElement('div');
         messageDiv.className = `chat_message ${isOwn ? 'own' : 'other'}`;
