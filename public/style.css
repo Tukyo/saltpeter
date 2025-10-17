@@ -51,11 +51,16 @@
     --smooth-radius: 1rem;
     --curve-radius: 100rem;
 
-    --rarity-0: #ffffff;
-    --rarity-1: #1eff00;
-    --rarity-2: #0099ff;
-    --rarity-3: #9d00ff;
-    --rarity-4: #ff9500;
+    --rarity-0: #8E8B88;
+    --rarity-1: #FF0000;
+    --rarity-2: #FF8C19;
+    --rarity-3: #E0FF33;
+    --rarity-4: #86FF15;
+    --rarity-5: #00FF91;
+    --rarity-6: #00B3FF;
+    --rarity-7: #0004FF;
+    --rarity-8: #A64DFF;
+    --rarity-9: #FF00EE;
 
     --center: translate(-50%, -50%);
 
@@ -345,6 +350,27 @@ toggle[checked]::before {
 .upgrade_card[data-rarity="4"] {
     border-color: var(--rarity-4);
 }
+
+.upgrade_card[data-rarity="5"] {
+    border-color: var(--rarity-5);
+}
+
+.upgrade_card[data-rarity="6"] {
+    border-color: var(--rarity-6);
+}
+
+.upgrade_card[data-rarity="7"] {
+    border-color: var(--rarity-7);
+}
+
+.upgrade_card[data-rarity="8"] {
+    border-color: var(--rarity-8);
+}
+
+.upgrade_card[data-rarity="9"] {
+    border-color: var(--rarity-9);
+}
+
 
 .upgrade_image {
     display: flex;

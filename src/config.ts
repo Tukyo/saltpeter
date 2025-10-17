@@ -14,7 +14,7 @@ export const PLAYER_DEFAULTS = {
             SIZE: 2, // px^2 area at tip
         },
         PRIMARY: {
-            BUFFER: 100, // ms
+            BUFFER: 250, // ms
             BURST: {
                 AMOUNT: 1,
                 DELAY: 75 // ms
@@ -49,6 +49,10 @@ export const PLAYER_DEFAULTS = {
         ID_LENGTH: 12
     },
     EQUIPMENT: [],
+    FLAGS: {
+        HIDDEN: false,
+        INVULNERABLE: false
+    },
     PHYSICS: {
         ACCELERATION: 0.55,
         FRICTION: 0.85
@@ -60,6 +64,7 @@ export const PLAYER_DEFAULTS = {
         WEAPON: 'GLOCK'
     },
     STATS: {
+        DEFENSE: 0,
         HEALTH: {
             MAX: 100
         },
@@ -74,7 +79,7 @@ export const PLAYER_DEFAULTS = {
             }
         }
     },
-    UNIQUE: [],
+    UNIQUE: ['spectral_image'],
     VISUAL: {
         ID_DISPLAY_OFFSET: 25
     }

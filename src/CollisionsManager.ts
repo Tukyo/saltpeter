@@ -36,7 +36,7 @@ export class CollisionsManager {
      * Checks for my player colliding with objects in the game. 
      */
     private checkObjectCollisions(delta: number): void {
-        if (this.playerState.myPlayer.stats.health.value <= 0) return;
+        if (!this.collisionsEnabled(this.playerState.myPlayer)) return;
 
         const collisionRadius = this.getPlayerCollider(this.playerState.myPlayer, 5);
 
@@ -92,10 +92,10 @@ export class CollisionsManager {
      * Checks for collisions with other players, blocking movement.
      */
     private checkPlayersCollisions(delta: number): void {
-        if (this.playerState.myPlayer.stats.health.value <= 0) return;
+        if (!this.collisionsEnabled(this.playerState.myPlayer)) return;
 
         this.playerState.players.forEach((player: Player) => {
-            if (player.stats.health.value <= 0) return;
+            if (!this.collisionsEnabled(player)) return;
 
             const dx = this.playerState.myPlayer.transform.pos.x - player.transform.pos.x;
             const dy = this.playerState.myPlayer.transform.pos.y - player.transform.pos.y;
@@ -124,5 +124,11 @@ export class CollisionsManager {
         }
 
         return col;
+    }
+    
+    public collisionsEnabled(player: Player): boolean {
+        if (player.stats.health.value <= 0) return false
+        if (player.flags.hidden && player.flags.invulnerable) return false
+        return true
     }
 }

@@ -17,6 +17,8 @@ import { Utility } from "../Utility";
 export class CombatController {
     public projectiles: Map<string, Projectile> = new Map();
 
+    private autoFireEndTime: number = 0;
+
     constructor(
         private ammoReservesUIController: AmmoReservesUIController,
         private animator: Animator,
@@ -75,7 +77,10 @@ export class CombatController {
                 const angle = this.playerState.myPlayer.transform.rot - Math.PI / 2;
                 const targetDir = { x: Math.cos(angle), y: Math.sin(angle) };
 
-                this.launchProjectile(targetDir);
+                const triggeredUniques = this.triggerBurstUniques();
+                if (triggeredUniques.length === 0) {
+                    this.launchProjectile(targetDir);
+                }
 
                 this.playerState.currentBurstShot++;
                 this.playerState.myPlayer.actions.primary.magazine.currentAmmo--; // Use 1 ammo per shot in burst
@@ -107,7 +112,7 @@ export class CombatController {
         return (
             !this.playerState.isMelee &&
             now >= this.playerState.lastMeleeTime + this.playerState.myPlayer.actions.melee.cooldown &&
-            this.playerState.myPlayer.stats.health.value > 0 &&
+            this.collisionsManager.collisionsEnabled(this.playerState.myPlayer) &&
             !this.playerState.isBurstActive &&
             !this.playerState.isReloading
         );
@@ -190,13 +195,30 @@ export class CombatController {
 
     // #region [ Ranged ]
     //
+
+    public toggleAutoFire(timestamp: number): void {
+        this.autoFireEndTime = timestamp;
+        this.playerState.canAutoFire = true;
+
+        const cachedBuffer = this.playerState.myPlayer.actions.primary.buffer
+
+        this.playerState.myPlayer.actions.primary.buffer *= 0.5;
+
+        console.log(`Auto-fire enabled until ${timestamp}`);
+
+        setTimeout(() => {
+            this.playerState.canAutoFire = false;
+            this.playerState.myPlayer.actions.primary.buffer = cachedBuffer;
+            console.log('Auto-fire disabled.');
+        }, timestamp - Date.now()); // Duration of override
+    }
+
     /**
      * Entrypoint for ranged attacks. When this is called, it starts the primary attack flow.
      */
     private startBurst(): void {
-        if (this.playerState.isBurstActive || this.playerState.myPlayer.stats.health.value <= 0 || this.playerState.isReloading) return;
+        if (this.playerState.isBurstActive || !this.collisionsManager.collisionsEnabled(this.playerState.myPlayer) || this.playerState.isReloading) return;
 
-        // Don't proceed if there is still a buffer
         const now = Date.now();
         if (now < this.playerState.lastShotTime + this.playerState.myPlayer.actions.primary.buffer) return;
         this.playerState.lastShotTime = now;
@@ -242,7 +264,10 @@ export class CombatController {
         const angle = this.playerState.myPlayer.transform.rot - Math.PI / 2; // Subtract PI/2 to convert from visual rotation to direction
         const targetDir = { x: Math.cos(angle), y: Math.sin(angle) };
 
-        this.launchProjectile(targetDir);
+        const triggeredUniques = this.triggerBurstUniques();
+        if (triggeredUniques.length === 0) {
+            this.launchProjectile(targetDir);
+        }
 
         this.playerState.currentBurstShot++;
         this.playerState.myPlayer.actions.primary.magazine.currentAmmo--; // Use 1 ammo per shot in burst
@@ -449,6 +474,23 @@ export class CombatController {
         const projectilesToRemove: string[] = [];
 
         this.projectiles.forEach((projectile, id) => {
+            // Update movement (with optional spatial targeting nudge)
+            if (projectile.ownerId === this.userId) {
+                if (this.playerState.myPlayer.unique.includes('spatial_targeting')) {
+                    const aim = this.playerState.myPlayer.transform.rot - Math.PI / 2;
+                    const dx = Math.cos(aim), dy = Math.sin(aim);
+                    const speed = Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2);
+                    const vx = projectile.velocity.x / speed, vy = projectile.velocity.y / speed;
+                    const lerpFactor = 0.05;
+                    const lx = vx + (dx - vx) * lerpFactor;
+                    const ly = vy + (dy - vy) * lerpFactor;
+                    const norm = Math.sqrt(lx ** 2 + ly ** 2);
+
+                    projectile.velocity.x = (lx / norm) * speed;
+                    projectile.velocity.y = (ly / norm) * speed;
+                    projectile.transform.rot = Math.atan2(projectile.velocity.y, projectile.velocity.x);
+                }
+            }
             projectile.transform.pos.x += projectile.velocity.x * delta;
             projectile.transform.pos.y += projectile.velocity.y * delta;
 
@@ -460,7 +502,7 @@ export class CombatController {
             projectile.distanceTraveled += frameDistance;
 
             // Check collision with my player (only if I'm alive)
-            if (this.playerState.myPlayer.stats.health.value > 0) {
+            if (this.collisionsManager.collisionsEnabled(this.playerState.myPlayer)) {
                 const dx = projectile.transform.pos.x - this.playerState.myPlayer.transform.pos.x;
                 const dy = projectile.transform.pos.y - this.playerState.myPlayer.transform.pos.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
@@ -471,11 +513,8 @@ export class CombatController {
                     distance > playerCollider + projectile.size &&
                     projectile.ownerId !== this.userId;
 
-
-                const tehe = true;
-
                 if (canDeflect) {
-                    if (tehe) {
+                    if (this.luckController.luckRoll()) {
                         console.log('Kinetic Brain activated! Deflecting projectile.');
 
                         // Calculate normal from player center to projectile
@@ -489,7 +528,7 @@ export class CombatController {
                         // Reflect velocity off the normal
                         const reflected = this.utility.getReflection(projectile.velocity, normal);
                         projectile.velocity.x = reflected.x * speedReduction; // Slow down
-                        projectile.velocity.y = reflected.y * speedReduction;
+                        projectile.velocity.y = reflected.y * 0.85;
 
                         // Change ownership
                         projectile.ownerId = this.userId;
@@ -514,7 +553,8 @@ export class CombatController {
                 if (distance <= playerCollider + projectile.size) { // Projectile collided with my player
                     projectilesToRemove.push(id);
 
-                    this.playerState.myPlayer.stats.health.value -= projectile.damage;
+                    const actualDamage = Math.max(0, projectile.damage - this.playerState.myPlayer.stats.defense);
+                    this.playerState.myPlayer.stats.health.value -= actualDamage;
 
                     const sliderLerpTime = 300; //TODO: Define UI lerping times globally
                     const healthSliderParams: SetSliderParams = {
@@ -540,7 +580,7 @@ export class CombatController {
             // Check collision with other players (for my projectiles only)
             if (projectile.ownerId === this.userId) {
                 this.playerState.players.forEach((player, playerId) => {
-                    if (player.stats.health.value > 0) { // Only check collision if the player is alive
+                    if (this.collisionsManager.collisionsEnabled(player)) { // Only check collision if the player has collisions enabled
                         const dx2 = projectile.transform.pos.x - player.transform.pos.x;
                         const dy2 = projectile.transform.pos.y - player.transform.pos.y;
                         const distance2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
@@ -548,7 +588,8 @@ export class CombatController {
                         if (distance2 <= this.collisionsManager.getPlayerCollider(player) + projectile.size) { // My projectile hit another player!
                             projectilesToRemove.push(id);
 
-                            const newHealth = Math.max(0, player.stats.health.value - projectile.damage);
+                            const actualDamage = Math.max(0, projectile.damage - player.stats.defense);
+                            const newHealth = Math.max(0, player.stats.health.value - actualDamage);
                             player.stats.health.value = newHealth;
 
                             // Create directional blood spray - spray backwards from projectile direction
@@ -633,7 +674,7 @@ export class CombatController {
 
                 // Create burn mark where projectile expired (only for my projectiles)
                 if (projectile.ownerId === this.userId) {
-                    const triggeredUniques = this.triggerUniques(projectile.transform.pos);
+                    const triggeredUniques = this.triggerCollisionUniques(projectile.transform.pos);
 
                     // TODO: Catch the triggered uniques, and use that string array, might be a bouncing bullet or something that makes it not get destroyed yet
 
@@ -672,27 +713,6 @@ export class CombatController {
         projectilesToRemove.forEach(id => {
             this.projectiles.delete(id);
         });
-    }
-
-    /**
-     * Responsible for checking specific uniques that can effect projectiles.
-     */
-    private triggerUniques(pos?: Vec2): string[] {
-        if (this.playerState.myPlayer.unique.length === 0) return [];
-
-        const succeededUniques: string[] = [];
-
-        for (const unique of this.playerState.myPlayer.unique) {
-            if (unique === 'cluster_module') {
-                const succeeded = this.luckController.luckRoll();
-
-                if (succeeded) {
-                    this.triggerUnique(unique, pos);
-                    succeededUniques.push('cluster_module');
-                }
-            }
-        }
-        return succeededUniques;
     }
 
     /**
@@ -753,6 +773,62 @@ export class CombatController {
         }
 
         console.log(`Triggered Unique: ${unique}`)
+    }
+
+    private triggerBurstUniques(): string[] {
+        const triggered: string[] = [];
+
+        if (this.playerState.myPlayer.unique.includes('muzzle_spliter')) {
+            if (this.luckController.luckRoll()) {
+                const baseAngle = this.playerState.myPlayer.transform.rot - Math.PI / 2;
+                const angleOffset = 10 * (Math.PI / 180); // 10 degrees
+
+                const dirA = { x: Math.cos(baseAngle - angleOffset), y: Math.sin(baseAngle - angleOffset) };
+                const dirB = { x: Math.cos(baseAngle + angleOffset), y: Math.sin(baseAngle + angleOffset) };
+
+                const baseParams: ProjectileOverrides = {
+                    canTriggerUnique: false,
+                    damage: this.playerState.myPlayer.actions.primary.projectile.damage,
+                    range: this.playerState.myPlayer.actions.primary.projectile.range,
+                    size: this.playerState.myPlayer.actions.primary.projectile.size,
+                    speed: this.playerState.myPlayer.actions.primary.projectile.speed,
+                    color: this.playerState.myPlayer.actions.primary.projectile.color,
+                    length: this.playerState.myPlayer.actions.primary.projectile.length,
+                    spread: this.playerState.myPlayer.actions.primary.projectile.spread
+                };
+
+                this.launchProjectile(dirA, baseParams);
+                this.launchProjectile(dirB, baseParams);
+
+                console.log(`Triggered burst unique: muzzle_spliter`);
+                triggered.push('muzzle_spliter');
+            }
+        }
+
+        // Future burst-uniques can go here...
+
+        return triggered;
+    }
+
+    /**
+     * Responsible for checking specific uniques that can effect projectiles.
+     */
+    private triggerCollisionUniques(pos?: Vec2): string[] {
+        if (this.playerState.myPlayer.unique.length === 0) return [];
+
+        const succeededUniques: string[] = [];
+
+        for (const unique of this.playerState.myPlayer.unique) {
+            if (unique === 'cluster_module') {
+                const succeeded = this.luckController.luckRoll();
+
+                if (succeeded) {
+                    this.triggerUnique(unique, pos);
+                    succeededUniques.push('cluster_module');
+                }
+            }
+        }
+        return succeededUniques;
     }
     //
     // #endregion

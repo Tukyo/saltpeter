@@ -3,6 +3,7 @@ import { CANVAS, GAMEPAD_MAP } from "./Config";
 import { Leaderboard, Players } from "./Types";
 import { LobbyManager } from "./LobbyManager";
 import { SettingsManager } from "./SettingsManager";
+import { PlayerState } from "./player/PlayerState";
 
 export class UserInterface {
     // [ Canvas ]
@@ -105,8 +106,19 @@ export class UserInterface {
     public voiceSlider: HTMLDivElement | null = null;
     public voiceFill: HTMLDivElement | null = null;
     public voiceValue: HTMLDivElement | null = null;
+    //
+    //
+    // [ Stats ]
+    public accuracyStat: HTMLSpanElement | null = null;
+    public damageStat: HTMLSpanElement | null = null;
+    public luckStat: HTMLSpanElement | null = null;
+    public rangeStat: HTMLSpanElement | null = null;
+    public shotSpeedStat: HTMLSpanElement | null = null;
+    public speedStat: HTMLSpanElement | null = null;
 
-    constructor(private settingsManager: SettingsManager) { }
+    constructor(private playerState: PlayerState, private settingsManager: SettingsManager) {
+        this.initInterfaceListeners();
+    }
 
     // #region [ Init ]
     //
@@ -191,6 +203,13 @@ export class UserInterface {
         this.voiceFill = document.getElementById('voiceFill') as HTMLDivElement;
         this.voiceValue = document.getElementById('voiceValue') as HTMLDivElement;
 
+        this.accuracyStat = document.getElementById('accuracyValue') as HTMLSpanElement;
+        this.damageStat = document.getElementById('damageValue') as HTMLSpanElement;
+        this.luckStat = document.getElementById('luckValue') as HTMLSpanElement;
+        this.rangeStat = document.getElementById('rangeValue') as HTMLSpanElement;
+        this.shotSpeedStat = document.getElementById('shotSpeedValue') as HTMLSpanElement;
+        this.speedStat = document.getElementById('speedValue') as HTMLSpanElement;
+
         if (!this.canvas || !this.decalCanvas || !this.ammoReservesCanvas || !this.roomControls || !this.gameContainer ||
             !this.lobbyContainer || !this.userIdDisplay || !this.roomIdDisplay || !this.gameRoomIdDisplay ||
             !this.lobbyPlayersList || !this.startGameBtn || !this.gameOptionsContainer ||
@@ -203,7 +222,8 @@ export class UserInterface {
             !this.graphicsBody || !this.soundBody || !this.masterSlider || !this.masterFill || !this.interfaceSlider ||
             !this.interfaceFill || !this.musicSlider || !this.musicFill || !this.sfxSlider || !this.sfxFill ||
             !this.voiceSlider || !this.voiceFill || !this.masterValue || !this.interfaceValue ||
-            !this.musicValue || !this.sfxValue || !this.voiceValue
+            !this.musicValue || !this.sfxValue || !this.voiceValue || !this.accuracyStat || !this.damageStat ||
+            !this.luckStat || !this.rangeStat || !this.shotSpeedStat || !this.speedStat
         ) {
             alert('Failed to load game. Please refresh the page.');
             throw new Error('Critical error: Required DOM elements are missing.');
@@ -228,19 +248,14 @@ export class UserInterface {
     //
     // #endregion
 
-    // #region [ Display Management ]
+    // #region [ Display ]
     //
     /**
      * Updates the display based on the current state.
      */
-    public updateDisplay(
-        lobby: LobbyManager,
-        target: "lobby" | "room" | "game",
-        roomId?: string
-    ): void {
+    public updateDisplay(lobby: LobbyManager, target: "lobby" | "room" | "game", roomId?: string): void {
         if (!this.roomControls || !this.lobbyContainer || !this.gameContainer ||
             !this.chatContainer || !this.leaderboardContainer) return;
-
 
         this.clearDisplay();
 
@@ -274,10 +289,7 @@ export class UserInterface {
     /**
      * Shows host controls when called.
      */
-    public updateHostDisplay(
-        isHost: boolean,
-        lobby: LobbyManager
-    ): void {
+    public updateHostDisplay(isHost: boolean, lobby: LobbyManager): void {
         if (!this.startGameBtn || !this.gameOptionsContainer) return;
 
         this.startGameBtn.style.display = isHost ? 'block' : 'none';
@@ -289,11 +301,7 @@ export class UserInterface {
     /**
      * Displays connected players in the lobby interface.
      */
-    public displayLobbyPlayers(
-        isHost: boolean,
-        lobby: LobbyManager,
-        userId: string
-    ): void {
+    public displayLobbyPlayers(isHost: boolean, lobby: LobbyManager, userId: string): void {
         if (!this.lobbyPlayersList) return;
 
         this.lobbyPlayersList.innerHTML = '';
@@ -362,7 +370,7 @@ export class UserInterface {
     //
     // #endregion
 
-    // #region [ Modal & Popup ]
+    // #region [ Room Modal ]
     //
     /**
      * Shows the join room modal for pasting room codes.
@@ -426,7 +434,7 @@ export class UserInterface {
 
         this.modal.classList.remove('hidden');
         this.modalConfirmButton.classList.remove('hidden');
-        
+
         this.modalInput.style.display = 'none';
         this.modalErrorDiv.textContent = ' ';
         this.modalButtons.style.display = 'flex';
@@ -443,8 +451,10 @@ export class UserInterface {
 
         this.modalCancelButton.onclick = () => this.closeModal();
     }
+    //
+    // #endregion
 
-    // [ Settings ]
+    // #region [ Settings Modal ]
     /**
      * Shows the settings modal.
      */
@@ -497,8 +507,8 @@ export class UserInterface {
                 break;
         }
     }
-
-
+    //
+    // #endregion
 
     public updateSettingsSlider(fillElement: HTMLDivElement, valueElement: HTMLDivElement, value: number): void {
         const percentage = Math.max(0, Math.min(100, value * 100));
@@ -562,7 +572,6 @@ export class UserInterface {
         });
     }
 
-    // Add to UserInterface.ts
 
     public showRebindModal(action: string, type: 'keybind' | 'gamepad', onRebind: (newBinding: string | number) => void): void {
         if (!this.modal || !this.modalText || !this.modalInput || !this.modalConfirmButton || !this.modalCancelButton || !this.modalErrorDiv) return;
@@ -712,6 +721,9 @@ export class UserInterface {
         };
     }
 
+    /**
+     * Unified modal closure function used to close and refresh the modal.
+     */
     public closeModal(): void {
         if (!this.modal || !this.modalInput || !this.modalConfirmButton ||
             !this.modalCancelButton || !this.modalText) return;
@@ -723,7 +735,6 @@ export class UserInterface {
         this.modalCancelButton.onclick = null;
         this.modalInput.onkeydown = null;
     }
-
     //
     // #endregion
 
@@ -732,11 +743,7 @@ export class UserInterface {
     /**
      * Locally initialize the leaderboard, or update it if it already exists.
      */
-    public createLeaderboard(
-        lobby: LobbyManager,
-        players: Players,
-        userId: string
-    ): void {
+    public createLeaderboard(lobby: LobbyManager, players: Players, userId: string): void {
         // Create a set of all players
         const allPlayers = new Set<string>();
         allPlayers.add(userId);
@@ -835,6 +842,48 @@ export class UserInterface {
         if (this.leaderboardBody) {
             this.leaderboardBody.innerHTML = '';
         }
+    }
+    //
+    // #endregion
+
+    // #region [ Events ]
+    //
+    /**
+     * Initializes listeners to interface elements.
+     */
+    private initInterfaceListeners(): void {
+        // Speed
+        this.playerState.onStatChange('stats.speed', (value) => {
+            if (this.speedStat) this.speedStat.textContent = value.toString();
+        });
+
+        // Damage
+        this.playerState.onStatChange('actions.primary.projectile.damage', (value) => {
+            if (this.damageStat) this.damageStat.textContent = Math.round(value).toString();
+        });
+
+        // Range
+        this.playerState.onStatChange('actions.primary.projectile.range', (value) => {
+            if (this.rangeStat) this.rangeStat.textContent = value.toString();
+        });
+
+        // Shot Speed
+        this.playerState.onStatChange('actions.primary.projectile.speed', (value) => {
+            if (this.shotSpeedStat) this.shotSpeedStat.textContent = value.toString();
+        });
+
+        // Luck
+        this.playerState.onStatChange('stats.luck', (value) => {
+            if (this.luckStat) this.luckStat.textContent = value.toString();
+        });
+
+        // Accuracy (spread - inverted)
+        this.playerState.onStatChange('actions.primary.projectile.spread', (value) => {
+            if (this.accuracyStat) {
+                const accuracy = Math.max(1, Math.round(100 - (value * 2))); // Convert spread to accuracy
+                this.accuracyStat.textContent = accuracy.toString();
+            }
+        });
     }
     //
     // #endregion

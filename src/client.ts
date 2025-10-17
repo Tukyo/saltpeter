@@ -84,13 +84,7 @@ class Client {
         this.gameState = new GameState();
 
         this.settingsManager = new SettingsManager(this.cacheManager);
-        this.ui = new UserInterface(this.settingsManager);
         this.controlsManager = new ControlsManager(this.settingsManager);
-
-        this.ammoReservesUIController = new AmmoReservesUIController(this.ui);
-        this.upgradeManager = new UpgradeManager(this.ammoReservesUIController);
-
-        this.admin = new Admin(this.cacheManager, this.ui);
 
         this.charConfig = new CharacterConfig();
         this.charManager = new CharacterManager(this.charConfig);
@@ -98,6 +92,13 @@ class Client {
         this.userId = this.utility.generateUID(PLAYER_DEFAULTS.DATA.ID_LENGTH);
 
         this.playerState = new PlayerState(this.userId, this.utility);
+
+        this.ui = new UserInterface(this.playerState, this.settingsManager);
+
+        this.ammoReservesUIController = new AmmoReservesUIController(this.ui);
+        this.upgradeManager = new UpgradeManager(this.ammoReservesUIController, this.playerState, this.utility);
+
+        this.admin = new Admin(this.cacheManager, this.ui);
 
         this.objectsManager = new ObjectsManager(
             this.playerState,
@@ -131,7 +132,6 @@ class Client {
 
         this.moveController = new MoveController(this.controlsManager, this.settingsManager);
         this.staminaController = new StaminaController(this.playerState);
-        this.dashController = new DashController(this.moveController, this.playerState, this.roomManager, this.staminaController);
         this.luckController = new LuckController(this.playerState);
 
         this.audioManager = new AudioManager(this.roomManager, this.settingsManager);
@@ -190,6 +190,16 @@ class Client {
             this.utility
         );
 
+        this.dashController = new DashController(
+            this.collisionsManager,
+            this.combatController,
+            this.moveController,
+            this.playerState,
+            this.roomManager,
+            this.staminaController,
+            this.userId
+        );
+
         this.eventsManager = new EventsManager(
             this.animator,
             this.chatManager,
@@ -208,6 +218,18 @@ class Client {
         } else {
             this.initClient();
         }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.gameState.gameInProgress && !this.lobbyManager.inLobby) {
+                e.preventDefault();
+                // TODO: Test stuff here!
+
+                const ammo = 20;
+
+                this.playerState.myPlayer.actions.primary.magazine.currentReserve += ammo;
+                this.ammoReservesUIController.spawnAmmoInReserveUI(ammo);
+            }
+        });
     }
 
     /**
@@ -523,6 +545,10 @@ class Client {
                                 }
                             },
                             equipment: gameData.equipment || PLAYER_DEFAULTS.EQUIPMENT,
+                            flags: {
+                                hidden: gameData.flags.hidden || PLAYER_DEFAULTS.FLAGS.HIDDEN,
+                                invulnerable: gameData.flags.invulnerable || PLAYER_DEFAULTS.FLAGS.INVULNERABLE
+                            },
                             physics: {
                                 acceleration: gameData.physics?.acceleration || PLAYER_DEFAULTS.PHYSICS.ACCELERATION,
                                 friction: gameData.physics?.friction || PLAYER_DEFAULTS.PHYSICS.FRICTION
@@ -534,6 +560,7 @@ class Client {
                                 weapon: gameData.rig?.weapon || PLAYER_DEFAULTS.RIG.WEAPON
                             },
                             stats: {
+                                defense: gameData.stats?.defense || PLAYER_DEFAULTS.STATS.DEFENSE,
                                 health: {
                                     max: gameData.stats?.health.max || PLAYER_DEFAULTS.STATS.HEALTH.MAX,
                                     value: gameData.stats?.health.value || PLAYER_DEFAULTS.STATS.HEALTH.MAX
@@ -562,6 +589,17 @@ class Client {
 
                     this.ui.createLeaderboard(this.lobbyManager, this.playerState.players, this.userId);
                     break;
+                case 'partial-state': {
+                    if (message.userId === this.userId) return;
+
+                    const player = this.playerState.players.get(message.userId);
+                    if (!player) break;
+
+                    console.log('Partial State update for player', message.userId, ':', gameData);
+
+                    this.utility.deepMerge(player, gameData);
+                    break;
+                }
                 case 'player-move':
                     if (!this.lobbyManager.inLobby && this.playerState.players.has(message.userId)) {
                         const player = this.playerState.players.get(message.userId)!;
@@ -1080,12 +1118,15 @@ class Client {
             player.actions.sprint.drain = player.actions.sprint.drain || PLAYER_DEFAULTS.ACTIONS.SPRINT.DRAIN;
             player.actions.sprint.multiplier = player.actions.sprint.multiplier || PLAYER_DEFAULTS.ACTIONS.SPRINT.MULTIPLIER;
             player.equipment = player.equipment || PLAYER_DEFAULTS.EQUIPMENT;
+            player.flags.hidden = player.flags.hidden || PLAYER_DEFAULTS.FLAGS.HIDDEN;
+            player.flags.invulnerable = player.flags.invulnerable || PLAYER_DEFAULTS.FLAGS.INVULNERABLE;
             player.physics.acceleration = player.physics.acceleration || PLAYER_DEFAULTS.PHYSICS.ACCELERATION;
             player.physics.friction = player.physics.friction || PLAYER_DEFAULTS.PHYSICS.FRICTION;
             player.rig.body = player.rig.body || PLAYER_DEFAULTS.RIG.BODY;
             player.rig.head = player.rig.head || PLAYER_DEFAULTS.RIG.HEAD;
             player.rig.headwear = player.rig.headwear || PLAYER_DEFAULTS.RIG.HEADWEAR;
             player.rig.weapon = player.rig.weapon || PLAYER_DEFAULTS.RIG.WEAPON;
+            player.stats.defense = player.stats.defense || PLAYER_DEFAULTS.STATS.DEFENSE;
             player.stats.health.max = player.stats.health.max || PLAYER_DEFAULTS.STATS.HEALTH.MAX;
             player.stats.health.value = player.stats.health.max || PLAYER_DEFAULTS.STATS.HEALTH.MAX;
             player.stats.luck = player.stats.luck || PLAYER_DEFAULTS.STATS.LUCK;
@@ -1270,6 +1311,10 @@ class Client {
                 }
             },
             equipment: this.playerState.myPlayer.equipment,
+            flags: {
+                hidden: this.playerState.myPlayer.flags.hidden,
+                invulnerable: this.playerState.myPlayer.flags.invulnerable
+            },
             physics: {
                 acceleration: this.playerState.myPlayer.physics.acceleration,
                 friction: this.playerState.myPlayer.physics.friction
@@ -1281,6 +1326,7 @@ class Client {
                 weapon: this.playerState.myPlayer.rig.weapon
             },
             stats: {
+                defense: this.playerState.myPlayer.stats.defense,
                 health: {
                     max: this.playerState.myPlayer.stats.health.max,
                     value: this.playerState.myPlayer.stats.health.value
@@ -1517,6 +1563,10 @@ class Client {
             }
         }
 
+        if (this.controlsManager.held(keybinds.attack) && this.playerState.canAutoFire) {
+            this.combatController.triggerAttack('ranged');
+        }
+
         const gamepadRAxis = this.controlsManager.getGamepadRAxis();
         if (gamepadRAxis !== null) {
             this.animator.rotateCharacterPart(this.userId, gamepadRAxis);
@@ -1749,6 +1799,10 @@ class Client {
                 }
             },
             equipment: this.playerState.myPlayer.equipment,
+            flags: {
+                hidden: this.playerState.myPlayer.flags.hidden,
+                invulnerable: this.playerState.myPlayer.flags.invulnerable
+            },
             physics: {
                 acceleration: this.playerState.myPlayer.physics.acceleration,
                 friction: this.playerState.myPlayer.physics.friction
@@ -1760,6 +1814,7 @@ class Client {
                 weapon: this.playerState.myPlayer.rig.weapon
             },
             stats: {
+                defense: this.playerState.myPlayer.stats.defense,
                 health: {
                     max: this.playerState.myPlayer.stats.health.max,
                     value: this.playerState.myPlayer.stats.health.max
@@ -1780,23 +1835,6 @@ class Client {
         }));
 
         console.log('Upgrade selected, waiting for others...');
-    }
-
-    /**
-     * Toggle all equipment based on player state.
-     */
-    private toggleEquipment(equipmentId: string): void {
-        if (!this.upgradeManager.hasEquipment(this.playerState.myPlayer, equipmentId)) return;
-
-        switch (equipmentId) {
-            case 'test_equipment_id':
-                // Toggle equipment stuff here
-                break;
-            // TODO: Add more equipment types here
-
-            default:
-                console.warn(`Unknown equipment: ${equipmentId}`);
-        }
     }
     //
     // #endregion

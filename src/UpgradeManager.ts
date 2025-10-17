@@ -1,10 +1,18 @@
+import { PLAYER_DEFAULTS } from './Config';
 import { AmmoReservesUIController } from './player/AmmoReservesUIController';
+import { PlayerState } from './player/PlayerState';
 import { Player, Upgrade, UpgradeRarity, UpgradeType } from './Types';
+import { Utility } from './Utility';
 
 /**
  Upgrade Ideas:
  ionic compound
- phoenix module, on death multiply 1.5 * luck to get chance and if hits, disallow further attempts and give player double damage
+ randomly chance to combine all nProjeciles into one
+ explosion on dash
+ while sprinting, luck doubled
+ bullet trails
+ projectile with padding on sides = projectiles that are detonated on reload
+ on death respawn as 1hp ghost who can melee with .25s invuln
  > [ Resources ]
   - Reserves ++
   - 
@@ -44,56 +52,74 @@ export class UpgradeManager {
 
     private rarityConfig = {
         [UpgradeRarity.COMMON]: {
-            weight: 70,
-            color: '#ffffff'
+            weight: 35,
+            color: '#8E8B88'
         },
         [UpgradeRarity.UNCOMMON]: {
             weight: 20,
-            color: '#1eff00'
+            color: '#FF0000'
+        },
+        [UpgradeRarity.SPECIAL]: {
+            weight: 15,
+            color: '#FF8C19'
+        },
+        [UpgradeRarity.SUPERIOR]: {
+            weight: 12,
+            color: '#E0FF33'
         },
         [UpgradeRarity.RARE]: {
-            weight: 7,
-            color: '#0099ff'
+            weight: 8,
+            color: '#86FF15'
         },
-        [UpgradeRarity.EPIC]: {
-            weight: 2,
-            color: '#9d00ff'
+        [UpgradeRarity.EXCEPTIONAL]: {
+            weight: 5,
+            color: '#00FF91'
         },
         [UpgradeRarity.LEGENDARY]: {
-            weight: 1,
-            color: '#ff9500'
+            weight: 2.5,
+            color: '#00B3FF'
+        },
+        [UpgradeRarity.MYTHICAL]: {
+            weight: 1.5,
+            color: '#0004FF'
+        },
+        [UpgradeRarity.ENLIGHTENED]: {
+            weight: 0.9,
+            color: '#A64DFF'
+        },
+        [UpgradeRarity.HOLY]: {
+            weight: 0.1,
+            color: '#FF00EE'
         }
     };
+
 
     public upgrades: Upgrade[] = [ // TODO: Update all upgrades to use the player object instead of the olayer defaults
         // #region [ EQUIPMENT ]
         //
-        // {
-        //     id: "neural_target_interface",
-        //     name: "Neural Target Interface",
-        //     subtitle: "G.I.M.P. proprietary targeting module.",
-        //     icon: "/assets/img/icon/upgrades/crosshair.png",
-        //     type: UpgradeType.EQUIPMENT,
-        //     rarity: UpgradeRarity.UNCOMMON,
-        //     unique: false,
-        //     func: (player: Player) => {
-        //         // Add to equipment array if not already present
-        //         if (!player.equipment.includes('neural_target_interface')) {
-        //             player.equipment.push('neural_target_interface');
-        //         }
-
-        //         // Apply stat changes
-        //         player.actions.primary.projectile.spread *= 0.95;
-
-        //         console.log(`[Neural Target Interface] - Equipment added.`, "Spread:", player.actions.primary.projectile.spread);
-        //     }
-        // },
+        {
+            // During dash cooldown, player will be able to hold shoot to auto-fire.
+            id: "switch",
+            name: "Switch",
+            subtitle: "Completely legal and completely functional.",
+            icon: "/assets/img/icon/upgrades/switch.png",
+            type: UpgradeType.EQUIPMENT,
+            rarity: UpgradeRarity.RARE,
+            unique: false,
+            func: (player: Player) => {
+                if (!player.equipment.includes('switch')) {
+                    player.equipment.push('switch');
+                    this.playerState.updateStat('actions.primary.projectile.spread', player.actions.primary.projectile.spread *= 1.15);
+                }
+            }
+        },
         //
         // #endregion
         //
         // #region [ RESOURCE ]
         //
         {
+            // Gives the player some ammo in their reserves.
             id: "care_package",
             name: "Care Package",
             subtitle: "These are hard to come by.",
@@ -106,11 +132,45 @@ export class UpgradeManager {
 
                 player.actions.primary.magazine.currentReserve += ammo;
                 this.ammoReservesUI.spawnAmmoInReserveUI(ammo);
-
-                console.log(`Care package received. Primary Reserves: ${player.actions.primary.magazine.currentReserve}`);
             }
-        },      
+        },
+        //
+        // #endregion
+        //
+        // #region [ STATS ]
+        //
         {
+            // Increases stamina, and stamina recovery, but increases regen delay after using.
+            id: "bioregulator",
+            name: "Bioregulator",
+            subtitle: "Increases energy regulation efficiency, with a small boot overhead.",
+            icon: "/assets/img/icon/upgrades/bioregulator.png",
+            type: UpgradeType.STAT,
+            rarity: UpgradeRarity.COMMON,
+            unique: false,
+            func: (player: Player) => {
+                this.playerState.updateStat('stats.stamina.max', player.stats.stamina.max * 1.1);
+                this.playerState.updateStat('stats.stamina.recovery.rate', player.stats.stamina.recovery.rate + 1);
+                this.playerState.updateStat('stats.stamina.recovery.delay', player.stats.stamina.recovery.delay * 1.25);
+            }
+        },
+        {
+            // Increases damage and shot buffer by 10%.
+            // Bullets hit harder, but can be shot less often each time this is taken. 
+            id: "damage_buffer",
+            name: "Damage Buffer",
+            subtitle: "Type D125 buffer, which improves damage at a small cost. ",
+            icon: "/assets/img/icon/upgrades/damagebuffer.png",
+            type: UpgradeType.STAT,
+            rarity: UpgradeRarity.UNCOMMON,
+            unique: false,
+            func: (player: Player) => {
+                this.playerState.updateStat('actions.primary.projectile.damage', player.actions.primary.projectile.damage * 1.1);
+                this.playerState.updateStat('actions.primary.buffer', player.actions.primary.buffer * 1.1);
+            }
+        },
+        {
+            // Increases the player's max health.
             id: "hemoglobin_saturator",
             name: "Hemoglobin Saturator",
             subtitle: "Increases red blood cell density for extended durability.",
@@ -119,45 +179,22 @@ export class UpgradeManager {
             rarity: UpgradeRarity.UNCOMMON,
             unique: false,
             func: (player: Player) => {
-                player.stats.health.max += 10;
-                player.stats.health.value = player.stats.health.max;
-
-                console.log(`Damage Buffer installed. New damage: ${player.actions.primary.projectile.damage} - New Buffer: ${player.actions.primary.buffer}`);
-            }
-        },  
-        //
-        // #endregion
-        //
-        // #region [ STATS ]
-        //
-        {
-            id: "damage_buffer",
-            name: "Damage Buffer",
-            subtitle: "Type D125 buffer, which improves the damage at a small cost. ",
-            icon: "/assets/img/icon/upgrades/damageup.png",
-            type: UpgradeType.STAT,
-            rarity: UpgradeRarity.COMMON,
-            unique: false,
-            func: (player: Player) => {
-                player.actions.primary.projectile.damage *= 1.25;
-                player.actions.primary.buffer *= 1.1;
-
-                console.log(`Damage Buffer installed. New damage: ${player.actions.primary.projectile.damage} - New Buffer: ${player.actions.primary.buffer}`);
+                this.playerState.updateStat('stats.health.max', player.stats.health.max + 10);
+                this.playerState.updateStat('stats.health.value', player.stats.health.max); // Heal to new max
             }
         },
         {
+            // Increases speed but also increases dash cooldown.
             id: "locomotion_module",
             name: "Locomotion Module",
             subtitle: "Primitave locomotion module installed on the user's footwear.",
-            icon: "/assets/img/icon/upgrades/speedup.png",
+            icon: "/assets/img/icon/upgrades/locomotionmodule.png",
             type: UpgradeType.STAT,
             rarity: UpgradeRarity.COMMON,
             unique: false,
             func: (player: Player) => {
-                player.stats.speed += 1;
-                player.actions.dash.cooldown *= 1.5;
-
-                console.log(`Locomotion Module installed. New Speed: ${player.stats.speed} - New Dash Cooldown: ${player.actions.dash.cooldown}`);
+                this.playerState.updateStat('stats.speed', player.stats.speed + 1);
+                this.playerState.updateStat('actions.dash.cooldown', player.actions.dash.cooldown * 1.5);
             }
         },
         //
@@ -166,6 +203,8 @@ export class UpgradeManager {
         // #region [ UNIQUE ]
         //
         {
+            // Luck based, causes projectiles to sometimes break into shrapnel on impact.
+            // Varying amounts of pieces can spawn, and shrapnel does 1 damage to any enemy hit.
             id: "cluster_module",
             name: "Cluster Module",
             subtitle: "Cluster enhancement module for primary attacks.",
@@ -180,12 +219,14 @@ export class UpgradeManager {
             }
         },
         {
+            // Luck based, creates visible aura around player.
+            // Enemy projectiles in radius have a chance to be deflected.
             id: "kinetic_brain",
             name: "Kinetic Brain",
             subtitle: "Cerebral kinetic stem implant, unable to function at maximum capacity.",
             icon: "/assets/img/icon/upgrades/kineticbrain.png",
             type: UpgradeType.UNIQUE,
-            rarity: UpgradeRarity.EPIC,
+            rarity: UpgradeRarity.EXCEPTIONAL,
             unique: true,
             func: (player: Player) => {
                 if (!player.unique.includes('kinetic_brain')) {
@@ -194,12 +235,29 @@ export class UpgradeManager {
             }
         },
         {
+            // Luck based, can replace standard shot with split shot.
+            id: "muzzle_spliter",
+            name: "Muzzle Spliiter",
+            subtitle: "Muzzle modification for primary attacks, requires certain skillset.",
+            icon: "/assets/img/icon/upgrades/kineticbrain.png",
+            type: UpgradeType.UNIQUE,
+            rarity: UpgradeRarity.SPECIAL,
+            unique: true,
+            func: (player: Player) => {
+                if (!player.unique.includes('muzzle_spliter')) {
+                    player.unique.push('muzzle_spliter');
+                }
+            }
+        },
+        {
+            // Luck based * 1.5, on death chance to trigger revival with 5% of health returned.
+            // One-time use, double damage received permanently on trigger.
             id: "phoenix_module",
             name: "Phoenix Module",
             subtitle: "Does its best to keep you alive.",
             icon: "/assets/img/icon/upgrades/phoenixmodule.png",
             type: UpgradeType.UNIQUE,
-            rarity: UpgradeRarity.UNCOMMON,
+            rarity: UpgradeRarity.LEGENDARY,
             unique: true,
             func: (player: Player) => {
                 if (!player.unique.includes('phoenix_module')) {
@@ -207,7 +265,9 @@ export class UpgradeManager {
                 }
             }
         },
-        { // Luck based, chance to add extra projectiles on shot in random direction.
+        {
+            // Luck based, chance to add extra projectiles on shot in random direction.
+            // Extra shots have more spread, less distance and do half damage.
             id: "projectile_array",
             name: "Projectile Array",
             subtitle: "Chance to fire an array of extra projectiles.",
@@ -220,13 +280,44 @@ export class UpgradeManager {
                     player.unique.push('projectile_array');
                 }
             }
+        },
+        {
+            // Allows player's rotation to slightly influence projectile direction.
+            id: "spatial_targeting",
+            name: "Spatial Targeting",
+            subtitle: "Projectile upgrade that syncs its spatial awareness with the user.",
+            icon: "/assets/img/icon/upgrades/spatialtargeting.png",
+            type: UpgradeType.UNIQUE,
+            rarity: UpgradeRarity.SUPERIOR,
+            unique: true,
+            func: (player: Player) => {
+                if (!player.unique.includes('spatial_targeting')) {
+                    player.unique.push('spatial_targeting');
+                }
+            }
+        },
+        {
+            // Dash replaced with spectral teleport, and increased range. No collisions when dashing.
+            id: "spectral_image",
+            name: "Spectral Image",
+            subtitle: "Forward imaging coordinate transponder.",
+            icon: "/assets/img/icon/upgrades/spectralimage.png",
+            type: UpgradeType.UNIQUE,
+            rarity: UpgradeRarity.EXCEPTIONAL,
+            unique: true,
+            func: (player: Player) => {
+                if (!player.unique.includes('spectral_image')) {
+                    player.unique.push('spectral_image');
+                    this.playerState.updateStat('actions.dash.time', player.actions.dash.time + 50);
+                }
+            }
         }
         //
         // #endregion
         //
     ]
 
-    constructor(private ammoReservesUI: AmmoReservesUIController) { }
+    constructor(private ammoReservesUI: AmmoReservesUIController, private playerState: PlayerState, private utility: Utility) { }
 
     /**
      * Returns a selected amount of upgrades for a specific player in the game.
@@ -326,7 +417,9 @@ export class UpgradeManager {
      */
     public resetUpgrades(player: Player): void {
         this.takenUniques.clear();
-        player.equipment = [];
+
+        player.equipment = PLAYER_DEFAULTS.EQUIPMENT;
+        player.unique = PLAYER_DEFAULTS.UNIQUE;
     }
 
     // #region [ Helpers ]
@@ -357,5 +450,21 @@ export class UpgradeManager {
      */
     private getRarityWeight(rarity: UpgradeRarity): number {
         return this.rarityConfig[rarity].weight;
+    }
+
+    /**
+     * Toggle all equipment based on player state.
+     */
+    private toggleEquipment(equipmentId: string): void {
+        if (!this.hasEquipment(this.playerState.myPlayer, equipmentId)) return;
+
+        switch (equipmentId) {
+            case 'test_id':
+                break;
+            // TODO: Add more equipment types here
+
+            default:
+                console.warn(`Unknown equipment: ${equipmentId}`);
+        }
     }
 }

@@ -87,13 +87,6 @@ export class EventsManager {
         document.addEventListener('keydown', (e) => this.onKeyDown(e));
         document.addEventListener('keyup', (e) => this.onKeyUp(e));
 
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this.gameState.gameInProgress && !this.lobbyManager.inLobby) {
-                e.preventDefault();
-                // TODO: Test stuff here!
-            }
-        });
-
         document.addEventListener('mouseup', (e) => this.onMouseUp(e));
         document.addEventListener('mousemove', (e) => this.onMouseMove(e));
 

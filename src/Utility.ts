@@ -9,6 +9,25 @@ export class Utility {
         this.simplexTable = this.generateSimplexTable();
     }
 
+    // #region [ General ]
+    //
+    public deepMerge(target: any, source: any): void {
+        for (const key in source) {
+            if (
+                source[key] !== null &&
+                typeof source[key] === 'object' &&
+                !Array.isArray(source[key])
+            ) {
+                if (!target[key]) target[key] = {};
+                this.deepMerge(target[key], source[key]);
+            } else {
+                target[key] = source[key];
+            }
+        }
+    }
+    //
+    // #endregion
+
     // #region [ Time ]
     //
     /**
@@ -377,4 +396,6 @@ export class Utility {
             }
         }
     }
+    //
+    // #endregion
 }

@@ -45,15 +45,81 @@ export class RenderingManager {
         if (!this.ui.ctx) return;
         if (player.stats.health.value <= 0) return;
 
-        // Render layers in order: BODY → WEAPON → HEAD → HEADWEAR
-        this.drawCharacterLayer(player, 'BODY', player.rig.body);
-        this.drawCharacterLayer(player, 'WEAPON', player.rig.weapon);
-        this.drawCharacterLayer(player, 'HEAD', player.rig.head);
-        this.drawCharacterLayer(player, 'HEADWEAR', player.rig.headwear);
+        // Static ghost memory (attached per instance)
+        const staticGhosts = (this as any)._spectralGhosts ??= {
+            lastHidden: new Map<string, boolean>(),
+            flashes: [] as {
+                x: number;
+                y: number;
+                t: number;
+                type: 'start' | 'end';
+                playerId: string;
+            }[]
+        };
 
-        this.drawUpgradeLayers(player);
+        const now = Date.now();
+        const wasHidden = staticGhosts.lastHidden.get(player.id) ?? false;
+        const isHidden = player.flags.hidden;
+        const isSpectral = player.unique.includes("spectral_image");
 
-        // Draw player name/info (existing code)
+        // Detect start of dash (flash out)
+        if (!wasHidden && isHidden && isSpectral) {
+            staticGhosts.flashes.push({
+                x: player.transform.pos.x,
+                y: player.transform.pos.y,
+                t: now,
+                type: 'start',
+                playerId: player.id
+            });
+        }
+
+        // Detect end of dash (flash in)
+        if (wasHidden && !isHidden && isSpectral) {
+            staticGhosts.flashes.push({
+                x: player.transform.pos.x,
+                y: player.transform.pos.y,
+                t: now,
+                type: 'end',
+                playerId: player.id
+            });
+        }
+
+        staticGhosts.lastHidden.set(player.id, isHidden);
+
+        // Render ghost flashes
+        for (const ghost of staticGhosts.flashes) {
+            if (ghost.playerId !== player.id) continue;
+            const age = now - ghost.t;
+            if (age > player.actions.dash.time) continue;
+
+            const alpha = ghost.type === 'start'
+                ? 1 - (age / player.actions.dash.time)
+                : (age / player.actions.dash.time);
+
+            this.ui.ctx.save();
+
+            // Invert-style effect via difference + high saturation
+            this.ui.ctx.globalAlpha = alpha * 0.8;
+            this.ui.ctx.globalCompositeOperation = 'difference';
+            this.ui.ctx.filter = 'saturate(100) contrast(2)';
+
+            const ghostPlayer = {
+                ...player,
+                transform: {
+                    ...player.transform,
+                    pos: { x: ghost.x, y: ghost.y }
+                }
+            };
+
+            this.drawCharacterLayers(ghostPlayer);
+            this.ui.ctx.restore();
+        }
+
+        if (isHidden) return;
+
+        // Main player
+        this.drawCharacterLayers(player);
+
         this.ui.ctx.fillStyle = UI.TEXT_COLOR;
         this.ui.ctx.font = UI.FONT;
         this.ui.ctx.textAlign = 'center';
@@ -64,6 +130,17 @@ export class RenderingManager {
             player.transform.pos.x,
             player.transform.pos.y - PLAYER_DEFAULTS.VISUAL.ID_DISPLAY_OFFSET
         );
+    }
+
+    /**
+     * Entrypoint for rendering of all character layers.
+     */
+    private drawCharacterLayers(player: Player): void {
+        this.drawCharacterLayer(player, 'BODY', player.rig.body);
+        this.drawCharacterLayer(player, 'WEAPON', player.rig.weapon);
+        this.drawCharacterLayer(player, 'HEAD', player.rig.head);
+        this.drawCharacterLayer(player, 'HEADWEAR', player.rig.headwear);
+        this.drawUpgradeLayers(player);
     }
 
     /**

@@ -158,7 +158,7 @@ export class PlayerController {
                     this.utility.setSlider(healthSliderParams);
 
                     // Heal player
-                    this.playerState.myPlayer.stats.health.value = this.playerState.myPlayer.stats.health.max * 0.25;
+                    this.playerState.myPlayer.stats.health.value = this.playerState.myPlayer.stats.health.max * 0.05;
 
                     // Double damage permanently
                     this.playerState.myPlayer.actions.primary.projectile.damage *= 2;

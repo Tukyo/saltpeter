@@ -10,6 +10,7 @@ export class PlayerState {
     public isHost = false;
 
     public canShoot = true;
+    public canAutoFire = false;
     public isBurstActive = false;
     public isReloading = false;
     public isMelee = false;
@@ -36,10 +37,13 @@ export class PlayerState {
     public lastStaminaDrainTime = 0;
     public staminaRecoveryBlockedUntil = 0;
 
+    private statListeners: Map<string, (value: any) => void> = new Map();
+
     constructor(userId: string, private utility: Utility) {
         this.myPlayer = this.initPlayer(userId);
     }
 
+    // #region [ State ]
     //
     // [ IMPORTANT ] Keep full track of Player object here
     /**
@@ -104,6 +108,10 @@ export class PlayerState {
                 }
             },
             equipment: PLAYER_DEFAULTS.EQUIPMENT,
+            flags: {
+                hidden: PLAYER_DEFAULTS.FLAGS.HIDDEN,
+                invulnerable: PLAYER_DEFAULTS.FLAGS.INVULNERABLE
+            },
             physics: {
                 acceleration: PLAYER_DEFAULTS.PHYSICS.ACCELERATION,
                 friction: PLAYER_DEFAULTS.PHYSICS.FRICTION
@@ -115,6 +123,7 @@ export class PlayerState {
                 weapon: PLAYER_DEFAULTS.RIG.WEAPON
             },
             stats: {
+                defense: PLAYER_DEFAULTS.STATS.DEFENSE,
                 health: {
                     max: PLAYER_DEFAULTS.STATS.HEALTH.MAX,
                     value: PLAYER_DEFAULTS.STATS.HEALTH.MAX,
@@ -166,4 +175,40 @@ export class PlayerState {
         this.lastSentRotationTime = 0;
         this.lastSentMoveTime = 0;
     }
+    //
+    // #endregion
+
+    // #region [ Events ]
+    //
+    
+    public onStatChange(statPath: string, callback: (value: any) => void): void {
+        this.statListeners.set(statPath, callback);
+    }
+
+    private notifyChange(statPath: string, value: any): void {
+        const listener = this.statListeners.get(statPath);
+        if (listener) {
+            listener(value);
+        }
+    }
+
+    public updateStat(statPath: string, value: any): void {
+        // Navigate to the property and set it
+        const pathParts = statPath.split('.');
+        let obj: any = this.myPlayer;
+
+        for (let i = 0; i < pathParts.length - 1; i++) {
+            obj = obj[pathParts[i]];
+        }
+
+        const lastProp = pathParts[pathParts.length - 1];
+        obj[lastProp] = value;
+
+        console.log(`${lastProp}: ${value}`);
+
+        // Notify listeners
+        this.notifyChange(statPath, value);
+    }
+    //
+    // #endregion
 }

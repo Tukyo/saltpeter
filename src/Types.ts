@@ -93,6 +93,10 @@ export interface Player extends GameObject {
   }
   color: string;
   equipment: string[],
+  flags: {
+    hidden: boolean;
+    invulnerable: boolean;
+  }
   physics: {
     acceleration: number;
     friction: number;
@@ -104,6 +108,7 @@ export interface Player extends GameObject {
     weapon: string;
   }
   stats: {
+    defense: number;
     health: {
       max: number;
       value: number;
@@ -136,6 +141,7 @@ export interface Projectile extends GameObject {
 
 export type ProjectileOverrides = {
     canTriggerUnique?: boolean;
+    bypassDefault?: boolean;
     color?: string;
     damage?: number;
     length?: number;
@@ -444,10 +450,16 @@ export type CharacterLayer = 'BODY' | 'WEAPON' | 'HEAD' | 'HEADWEAR' | 'UPGRADES
 export enum UpgradeRarity {
   COMMON = 0,
   UNCOMMON = 1,
-  RARE = 2,
-  EPIC = 3,
-  LEGENDARY = 4
+  SPECIAL = 2,
+  SUPERIOR = 3,
+  RARE = 4,
+  EXCEPTIONAL = 5,
+  LEGENDARY = 6,
+  MYTHICAL = 7,
+  ENLIGHTENED = 8,
+  HOLY = 9
 }
+
 export enum UpgradeType {
   EQUIPMENT = 'equipment',
   RESOURCE = 'resource',
