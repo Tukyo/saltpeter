@@ -13,9 +13,6 @@ import { Utility } from './Utility';
  bullet trails
  projectile with padding on sides = projectiles that are detonated on reload
  on death respawn as 1hp ghost who can melee with .25s invuln
- > [ Resources ]
-  - Reserves ++
-  - 
  > [ Stats ]
   - Size -- / Speed ++
   - Damage ++ / Buffer ++
@@ -53,46 +50,45 @@ export class UpgradeManager {
     private rarityConfig = {
         [UpgradeRarity.COMMON]: {
             weight: 35,
-            color: '#8E8B88'
+            color: '#7e7e7e'
         },
         [UpgradeRarity.UNCOMMON]: {
             weight: 20,
-            color: '#FF0000'
+            color: '#61b6d5'
         },
         [UpgradeRarity.SPECIAL]: {
             weight: 15,
-            color: '#FF8C19'
+            color: '#58d688'
         },
         [UpgradeRarity.SUPERIOR]: {
             weight: 12,
-            color: '#E0FF33'
+            color: '#ffc233'
         },
         [UpgradeRarity.RARE]: {
             weight: 8,
-            color: '#86FF15'
+            color: '#0077ff'
         },
         [UpgradeRarity.EXCEPTIONAL]: {
             weight: 5,
-            color: '#00FF91'
+            color: '#00ff62'
         },
         [UpgradeRarity.LEGENDARY]: {
             weight: 2.5,
-            color: '#00B3FF'
+            color: '#f6ff00'
         },
         [UpgradeRarity.MYTHICAL]: {
             weight: 1.5,
-            color: '#0004FF'
+            color: '#ff0000'
         },
         [UpgradeRarity.ENLIGHTENED]: {
             weight: 0.9,
-            color: '#A64DFF'
+            color: '#9500ff'
         },
         [UpgradeRarity.HOLY]: {
             weight: 0.1,
-            color: '#FF00EE'
+            color: '#ff00f7'
         }
     };
-
 
     public upgrades: Upgrade[] = [ // TODO: Update all upgrades to use the player object instead of the olayer defaults
         // #region [ EQUIPMENT ]

@@ -5,7 +5,7 @@ export class ControlsManager {
     private activeKeys: Set<string> = new Set();
     private gamepadKeys: Set<string> = new Set();
     private previousKeys: Set<string> = new Set();
-    
+
     private mousePos: Vec2 = { x: 0, y: 0 };;
 
     private gamepadConnected: boolean = false;
@@ -118,9 +118,10 @@ export class ControlsManager {
         const gamepad = gamepads[0];
         if (!gamepad) return;
 
-        const keybinds = this.settingsManager.getSettings().controls.keybinds;
-        const gamepadMap = this.settingsManager.getSettings().controls.gamepad;
-        const deadzone = 0.2;
+        const settings = this.settingsManager.getSettings();
+        const keybinds = settings.controls.keybinds;
+        const gamepadMap = settings.controls.gamepad;
+        const deadzone = gamepadMap.deadzone;
 
         // Clear previous gamepad keys
         this.gamepadKeys.forEach(key => this.activeKeys.delete(key));

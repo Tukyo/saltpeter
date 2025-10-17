@@ -140,16 +140,16 @@ export interface Projectile extends GameObject {
 }
 
 export type ProjectileOverrides = {
-    canTriggerUnique?: boolean;
-    bypassDefault?: boolean;
-    color?: string;
-    damage?: number;
-    length?: number;
-    range?: number;
-    size?: number;
-    speed?: number;
-    spread?: number;
-    amount?: number;
+  canTriggerUnique?: boolean;
+  bypassDefault?: boolean;
+  color?: string;
+  damage?: number;
+  length?: number;
+  range?: number;
+  size?: number;
+  speed?: number;
+  spread?: number;
+  amount?: number;
 };
 
 export interface AmmoBox extends GameObject {
@@ -264,15 +264,19 @@ export interface GameSettings {
     gamepad: {
       attack: number;
       dash: number;
+      deadzone: number;
       melee: number;
       reload: number;
       sprint: number;
     }
   }
-  // graphics: {
-  //   renderBackgroundParticles: boolean;
-  //   showStaticOverlay: boolean;
-  // }
+  graphics: {
+    physics: {
+      ammoReserves: boolean;
+    }
+    renderBackgroundParticles: boolean;
+    showStaticOverlay: boolean;
+  }
 }
 //
 // #endregion

@@ -3,10 +3,12 @@ import { Direction, RandomColorParams, SetInputParams, SetSliderParams, SetSpanP
 export class Utility {
     private lastFrameTime: number;
     private simplexTable: Uint8Array;
+    private activeTimeouts: Set<number>;
 
     constructor() {
         this.lastFrameTime = performance.now();
         this.simplexTable = this.generateSimplexTable();
+        this.activeTimeouts = new Set();
     }
 
     // #region [ General ]
@@ -43,6 +45,28 @@ export class Utility {
         // Normalize to 60fps (16.67ms per frame)
         // Cap at 100ms to prevent huge jumps during lag spikes
         return Math.min(delta, 100) / 16.67;
+    }
+
+    /**
+     * Overrides 'setTimeout' with safe processing.
+     * 
+     * Timeouts are stored in the 'activeTimeouts' set - allowing stale timeouts to be cleared.
+     */
+    public safeTimeout(callback: () => void, delay: number): number {
+        const id = window.setTimeout(() => {
+            this.activeTimeouts.delete(id);
+            callback();
+        }, delay);
+        this.activeTimeouts.add(id);
+        return id;
+    }
+
+    /**
+     * Clears all active timeouts from the activeTimeouts cache.
+     */
+    public clearTimeoutCache(): void {
+        this.activeTimeouts.forEach(id => window.clearTimeout(id));
+        this.activeTimeouts.clear();
     }
     //
     // #endregion
@@ -316,6 +340,7 @@ export class Utility {
             inputElement.value = params.value.toString();
         }
     }
+    
     /**
      * Sets a specific slider to a specific value.
      * 

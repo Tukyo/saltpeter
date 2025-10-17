@@ -1,5 +1,7 @@
+import { SettingsManager } from "../SettingsManager";
 import { ReserveBulletParticle } from "../Types";
 import { UserInterface } from "../UserInterface";
+import { Utility } from "../Utility";
 
 export class AmmoReservesUIController {
     private ammoReserveIcon: HTMLImageElement | null = null;
@@ -7,7 +9,11 @@ export class AmmoReservesUIController {
 
     public reserveBulletParticles: ReserveBulletParticle[] = [];
 
-    constructor(private ui: UserInterface) { }
+    constructor(
+        private settings: SettingsManager,
+        private ui: UserInterface,
+        private utility: Utility
+    ) { }
 
     // [ Ammo Reserve Canvas ]
     //
@@ -24,8 +30,10 @@ export class AmmoReservesUIController {
         this.projectileIcon = new Image();
         this.projectileIcon.src = '/assets/img/icon/inventory/9mm.png';
 
-        // Start physics loop
-        requestAnimationFrame(() => this.updateAmmoReservePhysics());
+        // Start physics loop if it is enabled in the user's prefs
+        if (this.settings.getSettings().graphics.physics.ammoReserves) {
+            requestAnimationFrame(() => this.updateAmmoReservePhysics());
+        }
     }
 
     /**
@@ -34,40 +42,56 @@ export class AmmoReservesUIController {
     public spawnAmmoInReserveUI(amount: number = 1): void {
         if (!this.ui.ammoReservesCtx || !this.projectileIcon) return;
 
-        // Time between spawn for visual effect
-        const spawnDelay = 100; // ms
+        const physicsEnabled = this.settings.getSettings().graphics.physics.ammoReserves;
 
+        const spawnDelay = 100;
         const { collisionHeight, collisionWidth, collisionX, collisionY } = this.getAmmoReserveCollisionZone();
 
-        const x = collisionX + collisionWidth;
-        const y = collisionY + collisionHeight / 2;
+        const scale = 0.25;
+        const bulletWidth = 11 * scale;
+        const bulletHeight = 28 * scale;
 
         for (let i = 0; i < amount; i++) {
-            setTimeout(() => {
-                const scale = 0.25;
-                const bulletWidth = 11 * scale;
-                const bulletHeight = 28 * scale;
+            this.utility.safeTimeout(() => {
+                if (physicsEnabled) {
+                    // Physics mode: spawn with velocity from right side
+                    const x = collisionX + collisionWidth;
+                    const y = collisionY + collisionHeight / 2;
+                    const speed = 2 + Math.random() * 8;
+                    const angle = (Math.random() - 0.5) * (Math.PI / 3);
+                    const vx = Math.cos(angle) * speed;
+                    const vy = Math.sin(angle) * speed;
+                    const rotation = Math.random() * Math.PI * 2;
+                    const torque = (Math.random() - 0.5) * 0.1;
 
-                // Initial velocity: rightward, with a much wider angle and more random speed
-                const speed = 2 + Math.random() * 8; // Speed between 2 and 10
-                const angle = (Math.random() - 0.5) * (Math.PI / 3); // Angle between -30° and +30°
-                const vx = Math.cos(angle) * speed;
-                const vy = Math.sin(angle) * speed;
+                    this.reserveBulletParticles.push({
+                        transform: {
+                            pos: { x, y },
+                            rot: rotation,
+                        },
+                        velocity: { x: vx, y: vy },
+                        torque,
+                        width: bulletWidth,
+                        height: bulletHeight
+                    });
+                } else {
+                    // Static mode: spawn at random position, no velocity
+                    const x = collisionX + Math.random() * collisionWidth;
+                    const y = collisionY + Math.random() * collisionHeight;
+                    const rotation = Math.random() * Math.PI * 2;
 
-                // Random rotation and torque
-                const rotation = Math.random() * Math.PI * 2;
-                const torque = (Math.random() - 0.5) * 0.1;
-
-                this.reserveBulletParticles.push({
-                    transform: {
-                        pos: { x, y },
-                        rot: rotation,
-                    },
-                    velocity: { x: vx, y: vy },
-                    torque,
-                    width: bulletWidth,
-                    height: bulletHeight
-                });
+                    this.reserveBulletParticles.push({
+                        transform: {
+                            pos: { x, y },
+                            rot: rotation,
+                        },
+                        velocity: { x: 0, y: 0 },
+                        torque: 0,
+                        width: bulletWidth,
+                        height: bulletHeight
+                    });
+                    this.renderAmmoReserves(); // Render static bullet immediately
+                }
             }, i * spawnDelay);
         }
     }
@@ -78,9 +102,12 @@ export class AmmoReservesUIController {
     public removeAmmoFromReserveUI(amount: number = 1): void {
         const removeDelay = 100; // ms, match spawnBullet
         for (let i = 0; i < amount; i++) {
-            setTimeout(() => {
+            this.utility.safeTimeout(() => {
                 if (this.reserveBulletParticles.length > 0) {
                     this.reserveBulletParticles.shift();
+                }
+                if (!this.settings.getSettings().graphics.physics.ammoReserves) {
+                    this.renderAmmoReserves();
                 }
             }, i * removeDelay);
         }
@@ -90,6 +117,7 @@ export class AmmoReservesUIController {
      * Processes ammo reserve physics for the projectiles in the ammo reserve UI.
      */
     private updateAmmoReservePhysics(): void {
+        if (!this.settings.getSettings().graphics.physics.ammoReserves) return;
         if (!this.ui.ammoReservesCtx || !this.ammoReserveIcon) return;
 
         // TODO: Add sleeping when they come to a stop and end simulation
@@ -210,6 +238,22 @@ export class AmmoReservesUIController {
             this.ui.ammoReservesCanvas!.width,
             this.ui.ammoReservesCanvas!.height
         );
+
+        if (!this.settings.getSettings().graphics.physics.ammoReserves) {
+            for (let bullet of this.reserveBulletParticles) {
+                this.ui.ammoReservesCtx.save();
+                this.ui.ammoReservesCtx.translate(bullet.transform.pos.x, bullet.transform.pos.y);
+                this.ui.ammoReservesCtx.rotate(bullet.transform.rot);
+                this.ui.ammoReservesCtx.drawImage(
+                    this.projectileIcon!,
+                    -bullet.width / 2,
+                    -bullet.height / 2,
+                    bullet.width,
+                    bullet.height
+                );
+                this.ui.ammoReservesCtx.restore();
+            }
+        }
     }
 
     /**

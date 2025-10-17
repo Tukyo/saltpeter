@@ -325,8 +325,12 @@
               <div id="moveRightGamepad" class="controls_mapping_cell controls_mapping_value blocked">RS ✣</div>
             </div>
           </div>
-
-          <div id="controlsOtherContainer" class="settings_item"></div>
+          <div id="controlsOtherContainer" class="settings_item">
+            <div class="settings_input">
+              <span>DEADZONE</span>
+              <input id="deadzoneInput"></input>
+            </div>
+          </div>
         </div>
       </div>
       <div id="graphicsBody" class="settings_page container row">
@@ -346,11 +350,23 @@
         <div class="settings_page_content container row">
           <div id="graphicsSettingsContainer" class="container">
             <span>Work in Progress</span>
-            <!-- <span>Render Background Particles</span>
+            <div style="display: none;">
+            <span>Render Background Particles</span>
             <div class="toggle_wrapper">
               <toggle id="particleJSToggle" role="switch" aria-checked="true"></toggle>
               <div class="toggle_foreground"></div>
-            </div> -->
+            </div>
+            <span>Show Static Overlay</span>
+            <div class="toggle_wrapper">
+              <toggle id="staticToggle" role="switch" aria-checked="true"></toggle>
+              <div class="toggle_foreground"></div>
+            </div>
+            <span>Ammo Reserves Physics</span>
+            <div class="toggle_wrapper">
+              <toggle id="ammoReservesPhysicsToggle" role="switch" aria-checked="true"></toggle>
+              <div class="toggle_foreground"></div>
+            </div>
+            </div>
           </div>
         </div>
       </div>

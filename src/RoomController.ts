@@ -5,6 +5,7 @@ import { LobbyManager } from "./LobbyManager";
 import { RoomManager } from "./RoomManager";
 import { UpgradeManager } from "./UpgradeManager";
 import { UserInterface } from "./UserInterface";
+import { Utility } from "./Utility";
 import { WebsocketManager } from "./WebsocketManager";
 
 import { PlayerState } from "./player/PlayerState";
@@ -18,6 +19,7 @@ export class RoomController {
         private ui: UserInterface,
         private upgradeManager: UpgradeManager,
         private userId: string,
+        private utility: Utility,
         private wsManager: WebsocketManager
     ) { }
 
@@ -34,7 +36,7 @@ export class RoomController {
     public hostRoom(): void {
         if (!this.wsManager.getWebSocket()) {
             this.wsManager.connectWebSocket();
-            setTimeout(() => {
+            this.utility.safeTimeout(() => {
                 const roomId = this.roomManager.createRoom();
                 this.playerState.isHost = true;
                 this.lobbyManager.showLobbyControls(
@@ -84,7 +86,7 @@ export class RoomController {
         if (!roomId) return;
         if (!this.wsManager.getWebSocket()) {
             this.wsManager.connectWebSocket();
-            setTimeout(() => {
+            this.utility.safeTimeout(() => {
                 this.roomManager.joinRoom(roomId!);
             }, GAME.CONNECTION_TIMEOUT);
         } else {
@@ -106,7 +108,7 @@ export class RoomController {
             .then(data => {
                 if (!this.wsManager.getWebSocket()) {
                     this.wsManager.connectWebSocket();
-                    setTimeout(() => {
+                    this.utility.safeTimeout(() => {
                         this.roomManager.joinRoom(data.roomId);
                     }, GAME.CONNECTION_TIMEOUT);
                 } else {
@@ -160,7 +162,7 @@ export class RoomController {
         const roomId = this.getRoomIdFromURL();
         if (roomId) {
             this.wsManager.connectWebSocket();
-            setTimeout(() => {
+            this.utility.safeTimeout(() => {
                 this.roomManager.joinRoom(roomId);
             }, GAME.CONNECTION_TIMEOUT);
         }
@@ -214,7 +216,7 @@ export class RoomController {
             this.ui.modalConfirmButton.onclick = closeModal;
 
             // Auto-close after 3 seconds
-            setTimeout(() => {
+            this.utility.safeTimeout(() => {
                 if (this.ui.modal && !this.ui.modal.classList.contains('hidden')) {
                     closeModal();
                 }

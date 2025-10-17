@@ -51,16 +51,16 @@
     --smooth-radius: 1rem;
     --curve-radius: 100rem;
 
-    --rarity-0: #8E8B88;
-    --rarity-1: #FF0000;
-    --rarity-2: #FF8C19;
-    --rarity-3: #E0FF33;
-    --rarity-4: #86FF15;
-    --rarity-5: #00FF91;
-    --rarity-6: #00B3FF;
-    --rarity-7: #0004FF;
-    --rarity-8: #A64DFF;
-    --rarity-9: #FF00EE;
+    --rarity-0: #7e7e7e;
+    --rarity-1: #61b6d5;
+    --rarity-2: #58d688;
+    --rarity-3: #ffc233;
+    --rarity-4: #0077ff;
+    --rarity-5: #00ff62;
+    --rarity-6: #f6ff00;
+    --rarity-7: #ff0000;
+    --rarity-8: #9500ff;
+    --rarity-9: #ff00f7;
 
     --center: translate(-50%, -50%);
 
@@ -605,7 +605,7 @@ toggle[checked]::before {
     background: url(./assets/img/noise.gif) center;
     background-size: 50%;
     pointer-events: none;
-    z-index: var(--z-foreground);
+    z-index: var(--z-max);
     opacity: 0.075;
     mix-blend-mode: hard-light;
 }
@@ -1685,6 +1685,29 @@ toggle[checked]::before {
 #controlsMappingContainer {
     align-content: flex-start;
     transform: translateY(5%);
+}
+
+#controlsOtherContainer {
+    background: var(--black-05);
+    align-content: flex-start;
+}
+
+.settings_input {
+    margin: 1rem;
+    gap: 1rem;
+}
+
+.settings_input span {
+    color: var(--tertiary-color);
+}
+
+.settings_input input {
+    max-width: 3rem;
+    border-radius: var(--secondary-radius);
+    background: var(--black-20);
+    padding: 0.5rem;
+    color: var(--secondary-color);
+    text-align: center;
 }
 
 /**/

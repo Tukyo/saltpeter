@@ -17,8 +17,6 @@ import { Utility } from "../Utility";
 export class CombatController {
     public projectiles: Map<string, Projectile> = new Map();
 
-    private autoFireEndTime: number = 0;
-
     constructor(
         private ammoReservesUIController: AmmoReservesUIController,
         private animator: Animator,
@@ -177,7 +175,7 @@ export class CombatController {
         }));
 
         // Remove melee projectile after it has traveled its duration
-        setTimeout(() => {
+        this.utility.safeTimeout(() => {
             this.projectiles.delete(meleeProjectile.id);
             this.playerState.isMelee = false;
 
@@ -195,24 +193,6 @@ export class CombatController {
 
     // #region [ Ranged ]
     //
-
-    public toggleAutoFire(timestamp: number): void {
-        this.autoFireEndTime = timestamp;
-        this.playerState.canAutoFire = true;
-
-        const cachedBuffer = this.playerState.myPlayer.actions.primary.buffer
-
-        this.playerState.myPlayer.actions.primary.buffer *= 0.5;
-
-        console.log(`Auto-fire enabled until ${timestamp}`);
-
-        setTimeout(() => {
-            this.playerState.canAutoFire = false;
-            this.playerState.myPlayer.actions.primary.buffer = cachedBuffer;
-            console.log('Auto-fire disabled.');
-        }, timestamp - Date.now()); // Duration of override
-    }
-
     /**
      * Entrypoint for ranged attacks. When this is called, it starts the primary attack flow.
      */
@@ -716,6 +696,29 @@ export class CombatController {
     }
 
     /**
+     * Used to toggle auto fire
+     */
+    public toggleAutoFire(timestamp: number): void {
+        this.playerState.canAutoFire = true;
+
+        const cachedBuffer = this.playerState.myPlayer.actions.primary.buffer
+
+        this.playerState.myPlayer.actions.primary.buffer *= 0.5; // TODO: Pass the buffer change
+
+        console.log(`Auto-fire enabled until ${timestamp}`);
+
+        this.utility.safeTimeout(() => {
+            this.playerState.canAutoFire = false;
+            this.playerState.myPlayer.actions.primary.buffer = cachedBuffer;
+            console.log('Auto-fire disabled.');
+        }, timestamp - Date.now()); // Duration of override
+    } // TODO: Timestamp duration should be optional, if not passed toggle is permanent on/off
+    //
+    // #endregion
+
+    // #region [ Uniques ]
+    //
+    /**
      * Manually triggers a specific unique effect when called.
      */
     private triggerUnique(unique: string, pos?: Vec2): void {
@@ -775,6 +778,9 @@ export class CombatController {
         console.log(`Triggered Unique: ${unique}`)
     }
 
+    /**
+     * Responsible for processing possible unique triggers on burst. (Before launchProjectile is called...)
+     */
     private triggerBurstUniques(): string[] {
         const triggered: string[] = [];
 
@@ -805,13 +811,11 @@ export class CombatController {
             }
         }
 
-        // Future burst-uniques can go here...
-
         return triggered;
     }
 
     /**
-     * Responsible for checking specific uniques that can effect projectiles.
+     * Responsible for checking specific uniques on collision.
      */
     private triggerCollisionUniques(pos?: Vec2): string[] {
         if (this.playerState.myPlayer.unique.length === 0) return [];

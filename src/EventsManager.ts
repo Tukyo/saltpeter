@@ -3,7 +3,6 @@ import { ChatManager } from "./ChatManager";
 import { GAMEPAD_MAP } from "./Config";
 import { ControlsManager } from "./ControlsManager";
 import { GameState } from "./GameState";
-import { LobbyManager } from "./LobbyManager";
 import { RoomController } from "./RoomController";
 import { SettingsManager } from "./SettingsManager";
 import { UserInterface } from "./UserInterface";
@@ -16,7 +15,6 @@ export class EventsManager {
         private chatManager: ChatManager,
         private controlsManager: ControlsManager,
         private gameState: GameState,
-        private lobbyManager: LobbyManager,
         private roomController: RoomController,
         private playerState: PlayerState,
         private settingsManager: SettingsManager,
@@ -125,7 +123,9 @@ export class EventsManager {
             }
         });
 
-        this.initAudioSliders();
+        this.initSettingsAudioSliders();
+        this.initSettingsInputListeners();
+        this.initSettingsToggleListeners();
     }
 
     /**
@@ -238,10 +238,12 @@ export class EventsManager {
     //
     // #endregion
 
+    // #region [ Settings Page ]
+    //
     /**
-     * Initializes settings slider event listeners
+     * Initializes event listeners for audio sliders on audio settings page.
      */
-    private initAudioSliders(): void {
+    private initSettingsAudioSliders(): void {
         const sliders = [
             { slider: this.ui.masterSlider, fill: this.ui.masterFill, value: this.ui.masterValue, channel: 'master' },
             { slider: this.ui.interfaceSlider, fill: this.ui.interfaceFill, value: this.ui.interfaceValue, channel: 'interface' },
@@ -280,17 +282,99 @@ export class EventsManager {
         });
     }
 
-    // EventsManager.ts - new method
+    /**
+     * Initializes event listeners for input fields on all settings pages.
+     */
+    private initSettingsInputListeners(): void {
+        const inputs = [
+            { input: this.ui.deadzoneInput, settingPath: 'controls.gamepad.deadzone', parse: parseFloat }
+            // Future inputs go here: { input: this.ui.someInput, settingPath: 'path.to.setting', parse: parseFloat }
+        ];
 
+        inputs.forEach(({ input, settingPath, parse }) => {
+            if (!input) return;
+
+            input.addEventListener('change', () => {
+                const rawValue = input.value;
+                const parsedValue = parse(rawValue);
+
+                if (isNaN(parsedValue)) return; // Invalid input
+
+                // Build nested update object
+                const pathParts = settingPath.split('.');
+                const update: any = {};
+                let current = update;
+
+                for (let i = 0; i < pathParts.length - 1; i++) {
+                    current[pathParts[i]] = {};
+                    current = current[pathParts[i]];
+                }
+                current[pathParts[pathParts.length - 1]] = parsedValue;
+
+                this.settingsManager.updateSettings(update);
+            });
+        });
+    }
+
+    /**
+     * Initializes event listeners for toggles on all settings pages.
+     */
+    private initSettingsToggleListeners(): void {
+        const toggles = [
+            { toggle: this.ui.particleJSToggle, settingPath: 'graphics.renderBackgroundParticles' },
+            { toggle: this.ui.staticVfxToggle, settingPath: 'graphics.showStaticOverlay' },
+            { toggle: this.ui.ammoReservesPhysicsToggle, settingPath: 'graphics.physics.ammoReserves' }
+        ];
+
+        toggles.forEach(({ toggle, settingPath }) => {
+            if (!toggle) return;
+
+            toggle.addEventListener('click', () => {
+                const currentValue = toggle.getAttribute('aria-checked') === 'true';
+                const newValue = !currentValue;
+
+                // Update toggle visually
+                if (newValue) {
+                    toggle.setAttribute('checked', 'true');
+                    toggle.setAttribute('aria-checked', 'true');
+                } else {
+                    toggle.removeAttribute('checked');
+                    toggle.setAttribute('aria-checked', 'false');
+                }
+
+                // Build nested update object
+                const pathParts = settingPath.split('.');
+                const update: any = {};
+                let current = update;
+
+                for (let i = 0; i < pathParts.length - 1; i++) {
+                    current[pathParts[i]] = {};
+                    current = current[pathParts[i]];
+                }
+                current[pathParts[pathParts.length - 1]] = newValue;
+
+                this.settingsManager.updateSettings(update);
+            });
+        });
+    }
+
+    /**
+     * Initializes the keybinds interface, with user prefs or defaults.
+     * 
+     * Also sets up keybind change listeners.
+     */
     public initKeybindListeners(): void {
         const controlsSettings = this.settingsManager.getSettings().controls;
         this.ui.initKeybindsInterface(
             controlsSettings,
-            (action, type, newBinding) => this.onKeybindChange(action, type, newBinding)
+            (action, type, newBinding) => this.onBindingChange(action, type, newBinding)
         );
     }
 
-    public onKeybindChange(action: string, type: 'keybind' | 'gamepad', newBinding: string | number): void {
+    /**
+     * Event that fires on keybind or gamepad press when input change modal is visible.
+     */
+    public onBindingChange(action: string, type: 'keybind' | 'gamepad', newBinding: string | number): void {
         if (type === 'keybind') {
             this.settingsManager.updateSettings({
                 controls: {

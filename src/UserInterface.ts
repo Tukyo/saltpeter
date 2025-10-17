@@ -1,9 +1,10 @@
 import { CANVAS, GAMEPAD_MAP } from "./Config";
 
-import { Leaderboard, Players } from "./Types";
+import { GameSettings, Leaderboard, Players } from "./Types";
 import { LobbyManager } from "./LobbyManager";
 import { SettingsManager } from "./SettingsManager";
 import { PlayerState } from "./player/PlayerState";
+import { Utility } from "./Utility";
 
 export class UserInterface {
     // [ Canvas ]
@@ -106,6 +107,12 @@ export class UserInterface {
     public voiceSlider: HTMLDivElement | null = null;
     public voiceFill: HTMLDivElement | null = null;
     public voiceValue: HTMLDivElement | null = null;
+
+    public deadzoneInput: HTMLInputElement | null = null;
+
+    public particleJSToggle: HTMLElement | null = null;
+    public staticVfxToggle: HTMLElement | null = null;
+    public ammoReservesPhysicsToggle: HTMLElement | null = null;
     //
     //
     // [ Stats ]
@@ -116,7 +123,11 @@ export class UserInterface {
     public shotSpeedStat: HTMLSpanElement | null = null;
     public speedStat: HTMLSpanElement | null = null;
 
-    constructor(private playerState: PlayerState, private settingsManager: SettingsManager) {
+    constructor(
+        private playerState: PlayerState,
+        private settingsManager: SettingsManager,
+        private utility: Utility
+    ) {
         this.initInterfaceListeners();
     }
 
@@ -203,6 +214,12 @@ export class UserInterface {
         this.voiceFill = document.getElementById('voiceFill') as HTMLDivElement;
         this.voiceValue = document.getElementById('voiceValue') as HTMLDivElement;
 
+        this.deadzoneInput = document.getElementById('deadzoneInput') as HTMLInputElement;
+
+        this.particleJSToggle = document.getElementById('particleJSToggle') as HTMLElement;
+        this.staticVfxToggle = document.getElementById('staticToggle') as HTMLElement;
+        this.ammoReservesPhysicsToggle = document.getElementById('ammoReservesPhysicsToggle') as HTMLElement;
+
         this.accuracyStat = document.getElementById('accuracyValue') as HTMLSpanElement;
         this.damageStat = document.getElementById('damageValue') as HTMLSpanElement;
         this.luckStat = document.getElementById('luckValue') as HTMLSpanElement;
@@ -223,7 +240,8 @@ export class UserInterface {
             !this.interfaceFill || !this.musicSlider || !this.musicFill || !this.sfxSlider || !this.sfxFill ||
             !this.voiceSlider || !this.voiceFill || !this.masterValue || !this.interfaceValue ||
             !this.musicValue || !this.sfxValue || !this.voiceValue || !this.accuracyStat || !this.damageStat ||
-            !this.luckStat || !this.rangeStat || !this.shotSpeedStat || !this.speedStat
+            !this.luckStat || !this.rangeStat || !this.shotSpeedStat || !this.speedStat || !this.deadzoneInput ||
+            !this.particleJSToggle || !this.staticVfxToggle || !this.ammoReservesPhysicsToggle
         ) {
             alert('Failed to load game. Please refresh the page.');
             throw new Error('Critical error: Required DOM elements are missing.');
@@ -366,6 +384,21 @@ export class UserInterface {
         this.chatContainer.style.display = "none";
         this.leaderboardContainer.style.display = "none";
         this.upgradeContainer.style.display = "none";
+    }
+
+    /**
+     * Unified modal closure function used to close and refresh the modal.
+     */
+    public closeModal(): void {
+        if (!this.modal || !this.modalInput || !this.modalConfirmButton ||
+            !this.modalCancelButton || !this.modalText) return;
+
+        this.modal.classList.add('hidden');
+        this.modalInput.style.display = 'flex';
+        this.modalText.textContent = 'Join Room';
+        this.modalConfirmButton.onclick = null;
+        this.modalCancelButton.onclick = null;
+        this.modalInput.onkeydown = null;
     }
     //
     // #endregion
@@ -510,20 +543,20 @@ export class UserInterface {
     //
     // #endregion
 
+    // #region [ Settings Sliders ]
+    //
+    /**
+     * Updates settings specific sliders that also have value elements associated.
+     */
     public updateSettingsSlider(fillElement: HTMLDivElement, valueElement: HTMLDivElement, value: number): void {
         const percentage = Math.max(0, Math.min(100, value * 100));
         fillElement.style.width = `${percentage}%`;
         valueElement.textContent = `${Math.round(percentage)}%`;
     }
 
-    public initSoundSliders(audioSettings: { master: number; interface: number; music: number; sfx: number; voice: number }): void {
-        if (this.masterFill && this.masterValue) this.updateSettingsSlider(this.masterFill, this.masterValue, audioSettings.master);
-        if (this.interfaceFill && this.interfaceValue) this.updateSettingsSlider(this.interfaceFill, this.interfaceValue, audioSettings.interface);
-        if (this.musicFill && this.musicValue) this.updateSettingsSlider(this.musicFill, this.musicValue, audioSettings.music);
-        if (this.sfxFill && this.sfxValue) this.updateSettingsSlider(this.sfxFill, this.sfxValue, audioSettings.sfx);
-        if (this.voiceFill && this.voiceValue) this.updateSettingsSlider(this.voiceFill, this.voiceValue, audioSettings.voice);
-    }
-
+    /**
+     * Calculates the value of the slider based on the hovered mouse position.
+     */
     public calculateSliderValue(sliderElement: HTMLDivElement, mouseX: number): number {
         const rect = sliderElement.getBoundingClientRect();
         const position = mouseX - rect.left;
@@ -531,9 +564,69 @@ export class UserInterface {
         return Math.max(0, Math.min(1, position / width));
     }
 
-    // Update initKeybindsInterface in UserInterface.ts
+    /**
+     * Initializes the sound sliders in the sound settings page with user prefs or defaults.
+     */
+    public initSoundSliders(settings: GameSettings): void {
+        const audioSettings = settings.audio.mixer;
+        if (this.masterFill && this.masterValue) this.updateSettingsSlider(this.masterFill, this.masterValue, audioSettings.master);
+        if (this.interfaceFill && this.interfaceValue) this.updateSettingsSlider(this.interfaceFill, this.interfaceValue, audioSettings.interface);
+        if (this.musicFill && this.musicValue) this.updateSettingsSlider(this.musicFill, this.musicValue, audioSettings.music);
+        if (this.sfxFill && this.sfxValue) this.updateSettingsSlider(this.sfxFill, this.sfxValue, audioSettings.sfx);
+        if (this.voiceFill && this.voiceValue) this.updateSettingsSlider(this.voiceFill, this.voiceValue, audioSettings.voice);
+    }
+    //
+    // #endregion
 
-    public initKeybindsInterface(controlsSettings: { keybinds: Record<string, string>, gamepad: Record<string, number> }, onKeybindChange: (action: string, type: 'keybind' | 'gamepad', newBinding: string | number) => void): void {
+    // #region [ Settings Inputs ]
+    //
+    /**
+     * Initializes all inputs in settings pages with user prefs or defaults.
+     */
+    public initSettingsInputs(settings: GameSettings): void {
+        if (this.deadzoneInput) {
+            this.deadzoneInput.value = settings.controls.gamepad.deadzone.toString();
+        }
+    }
+    //
+    // #endregion
+
+    // #region [ Settings Toggles ]
+    //
+    /**
+     * Initializes all toggles in settings pages with user prefs or defaults.
+     */
+    public initSettingsToggles(settings: GameSettings): void {
+        if (this.particleJSToggle) {
+            this.utility.setToggle({
+                toggleId: 'particleJSToggle',
+                value: settings.graphics.renderBackgroundParticles
+            });
+        }
+
+        if (this.staticVfxToggle) {
+            this.utility.setToggle({
+                toggleId: 'staticToggle',
+                value: settings.graphics.showStaticOverlay
+            });
+        }
+
+        if (this.ammoReservesPhysicsToggle) {
+            this.utility.setToggle({
+                toggleId: 'ammoReservesPhysicsToggle',
+                value: settings.graphics.physics.ammoReserves
+            });
+        }
+    }
+    //
+    // #endregion
+
+    // #region [ Settings Interfaces ]
+    //
+    /**
+     * Initializes the keybinds settings page interface.
+     */
+    public initKeybindsInterface(controlsSettings: { keybinds: Record<string, string>, gamepad: Record<string, number> }, onBindingChange: (action: string, type: 'keybind' | 'gamepad', newBinding: string | number) => void): void {
         // [ Keys ]
         Object.keys(controlsSettings.keybinds).forEach(action => {
             const elementId = `${action}Keybind`;
@@ -544,7 +637,7 @@ export class UserInterface {
 
                 element.addEventListener('click', () => {
                     this.showRebindModal(action, 'keybind', (newBinding) => {
-                        onKeybindChange(action, 'keybind', newBinding as string);
+                        onBindingChange(action, 'keybind', newBinding as string);
                     });
                 });
             }
@@ -565,14 +658,18 @@ export class UserInterface {
 
                 element.addEventListener('click', () => {
                     this.showRebindModal(action, 'gamepad', (newBinding) => {
-                        onKeybindChange(action, 'gamepad', newBinding as number);
+                        onBindingChange(action, 'gamepad', newBinding as number);
                     });
                 });
             }
         });
     }
 
-
+    /**
+     * Shows the controls rebinding modal when called.
+     * 
+     * Can be used for rebinding keyboard or gamepad.
+     */
     public showRebindModal(action: string, type: 'keybind' | 'gamepad', onRebind: (newBinding: string | number) => void): void {
         if (!this.modal || !this.modalText || !this.modalInput || !this.modalConfirmButton || !this.modalCancelButton || !this.modalErrorDiv) return;
 
@@ -600,7 +697,7 @@ export class UserInterface {
 
                 this.modalCancelButton.onclick = () => this.closeModal();
 
-                setTimeout(() => {
+                this.utility.safeTimeout(() => {
                     this.closeModal();
                 }, 3000);
 
@@ -719,21 +816,6 @@ export class UserInterface {
             cleanup();
             this.closeModal();
         };
-    }
-
-    /**
-     * Unified modal closure function used to close and refresh the modal.
-     */
-    public closeModal(): void {
-        if (!this.modal || !this.modalInput || !this.modalConfirmButton ||
-            !this.modalCancelButton || !this.modalText) return;
-
-        this.modal.classList.add('hidden');
-        this.modalInput.style.display = 'flex';
-        this.modalText.textContent = 'Join Room';
-        this.modalConfirmButton.onclick = null;
-        this.modalCancelButton.onclick = null;
-        this.modalInput.onkeydown = null;
     }
     //
     // #endregion

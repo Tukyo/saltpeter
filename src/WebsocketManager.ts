@@ -2,11 +2,16 @@ import { GAME } from "./Config";
 
 import { GameState } from "./GameState";
 import { RoomManager } from "./RoomManager";
+import { Utility } from "./Utility";
 
 export class WebsocketManager {
     private ws: WebSocket | null = null;
 
-    constructor(private gameState: GameState, private roomManager: RoomManager) {}
+    constructor(
+        private gameState: GameState,
+        private roomManager: RoomManager,
+        private utility: Utility
+    ) {}
 
     /**
      * Used for creating the websocket connection between clients.
@@ -25,7 +30,7 @@ export class WebsocketManager {
         this.ws.onclose = () => {
             console.log("Disconnected from WebSocket");
             this.gameState.gameInProgress = false;
-            setTimeout(() => this.connectWebSocket(), GAME.RECONNECT_DELAY);
+            this.utility.safeTimeout(() => this.connectWebSocket(), GAME.RECONNECT_DELAY);
         };
 
         this.ws.onerror = (error) => {

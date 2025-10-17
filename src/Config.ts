@@ -505,12 +505,20 @@ export const GAME = {
         GAMEPAD: {
             MELEE: GAMEPAD_MAP.RB,
             DASH: GAMEPAD_MAP.LB,
+            DEADZONE: 0.2,
             RELOAD: GAMEPAD_MAP.A,
             SPRINT: GAMEPAD_MAP.LT,
             ATTACK: GAMEPAD_MAP.RT
         }
     },
     GAME_END_DELAY: 5000,
+    GRAPHICS: {
+        PHYSICS: {
+            AMMORESERVES: true
+        },
+        STATIC_OVERLAY: true, 
+        BACKGROUND_PARTICLES: true
+    },
     MAX_PLAYERS: 4,
     MAX_WINS: 5,
     RECONNECT_DELAY: 3000,

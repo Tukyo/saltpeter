@@ -1,10 +1,12 @@
 
 import { PLAYER_DEFAULTS, CANVAS, GAME, SFX, AUDIO } from './Config';
 
-import { Player, RoomMessage, LobbyPlayer, LeaderboardEntry, ResetType, SetSliderParams, SetSpanParams, DeathDecal, EmitterParams } from './Types';
+import { Player, RoomMessage, LobbyPlayer, LeaderboardEntry, ResetType, SetSliderParams, SetSpanParams, DeathDecal, EmitterParams, GameSettings } from './Types';
 
+import { Admin } from './Admin';
 import { Animator } from './Animator';
 import { AudioManager } from './AudioManager';
+import { CacheManager } from './CacheManager';
 import { CharacterConfig } from './CharacterConfig';
 import { CharacterManager } from './CharacterManager';
 import { ChatManager } from './ChatManager';
@@ -33,8 +35,6 @@ import { ObjectsManager } from './ObjectsManager';
 import { PlayerController } from './player/PlayerController';
 import { PlayerState } from './player/PlayerState';
 import { StaminaController } from './player/StaminaController';
-import { CacheManager } from './CacheManager';
-import { Admin } from './Admin';
 
 class Client {
     private userId: string;
@@ -90,15 +90,22 @@ class Client {
         this.charManager = new CharacterManager(this.charConfig);
 
         this.userId = this.utility.generateUID(PLAYER_DEFAULTS.DATA.ID_LENGTH);
-
         this.playerState = new PlayerState(this.userId, this.utility);
 
-        this.ui = new UserInterface(this.playerState, this.settingsManager);
-
-        this.ammoReservesUIController = new AmmoReservesUIController(this.ui);
-        this.upgradeManager = new UpgradeManager(this.ammoReservesUIController, this.playerState, this.utility);
+        this.ui = new UserInterface(this.playerState, this.settingsManager, this.utility);
+        this.ammoReservesUIController = new AmmoReservesUIController(
+            this.settingsManager,
+            this.ui,
+            this.utility
+        );
 
         this.admin = new Admin(this.cacheManager, this.ui);
+
+        this.upgradeManager = new UpgradeManager(
+            this.ammoReservesUIController,
+            this.playerState,
+            this.utility
+        );
 
         this.objectsManager = new ObjectsManager(
             this.playerState,
@@ -107,7 +114,8 @@ class Client {
 
         this.roomManager = new RoomManager(this.userId, this.utility);
         this.lobbyManager = new LobbyManager(this.utility, this.ui, this.roomManager);
-        this.wsManager = new WebsocketManager(this.gameState, this.roomManager);
+        this.wsManager = new WebsocketManager(this.gameState, this.roomManager, this.utility);
+        this.chatManager = new ChatManager(this.roomManager, this.ui);
 
         this.roomController = new RoomController(
             this.gameState,
@@ -117,10 +125,9 @@ class Client {
             this.ui,
             this.upgradeManager,
             this.userId,
+            this.utility,
             this.wsManager
         );
-
-        this.chatManager = new ChatManager(this.roomManager, this.ui);
 
         this.collisionsManager = new CollisionsManager(
             this.ammoReservesUIController,
@@ -134,7 +141,7 @@ class Client {
         this.staminaController = new StaminaController(this.playerState);
         this.luckController = new LuckController(this.playerState);
 
-        this.audioManager = new AudioManager(this.roomManager, this.settingsManager);
+        this.audioManager = new AudioManager(this.roomManager, this.settingsManager, this.utility);
         this.animator = new Animator(this.playerState, this.roomManager, this.userId);
 
         this.renderingManager = new RenderingManager(
@@ -205,7 +212,6 @@ class Client {
             this.chatManager,
             this.controlsManager,
             this.gameState,
-            this.lobbyManager,
             this.roomController,
             this.playerState,
             this.settingsManager,
@@ -241,8 +247,6 @@ class Client {
         this.initGlobalEvents();
 
         this.roomController.checkForRoomInURL();
-
-        this.ammoReservesUIController.initAmmoReserveCanvas();
         this.roomController.showRoomControls();
 
         const spanParams: SetSpanParams = {
@@ -252,9 +256,13 @@ class Client {
         this.utility.setSpan(spanParams);
 
         await this.settingsManager.loadSettings();
+        const settings: GameSettings = this.settingsManager.getSettings();
 
-        const audioSettings = this.settingsManager.getSettings().audio.mixer;
-        this.ui.initSoundSliders(audioSettings);
+        this.ui.initSoundSliders(settings);
+        this.ui.initSettingsInputs(settings);
+        this.ui.initSettingsToggles(settings)
+
+        this.ammoReservesUIController.initAmmoReserveCanvas();
 
         this.eventsManager.initKeybindListeners();
 
@@ -990,7 +998,7 @@ class Client {
 
         if (!winnerId) { // Everyone died somehow
             console.log('Round ended with no survivors!');
-            setTimeout(() => {
+            this.utility.safeTimeout(() => {
                 this.startNewRound(); //TODO Might need to adjust this because normally only the winner calls this
             }, GAME.ROUND_END_DELAY);
             return;
@@ -1012,12 +1020,12 @@ class Client {
             this.ui.updateLeaderboardDisplay(this.userId);
         }
 
-        setTimeout(() => {
+        this.utility.safeTimeout(() => {
             this.pauseGame(); // Everybody pause locally
         }, GAME.ROUND_END_DELAY / 6);
 
         // We have a winner, start the upgrade phase after a delay
-        setTimeout(() => {
+        this.utility.safeTimeout(() => {
             this.startUpgradePhase(winnerId);
         }, GAME.ROUND_END_DELAY);
     }
@@ -1036,7 +1044,7 @@ class Client {
         }));
 
         // Return to lobby after delay
-        setTimeout(() => {
+        this.utility.safeTimeout(() => {
             this.returnToLobby();
         }, GAME.GAME_END_DELAY);
     }
@@ -1498,6 +1506,8 @@ class Client {
         this.controlsManager.clearActiveKeys();
         this.animator.clearAllAnimations();
 
+        this.utility.clearTimeoutCache();
+
         // Reset upgrades and equipment
         this.upgradeManager.resetUpgrades(this.playerState.myPlayer);
     }
@@ -1639,7 +1649,7 @@ class Client {
 
             this.ui.upgradeContainer.style.display = 'none';
 
-            setTimeout(() => {
+            this.utility.safeTimeout(() => {
                 this.startNewRound();
             }, GAME.NEW_ROUND_DELAY);
         };

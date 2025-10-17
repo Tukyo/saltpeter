@@ -4,11 +4,16 @@ import { AudioPool } from "./AudioPool";
 import { AudioParams } from "./Types";
 import { RoomManager } from "./RoomManager";
 import { SettingsManager } from "./SettingsManager";
+import { Utility } from "./Utility";
 
 export class AudioManager {
     private audioPool: AudioPool;
 
-    constructor(private roomManager: RoomManager, private settingsManager: SettingsManager) {
+    constructor(
+        private roomManager: RoomManager,
+        private settingsManager: SettingsManager,
+        private utility: Utility
+    ) {
         this.audioPool = new AudioPool(AUDIO.SETTINGS.POOL_SIZE, AUDIO.SETTINGS.MAX_CONCURRENT); //TODO: Abstract config reliance
     }
 
@@ -94,7 +99,7 @@ export class AudioManager {
             delayMs = (params.delay.min + Math.random() * (params.delay.max - params.delay.min)) * 1000; // Convert to seconds
         }
 
-        setTimeout(() => {
+        this.utility.safeTimeout(() => {
             audio.play().catch((error: unknown) => {
                 console.warn('Audio play failed:', error);
             });
