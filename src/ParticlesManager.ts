@@ -593,7 +593,6 @@ export class ParticlesManager {
                                 }
 
                                 this.ui.updateLeaderboardDisplay(this.userId);
-                                window.dispatchEvent(new CustomEvent("customEvent_checkRoundEnd"));
                             }
 
                             // Remove this shrapnel piece after hit

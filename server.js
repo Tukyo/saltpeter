@@ -6,7 +6,7 @@ const WebSocket = require("ws");
 
 // =============================================================================
 // #region CONFIGURATION
-// =============================================================================
+// =============================================================================/
 
 const PORT = process.env.PORT || 8080;
 const ADMIN_KEY = process.env.ADMIN_KEY || "123";
@@ -255,8 +255,28 @@ function handleGameMessage(ws, message) {
     // Process special game messages
     if (gameData.type === 'start-game') {
       handleStartGame(message.roomId, message.userId, gameData);
+    } else if (gameData.type === 'player-state') {
+      const room = rooms.get(message.roomId);
+      if (room && gameData.stats?.health?.max) {
+        room.playerMaxHealth.set(message.userId, gameData.stats.health.max);
+      }
     } else if (gameData.type === 'new-round') {
-      message.message = JSON.stringify(gameData); // Pass through spawn map
+      const room = rooms.get(message.roomId);
+      if (room) {
+        const spawnMap = startNewRoundServer(message.roomId, gameData.hostSpawn);
+        gameData.spawnMap = spawnMap;
+        message.message = JSON.stringify(gameData);
+      }
+
+      broadcastToRoom(message.roomId, {
+        type: 'room-message',
+        userId: message.userId,
+        message: message.message,
+        roomId: message.roomId
+      }, null);
+      return;
+    } else if (gameData.type === 'player-hit') {
+      handlePlayerHealthUpdate(message.roomId, gameData.targetId, gameData.newHealth);
     } else if (gameData.type === 'lobby-options') {
       handleLobbyOptions(message.roomId, message.userId, gameData);
     } else if (gameData.type === 'promote-player') {
@@ -291,6 +311,17 @@ function handleStartGame(roomId, userId, gameData) {
   if (!room) return;
 
   room.gameActive = true;
+  room.roundActive = true;
+
+  room.alivePlayers.clear();
+  room.playerHealth.clear();
+
+  room.participants.forEach(client => {
+    room.alivePlayers.add(client.userId);
+    const maxHealth = room.playerMaxHealth.get(client.userId) || 100;
+    room.playerHealth.set(client.userId, maxHealth);
+  });
+
   room.spawnMap = generateSpawnMap(room, userId, gameData.hostSpawn);
   gameData.spawnMap = room.spawnMap;
 
@@ -352,6 +383,118 @@ function handleLobbyOptions(roomId, userId, gameData) {
 // =============================================================================
 
 // =============================================================================
+// #region ROUND MANAGEMENT
+// =============================================================================
+
+function handlePlayerHealthUpdate(roomId, userId, newHealth) {
+  const room = rooms.get(roomId);
+
+  if (!room || !room.roundActive) {
+    console.log('[HEALTH UPDATE IGNORED] Room:', roomId, 'Player:', userId, 'Health:', newHealth, '- Round not active');
+    return;
+  }
+
+  console.log('[HEALTH UPDATE] Room:', roomId, 'Player:', userId, 'Health:', newHealth);
+
+  room.playerHealth.set(userId, newHealth);
+
+  // Check if player just died
+  if (newHealth <= 0 && room.alivePlayers.has(userId)) {
+    room.alivePlayers.delete(userId);
+    console.log('=== PLAYER DEATH ===');
+    console.log('Room:', roomId);
+    console.log('Died:', userId);
+    console.log('Remaining:', room.alivePlayers.size, 'alive');
+    console.log('Alive Players:', Array.from(room.alivePlayers).join(', '));
+    console.log('==================');
+
+    checkRoundEnd(roomId);
+  }
+}
+
+function checkRoundEnd(roomId) {
+  const room = rooms.get(roomId);
+
+  if (!room || !room.roundActive) {
+    console.log('[CHECK ROUND END SKIPPED] Room:', roomId, '- Round not active');
+    return;
+  }
+
+  const aliveCount = room.alivePlayers.size;
+
+  console.log('[CHECK ROUND END] Room:', roomId, 'Alive:', aliveCount);
+
+  // Round ends when 1 or 0 players alive
+  if (aliveCount <= 1) {
+    const winnerId = aliveCount === 1 ? Array.from(room.alivePlayers)[0] : null;
+    console.log('[TRIGGERING ROUND END] Winner:', winnerId || 'No one');
+    endRound(roomId, winnerId);
+  } else {
+    console.log('[ROUND CONTINUES]', aliveCount, 'players still alive');
+  }
+}
+
+function endRound(roomId, winnerId) {
+  const room = rooms.get(roomId);
+
+  if (!room || !room.roundActive) {
+    console.log('[END ROUND SKIPPED] Room:', roomId, '- Already ended');
+    return;
+  }
+
+  room.roundActive = false;
+
+  console.log('=== ROUND ENDED ===');
+  console.log('Room:', roomId);
+  console.log('Winner:', winnerId || 'No one (tie)');
+  console.log('==================');
+
+  // Broadcast round end to ALL clients simultaneously
+  broadcastToRoom(roomId, {
+    type: 'room-message',
+    userId: 'server',
+    message: JSON.stringify({
+      type: 'round-end',
+      winnerId: winnerId,
+      timestamp: Date.now()
+    }),
+    roomId: roomId
+  }, null);
+}
+
+function startNewRoundServer(roomId, hostSpawn) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+
+  room.roundActive = true;
+  room.alivePlayers.clear();
+  room.playerHealth.clear();
+
+  // Initialize all players as alive with their tracked max health
+  room.participants.forEach(client => {
+    room.alivePlayers.add(client.userId);
+    const maxHealth = room.playerMaxHealth.get(client.userId) || 100;
+    room.playerHealth.set(client.userId, maxHealth);
+  });
+
+  const spawnMap = generateSpawnMap(room, room.hostUserId, hostSpawn);
+
+  console.log('=== NEW ROUND STARTED ===');
+  console.log('Room:', roomId);
+  console.log('Players:', room.alivePlayers.size);
+  console.log('Host:', room.hostUserId);
+  console.log('Alive Players:', Array.from(room.alivePlayers).join(', '));
+  console.log('Spawn Map:', JSON.stringify(spawnMap, null, 2));
+  console.log('Player Health:', Array.from(room.playerHealth.entries()).map(([id, hp]) => id + ': ' + hp + 'hp').join(', '));
+  console.log('========================');
+
+  return spawnMap;
+}
+//
+// #endregion
+// =============================================================================
+
+// =============================================================================
 // #region ROOM
 // =============================================================================
 
@@ -366,13 +509,22 @@ function createRoom(ws, roomId, userId) {
   }
 
   rooms.set(roomId, {
+    // [ Detail ]
     hostUserId: userId,
     participants: new Set([ws]),
-    gameActive: false,
+
+    // [ Settings ]
     isPrivate: false,
     upgradesEnabled: true,
     maxWins: 5,
-    maxPlayers: 4
+    maxPlayers: 4,
+
+    // [ State ]
+    gameActive: false,
+    roundActive: false,
+    alivePlayers: new Set(),
+    playerHealth: new Map(), // userId -> health value
+    playerMaxHealth: new Map() // userId -> max health
   });
 
   ws.currentRoom = roomId;

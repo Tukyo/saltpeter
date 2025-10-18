@@ -287,8 +287,6 @@ class Client {
             this.resetGameState(event.detail.resetType);
         });
 
-        window.addEventListener("customEvent_checkRoundEnd", () => this.checkRoundEnd());
-
         // Room manager message handler
         this.roomManager.onMessage((message) => this.handleRoomMessage(message));
     }
@@ -635,7 +633,7 @@ class Client {
                         this.combatController.projectiles.delete(gameData.projectileId);
                     }
 
-                    if (gameData.targetId === this.userId) {
+                    if (gameData.targetId === this.userId) { // I got hit
                         this.playerState.myPlayer.stats.health.value = gameData.newHealth;
 
                         const sliderLerpTime = 300; //TODO: Define UI lerping times globally
@@ -648,18 +646,14 @@ class Client {
                         this.utility.setSlider(healthSliderParams);
 
                         if (this.playerState.myPlayer.stats.health.value <= 0) {
-                            const actuallyDied = this.playerController.playerDeath();
-                            if (actuallyDied) {
-                                this.checkRoundEnd();
-                            }
+                            this.playerController.playerDeath();
                         }
-                    } else if (this.playerState.players.has(gameData.targetId)) {
+                    } else if (this.playerState.players.has(gameData.targetId)) { // Another player got hit
                         const hitPlayer = this.playerState.players.get(gameData.targetId)!;
                         hitPlayer.stats.health.value = gameData.newHealth;
 
                         if (hitPlayer.stats.health.value <= 0) {
                             console.log(`Player ${hitPlayer.id} died`);
-                            this.checkRoundEnd();
                         }
                     }
 
@@ -786,8 +780,7 @@ class Client {
                 //
                 case 'round-end':
                     console.log(`Round ended! Winner: ${gameData.winnerId || 'No one'}`);
-                    this.isRoundInProgress = false;
-                    this.roundWinner = gameData.winnerId;
+                    this.endRound(gameData.winnerId);
                     break;
                 case 'new-round':
                     if (!gameData.spawnMap) return;
@@ -973,49 +966,29 @@ class Client {
     // #region [ Round ]
     //
     /**
-     * Responsible for checking if the round should end.
-     * 
-     * Called when players are hit or events happen that could end the round.
-     */
-    private checkRoundEnd(): void {
-        if (!this.isRoundInProgress) return;
-
-        // Count alive players (including myself if I'm alive)
-        let aliveCount = this.playerState.myPlayer.stats.health.value > 0 ? 1 : 0;
-        let lastAlivePlayer = this.playerState.myPlayer.stats.health.value > 0 ? this.userId : null;
-
-        this.playerState.players.forEach((player: Player) => {
-            if (player.stats.health.value > 0) {
-                aliveCount++;
-                lastAlivePlayer = player.id;
-            }
-        });
-
-        // Round ends when only 1 or 0 players are alive
-        if (aliveCount <= 1) {
-            this.endRound(lastAlivePlayer);
-        }
-    }
-
-    /**
      * Processes end of round logic.
      */
     private endRound(winnerId: string | null): void {
-        if (!this.isRoundInProgress) return;
+        if (!this.isRoundInProgress) {
+            console.log('Ignoring endRound - round already ended');
+            return;
+        }
+
+        console.log(`Server confirmed round end. Winner: ${winnerId || 'No one'}`);
 
         this.isRoundInProgress = false;
         this.roundWinner = winnerId;
 
         if (!winnerId) { // Everyone died somehow
             console.log('Round ended with no survivors!');
-            this.utility.safeTimeout(() => {
-                this.startNewRound(); //TODO Might need to adjust this because normally only the winner calls this
-            }, GAME.ROUND_END_DELAY);
+            // this.utility.safeTimeout(() => {
+            //     this.startNewRound(); //TODO Might need to adjust this because normally only the winner calls this
+            // }, GAME.ROUND_END_DELAY);
             return;
         }
 
         // Increment win for the winner
-        if (this.ui.leaderboard.has(winnerId)) {
+        if (winnerId && this.ui.leaderboard.has(winnerId)) {
             const winnerEntry = this.ui.leaderboard.get(winnerId)!;
             winnerEntry.wins++;
             console.log(`${winnerId} won the round! Total wins: ${winnerEntry.wins}`);
@@ -1065,47 +1038,11 @@ class Client {
     private startNewRound(): void {
         console.log('Starting new round...');
 
-        this.resumeGame(); // Unpause myself locally
-
-        this.isRoundInProgress = true;
-        this.roundWinner = null;
-
-        // Reset myself
-        this.playerState.myPlayer.stats.health.value = this.playerState.myPlayer.stats.health.max;
-
-        const sliderLerpTime = 300; //TODO: Define UI lerping times globally
-        const healthSliderParams: SetSliderParams = {
-            sliderId: 'healthBar',
-            targetValue: this.playerState.myPlayer.stats.health.value,
-            maxValue: this.playerState.myPlayer.stats.health.max,
-            lerpTime: sliderLerpTime
-        }
-
-        const staminaSliderParams: SetSliderParams = {
-            sliderId: 'staminaBar',
-            targetValue: this.playerState.myPlayer.stats.stamina.value,
-            maxValue: this.playerState.myPlayer.stats.stamina.max,
-            lerpTime: sliderLerpTime
-        }
-
-        this.utility.setSlider(healthSliderParams);
-        this.utility.setSlider(staminaSliderParams);
-
-        // Generate a random position for the winner, and reserve in the new-round message
-        this.playerState.myPlayer.transform.pos.x = Math.random() * (CANVAS.WIDTH - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN;
-        this.playerState.myPlayer.transform.pos.y = Math.random() * (CANVAS.HEIGHT - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN;
-
-        const spawnDistance = 120; // How far away each player must spawn from each other (px)
-        const spawnMap = this.getSpawnMap(spawnDistance);
-
         // Locally update all other players for the winner, their state should already be updated after taking upgrades
         // [ IMPORTANT ] Keep full track of Player object here
+        // TODO: Probably won't need this eventually due to player-state messages being sent when upgrades are taken, but need more testing to be sure
         this.playerState.players.forEach((player: Player) => {
-            const spawn = spawnMap[player.id];
-
-            player.transform.pos.x = spawn.x;
-            player.transform.pos.y = spawn.y;
-            player.transform.rot = player.transform.rot || 0;
+            player.transform.rot = 0;
             player.timestamp = player.timestamp || Date.now();
             player.actions.dash.cooldown = player.actions.dash.cooldown || PLAYER_DEFAULTS.ACTIONS.DASH.COOLDOWN;
             player.actions.dash.drain = player.actions.dash.drain || PLAYER_DEFAULTS.ACTIONS.DASH.DRAIN;
@@ -1160,43 +1097,11 @@ class Client {
         // Send the spawn map to all other players
         this.roomManager.sendMessage(JSON.stringify({
             type: 'new-round',
-            spawnMap: spawnMap,
+            hostSpawn: {
+                x: Math.random() * (CANVAS.WIDTH - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN,
+                y: Math.random() * (CANVAS.HEIGHT - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN
+            }
         }));
-    }
-
-    /**
-     * Creates a spawn map for player start locations in a new round.
-     * 
-     * This value is generated by the winner or the host, and is sent to the server for distribution.
-     */
-    private getSpawnMap(distance: number): { [playerId: string]: { x: number, y: number } } {
-        const spawnMap: { [playerId: string]: { x: number, y: number } } = {};
-        const usedSpawns: { x: number, y: number }[] = [];
-
-        spawnMap[this.userId] = {
-            x: this.playerState.myPlayer.transform.pos.x,
-            y: this.playerState.myPlayer.transform.pos.y
-        };
-        usedSpawns.push(spawnMap[this.userId]);
-
-        this.playerState.players.forEach((player: Player) => {
-            let spawn: { x: number, y: number };
-            let tries = 0;
-            do {
-                spawn = {
-                    x: Math.random() * (CANVAS.WIDTH - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN,
-                    y: Math.random() * (CANVAS.HEIGHT - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN
-                };
-                tries++;
-            } while (
-                usedSpawns.some(s => Math.hypot(s.x - spawn.x, s.y - spawn.y) < distance) &&
-                tries < 1000
-            );
-            usedSpawns.push(spawn);
-            spawnMap[player.id] = spawn;
-        });
-
-        return spawnMap;
     }
     //
     // #endregion
@@ -1612,14 +1517,16 @@ class Client {
 
         this.upgradeManager.upgradesCompleted.clear(); // Reset upgrade tracking
 
+        const numUpgrades = 2; // TODO: This could change based on upgrades or other factors
+
         // Show upgrade UI based on if I won or lost
         if (winnerId === this.userId) {
             this.showWinnerWaitScreen();
         } else {
-            this.showUpgradeSelection();
+            this.showUpgradeSelection(numUpgrades);
         }
     }
-
+    
     // [ Winner ]
     //
     /**
@@ -1674,14 +1581,13 @@ class Client {
     /**
      * Displays the upgrade selection screen for losers during the upgrade phase.
      */
-    private showUpgradeSelection(): void {
+    private showUpgradeSelection(amount: number): void {
         if (!this.ui.upgradeContainer) return;
 
         this.ui.upgradeContainer.innerHTML = '';
 
         // Get 3 random upgrades
-        // TODO: Test this, seems to not be working, might actual be upgrade rolls not having enough in pool right now.
-        const availableUpgrades = this.upgradeManager.getUpgrades(3, this.playerState.myPlayer);
+        const availableUpgrades = this.upgradeManager.getUpgrades(amount, this.playerState.myPlayer);
 
         availableUpgrades.forEach(upgrade => {
             const upgradeDiv = document.createElement('div');
@@ -1737,7 +1643,7 @@ class Client {
     private selectUpgrade(upgradeId: string): void {
         const success = this.upgradeManager.applyUpgrade(upgradeId, this.playerState.myPlayer);
         if (!success) {
-            console.error('Failed to apply upgrade');
+            console.error('Failed to apply upgrade'); // Maybe two people picked same one, (apply upgrade checks uniques)
             return;
         }
 

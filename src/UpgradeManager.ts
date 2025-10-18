@@ -246,11 +246,11 @@ export class UpgradeManager {
             }
         },
         {
-            // Luck based * 1.5, on death chance to trigger revival with 5% of health returned.
+            // Luck based * 1.5, on death chance to trigger.
             // One-time use, double damage received permanently on trigger.
             id: "phoenix_module",
             name: "Phoenix Module",
-            subtitle: "Does its best to keep you alive.",
+            subtitle: "Return from the flames with vengeance.",
             icon: "/assets/img/icon/upgrades/phoenixmodule.png",
             type: UpgradeType.UNIQUE,
             rarity: UpgradeRarity.LEGENDARY,

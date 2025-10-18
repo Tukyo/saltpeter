@@ -7,7 +7,7 @@ import { PlayerState } from "./PlayerState";
 import { RoomManager } from "../RoomManager";
 import { MoveController } from "./MoveController";
 import { LuckController } from "./LuckController";
-import { DeathDecal, SetSliderParams } from "../Types";
+import { DeathDecal } from "../Types";
 import { Utility } from "../Utility";
 
 export class PlayerController {
@@ -94,13 +94,8 @@ export class PlayerController {
     /**
      * Record the player's own death when they are the targetId of a player-hit message and their health reaches 0.
      */
-    public playerDeath(): boolean {
+    public playerDeath(): void {
         const triggeredUniques = this.triggerUniques();
-
-        if (triggeredUniques.includes('phoenix_module')) {
-            console.log('Death prevented.');
-            return false;
-        }
 
         console.log('I died! Waiting for round to end...');
 
@@ -133,10 +128,13 @@ export class PlayerController {
             size: this.playerState.myPlayer.stats.size,
             ammoBox: ammoBox
         }));
-
-        return true;
     }
 
+    /**
+     * Used to trigger player related uniques during specific states like death, etc.
+     * 
+     * Returns each unique that succeeds.
+     */
     private triggerUniques(): string[] {
         if (this.playerState.myPlayer.unique.length === 0) return [];
 
@@ -147,18 +145,7 @@ export class PlayerController {
                 const succeeded = this.luckController.luckRoll(1.5);
 
                 if (succeeded) {
-                    console.log('Phoenix Module activated! Preventing death and applying damage boost.');
-
-                    const healthSliderParams: SetSliderParams = {
-                        sliderId: 'healthBar',
-                        targetValue: this.playerState.myPlayer.stats.health.value,
-                        maxValue: this.playerState.myPlayer.stats.health.max,
-                        lerpTime: 300
-                    };
-                    this.utility.setSlider(healthSliderParams);
-
-                    // Heal player
-                    this.playerState.myPlayer.stats.health.value = this.playerState.myPlayer.stats.health.max * 0.05;
+                    console.log('Phoenix Module activated!');
 
                     // Double damage permanently
                     this.playerState.myPlayer.actions.primary.projectile.damage *= 2;

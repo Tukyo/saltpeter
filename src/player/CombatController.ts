@@ -627,7 +627,6 @@ export class CombatController {
                                 }
 
                                 this.ui.updateLeaderboardDisplay(this.userId);
-                                window.dispatchEvent(new CustomEvent("customEvent_checkRoundEnd"));
                             }
 
                             // Notify everyone about the hit

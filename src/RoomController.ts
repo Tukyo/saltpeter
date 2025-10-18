@@ -41,34 +41,40 @@ export class RoomController {
                 if (!roomId) return;
 
                 this.playerState.isHost = true;
-                this.lobbyManager.showLobbyControls(
-                    this.gameState.gameMaxPlayers,
-                    this.gameState.gameMaxWins,
-                    this.playerState.isHost,
-                    this.roomManager.isPrivateRoom,
-                    this.upgradeManager.isUpgradesEnabled,
-                    this.lobbyManager,
-                    this.playerState.myPlayer,
-                    roomId,
-                    this.userId
-                );
+
+                this.lobbyManager.showLobbyControls({
+                    lobby: this.lobbyManager,
+                    lobbyOptions: {
+                        maxPlayers: this.gameState.gameMaxPlayers,
+                        maxWins: this.gameState.gameMaxWins,
+                        isHost: this.playerState.isHost,
+                        privateRoom: this.roomManager.isPrivateRoom,
+                        upgradesEnabled: this.upgradeManager.isUpgradesEnabled
+                    },
+                    myPlayer: this.playerState.myPlayer,
+                    roomId: roomId,
+                    userId: this.userId
+                });
             }, GAME.CONNECTION_TIMEOUT);
         } else {
             const roomId = this.roomManager.createRoom();
             if (!roomId) return;
-            
+
             this.playerState.isHost = true;
-            this.lobbyManager.showLobbyControls(
-                this.gameState.gameMaxPlayers,
-                this.gameState.gameMaxWins,
-                this.playerState.isHost,
-                this.roomManager.isPrivateRoom,
-                this.upgradeManager.isUpgradesEnabled,
-                this.lobbyManager,
-                this.playerState.myPlayer,
-                roomId,
-                this.userId
-            );
+
+            this.lobbyManager.showLobbyControls({
+                lobby: this.lobbyManager,
+                lobbyOptions: {
+                    maxPlayers: this.gameState.gameMaxPlayers,
+                    maxWins: this.gameState.gameMaxWins,
+                    isHost: this.playerState.isHost,
+                    privateRoom: this.roomManager.isPrivateRoom,
+                    upgradesEnabled: this.upgradeManager.isUpgradesEnabled
+                },
+                myPlayer: this.playerState.myPlayer,
+                roomId: roomId,
+                userId: this.userId
+            });
         }
     }
 
