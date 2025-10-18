@@ -71,6 +71,9 @@
     --z-plus-one: 1;
     --z-minus-one: -1;
     --z-min: -9999;
+
+    --chat-width: 350px;
+    --chat-height: 400px;
 }
 
 * {
@@ -460,6 +463,7 @@ toggle[checked]::before {
 .stat {
     flex: 1 1 0;
     white-space: nowrap;
+    flex-wrap: nowrap;
     flex-direction: row;
     align-items: center;
     gap: 5px;
@@ -468,16 +472,17 @@ toggle[checked]::before {
     background: var(--black-60);
     border-radius: var(--primary-radius);
     border: 1px solid var(--secondary-color);
+    padding: 0 1rem;
 }
 
 .stat img {
-    width: 35px;
-    height: 35px;
+    width: 2rem;
+    height: 2rem;
 }
 
 .stat span {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     color: var(--primary-color);
     white-space: nowrap;
 }
@@ -918,27 +923,25 @@ toggle[checked]::before {
 /**/
 .chat_container {
     position: fixed;
-    top: 20px;
-    right: 20px;
+    top: 1rem;
+    right: 1rem;
     left: auto;
     bottom: auto;
-    width: 350px;
-    height: 400px;
-    background: rgba(0, 0, 0, 0.9);
-    border: 2px solid var(--primary-color);
-    border-radius: 8px;
     flex-direction: column;
-    z-index: var(--z-hud);
+    width: var(--chat-width);
+    height: var(--chat-height);
+    background: var(--black-60);
+    border: 2px solid var(--primary-color);
+    border-radius: var(--primary-radius);
     backdrop-filter: blur(5px);
+    z-index: var(--z-hud);
 }
 
 .chat_messages {
     flex: 1;
-    padding: 15px;
+    padding: 1rem;
     overflow-y: auto;
-    gap: 8px;
-    align-content: flex-end;
-    justify-content: flex-start;
+    gap: 1rem;
     font-family: var(--font-mono);
     font-size: var(--secondary-font-size);
 }
@@ -947,21 +950,20 @@ toggle[checked]::before {
     justify-content: flex-start;
     width: 100%;
     word-wrap: break-word;
-    margin: 2px 0;
-    padding: 4px 0;
 }
 
 .chat_message.own {
     color: var(--primary-color);
+    background: var(--grey-dark);
 }
 
 .chat_message.other {
-    color: var(--secondary-color);
+    color: var(--primary-color);
 }
 
 .chat_message .sender {
     font-weight: bold;
-    margin-right: 8px;
+    margin-right: 0.25rem;
 }
 
 .chat_message .content {
@@ -969,18 +971,18 @@ toggle[checked]::before {
 }
 
 .chat_input_row {
-    padding: 10px;
+    padding: 0.5rem;
     border-top: 1px solid var(--primary-color);
     flex-direction: row;
-    gap: 8px;
+    gap: 0.5rem;
 }
 
 .chat_input {
     flex: 1;
-    padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.1);
+    padding: 0.5rem;
+    background: var(--grey-dark);
     border: 1px solid var(--primary-color);
-    border-radius: 4px;
+    border-radius: var(--primary-radius);
     color: var(--primary-color);
     font-family: var(--font-mono);
     font-size: var(--secondary-font-size);
@@ -988,8 +990,7 @@ toggle[checked]::before {
 
 .chat_input:focus {
     outline: none;
-    background: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+    background: var(--black-60);
 }
 
 .chat_send_btn {
@@ -1040,16 +1041,16 @@ toggle[checked]::before {
 /**/
 .leaderboard_container {
     position: fixed;
-    top: 20px;
+    top: 1rem;
     right: auto;
-    left: 20px;
+    left: 1rem;
     bottom: auto;
-    background: rgba(0, 0, 0, 0.9);
+    background: var(--black-20);
     border: 2px solid var(--primary-color);
-    border-radius: 8px;
-    z-index: var(--z-hud);
-    backdrop-filter: blur(5px);
+    border-radius: var(--primary-radius);
+    backdrop-filter: blur(2px);
     font-family: var(--font-mono);
+    z-index: var(--z-hud);
 }
 
 .leaderboard_container * {
@@ -1064,8 +1065,7 @@ toggle[checked]::before {
 }
 
 .leaderboard_header th {
-    padding: 12px 8px;
-    background: rgba(255, 255, 255, 0.1);
+    padding: 0.75rem;
     color: var(--primary-color);
     border-bottom: 1px solid var(--primary-color);
     text-align: left;
@@ -1078,22 +1078,18 @@ toggle[checked]::before {
     flex-wrap: nowrap;
 }
 
-.leaderboard_row {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
 .leaderboard_row:hover {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--grey);
 }
 
 .leaderboard_row.current-player {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--grey-dark);
     color: var(--primary-color);
     font-weight: bold;
 }
 
 .leaderboard_row td {
-    padding: 8px;
+    padding: 0.75rem;
     color: var(--secondary-color);
     text-align: left;
     font-family: var(--font-mono);
@@ -1498,7 +1494,7 @@ toggle[checked]::before {
 }
 
 .settings_page_header {
-    color: white;
+    color: var(--primary-color);
     height: 98%;
     justify-content: space-evenly;
     flex: 0.025;
@@ -1508,7 +1504,7 @@ toggle[checked]::before {
 }
 
 .settings_page_header span {
-    color: white;
+    color: var(--primary-color);
 }
 
 .settings_page_hidden:hover {

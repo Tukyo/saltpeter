@@ -278,6 +278,7 @@ export class ParticlesManager {
 
         // Broadcast to other clients
         const message: EmitterParams = {
+            type: 'particle-emitter',
             id: params.id,
             interval: params.interval,
             lifetime: params.lifetime,
@@ -289,6 +290,7 @@ export class ParticlesManager {
                 x: params.pos.x,
                 y: params.pos.y
             },
+            particleType: params.particleType,
             playerId: params.playerId
         };
         this.roomManager.sendMessage(JSON.stringify(message));
@@ -317,6 +319,7 @@ export class ParticlesManager {
                 x: offsetX,
                 y: offsetY
             },
+            particleType: params.particleType,
             playerId: params.playerId
         });
     }
@@ -354,7 +357,7 @@ export class ParticlesManager {
                     worldX + (Math.random() - 0.5) * 8,
                     worldY + (Math.random() - 0.5) * 8,
                     `emitter_particles_${emitterId}_${emitter.age}`,
-                    PARTICLES.BLOOD_DRIP, // TODO: Make this dynamically passed
+                    emitter.particleType,
                     {
                         x: Math.cos(angle) * finalSpeed,
                         y: Math.sin(angle) * finalSpeed

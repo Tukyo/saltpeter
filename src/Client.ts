@@ -883,13 +883,14 @@ class Client {
                 case 'particle-emitter':
                     if (message.userId !== this.userId) {
                         const emission: EmitterParams = {
-                            id: gameData.emitterId,
+                            id: gameData.id,
                             interval: gameData.interval,
                             lifetime: gameData.lifetime,
                             offset: {
                                 x: gameData.offset.x,
                                 y: gameData.offset.y
                             },
+                            particleType: gameData.particleType,
                             playerId: gameData.playerId,
                             pos: {
                                 x: gameData.pos.x,
@@ -981,9 +982,11 @@ class Client {
 
         if (!winnerId) { // Everyone died somehow
             console.log('Round ended with no survivors!');
-            // this.utility.safeTimeout(() => {
-            //     this.startNewRound(); //TODO Might need to adjust this because normally only the winner calls this
-            // }, GAME.ROUND_END_DELAY);
+            if (this.playerState.isHost) {
+                this.utility.safeTimeout(() => {
+                    this.startNewRound();
+                }, GAME.ROUND_END_DELAY);
+            }
             return;
         }
 
@@ -1097,7 +1100,7 @@ class Client {
         // Send the spawn map to all other players
         this.roomManager.sendMessage(JSON.stringify({
             type: 'new-round',
-            hostSpawn: {
+            reservedSpawn: {
                 x: Math.random() * (CANVAS.WIDTH - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN,
                 y: Math.random() * (CANVAS.HEIGHT - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN
             }
@@ -1145,7 +1148,7 @@ class Client {
         // Send start game message to other players
         this.roomManager.sendMessage(JSON.stringify({
             type: 'start-game',
-            hostSpawn: {
+            reservedSpawn: {
                 x: this.playerState.myPlayer.transform.pos.x,
                 y: this.playerState.myPlayer.transform.pos.y
             }
@@ -1526,7 +1529,7 @@ class Client {
             this.showUpgradeSelection(numUpgrades);
         }
     }
-    
+
     // [ Winner ]
     //
     /**

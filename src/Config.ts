@@ -516,7 +516,7 @@ export const GAME = {
         PHYSICS: {
             AMMORESERVES: true
         },
-        STATIC_OVERLAY: true, 
+        STATIC_OVERLAY: true,
         BACKGROUND_PARTICLES: true
     },
     MAX_PLAYERS: 4,
@@ -584,6 +584,27 @@ export const SFX = {
             ]
         }
     },
+    PLAYER: {
+        MALE: {
+            GRUNT: [
+                '/assets/audio/sfx/player/voice/male/player_male_hit_00.ogg',
+                '/assets/audio/sfx/player/voice/male/player_male_hit_01.ogg',
+                '/assets/audio/sfx/player/voice/male/player_male_hit_02.ogg',
+                '/assets/audio/sfx/player/voice/male/player_male_hit_03.ogg',
+                '/assets/audio/sfx/player/voice/male/player_male_hit_04.ogg',
+                '/assets/audio/sfx/player/voice/male/player_male_hit_05.ogg',
+                '/assets/audio/sfx/player/voice/male/player_male_hit_06.ogg',
+                '/assets/audio/sfx/player/voice/male/player_male_hit_07.ogg',
+                '/assets/audio/sfx/player/voice/male/player_male_hit_08.ogg',
+                '/assets/audio/sfx/player/voice/male/player_male_hit_09.ogg'
+            ]
+        },
+        // FEMALE: {
+        //     GRUNT: [
+
+        //     ]
+        // }
+    },
     WEAPON: {
         GLOCK: {
             ATTACK: [
@@ -594,6 +615,24 @@ export const SFX = {
                 '/assets/audio/sfx/weapons/glock/glock_attack_04.ogg',
                 '/assets/audio/sfx/weapons/glock/glock_attack_05.ogg'
             ],
+            EMPTY: [
+                '/assets/audio/sfx/weapons/glock/glock_empty_00.ogg'
+            ],
+            RELOAD: {
+                END: [
+                    '/assets/audio/sfx/weapons/glock/glock_reload_end_00.ogg',
+                    '/assets/audio/sfx/weapons/glock/glock_reload_end_01.ogg',
+                    '/assets/audio/sfx/weapons/glock/glock_reload_end_02.ogg',
+                    '/assets/audio/sfx/weapons/glock/glock_reload_end_03.ogg'
+                    
+                ],
+                START: [
+                    '/assets/audio/sfx/weapons/glock/glock_reload_start_00.ogg',
+                    '/assets/audio/sfx/weapons/glock/glock_reload_start_01.ogg',
+                    '/assets/audio/sfx/weapons/glock/glock_reload_start_02.ogg',
+                    '/assets/audio/sfx/weapons/glock/glock_reload_start_03.ogg'
+                ]
+            },
             SHELL: [
                 '/assets/audio/sfx/weapons/glock/glock_shell_00.ogg',
                 '/assets/audio/sfx/weapons/glock/glock_shell_01.ogg',
@@ -611,9 +650,6 @@ export const SFX = {
                 '/assets/audio/sfx/weapons/glock/glock_shell_13.ogg',
                 '/assets/audio/sfx/weapons/glock/glock_shell_14.ogg'
             ],
-            EMPTY: [
-                '/assets/audio/sfx/weapons/glock/glock_empty_00.ogg'
-            ]
         }
     }
 };

@@ -1,4 +1,4 @@
-import { DECALS } from "./Config";
+import { DECALS, PARTICLES } from "./Config";
 import { LobbyManager } from "./LobbyManager";
 
 // #region [ Core ]
@@ -230,7 +230,7 @@ export interface RoomMessage {
   gameActive?: boolean;
 }
 
-export interface LobbyPlayer { // TODO: Consider just merging this into the standard player
+export interface LobbyPlayer {
   id: string;
   color: string;
   isHost: boolean;
@@ -391,12 +391,14 @@ export type Particle = {
 }
 
 export type EmitterParams = {
+  type?: string;
   id: string;
   interval: number;
   lifetime: number;
   offset: Vec2;
   playerId: string;
   pos: Vec2;
+  particleType: typeof PARTICLES[keyof typeof PARTICLES];
 }
 
 export type Emitter = {
@@ -407,6 +409,7 @@ export type Emitter = {
   lifetime: number;
   offset: Vec2;
   playerId: string;
+  particleType: typeof PARTICLES[keyof typeof PARTICLES];
 }
 
 export type Decal = {

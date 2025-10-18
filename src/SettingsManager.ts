@@ -13,8 +13,7 @@ export class SettingsManager {
     /**
      * Initializes default options when the game starts.
      */
-    // TODO: Abstract this so that it doesn't require the config, but instead uses it for reference
-    public initSettings(): GameSettings { // TODO: Add ability to save/load to cache
+    public initSettings(): GameSettings {
         return { // [ IMPORTANT ] Keep track of the default game options here
             audio: {
                 mixer: {

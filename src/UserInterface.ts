@@ -934,37 +934,36 @@ export class UserInterface {
      * Initializes listeners to interface elements.
      */
     private initInterfaceListeners(): void {
-        // Speed
-        this.playerState.onStatChange('stats.speed', (value) => {
-            if (this.speedStat) this.speedStat.textContent = value.toString();
+        const uiDecimals = 2;
+        
+        // Accuracy (spread - inverted)
+        this.playerState.onStatChange('actions.primary.projectile.spread', (value) => {
+            if (this.accuracyStat) this.accuracyStat.textContent = value.toFixed(uiDecimals);
         });
 
         // Damage
         this.playerState.onStatChange('actions.primary.projectile.damage', (value) => {
-            if (this.damageStat) this.damageStat.textContent = Math.round(value).toString();
+            if (this.damageStat) this.damageStat.textContent = Math.round(value).toFixed(uiDecimals);
+        });
+
+        // Speed
+        this.playerState.onStatChange('stats.speed', (value) => {
+            if (this.speedStat) this.speedStat.textContent = value.toFixed(uiDecimals);
         });
 
         // Range
         this.playerState.onStatChange('actions.primary.projectile.range', (value) => {
-            if (this.rangeStat) this.rangeStat.textContent = value.toString();
+            if (this.rangeStat) this.rangeStat.textContent = value.toFixed(uiDecimals);
         });
 
         // Shot Speed
         this.playerState.onStatChange('actions.primary.projectile.speed', (value) => {
-            if (this.shotSpeedStat) this.shotSpeedStat.textContent = value.toString();
+            if (this.shotSpeedStat) this.shotSpeedStat.textContent = value.toFixed(uiDecimals);
         });
 
         // Luck
         this.playerState.onStatChange('stats.luck', (value) => {
-            if (this.luckStat) this.luckStat.textContent = value.toString();
-        });
-
-        // Accuracy (spread - inverted)
-        this.playerState.onStatChange('actions.primary.projectile.spread', (value) => {
-            if (this.accuracyStat) {
-                const accuracy = Math.max(1, Math.round(100 - (value * 2))); // Convert spread to accuracy
-                this.accuracyStat.textContent = accuracy.toString();
-            }
+            if (this.luckStat) this.luckStat.textContent = value.toFixed(uiDecimals);
         });
     }
     //

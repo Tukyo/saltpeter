@@ -545,6 +545,24 @@ export class CombatController {
                     }
                     this.utility.setSlider(healthSliderParams);
 
+                    // 20% chance to play hit sound
+                    if (this.utility.getRandomNum(0, 1) < 0.2) {
+                        this.audioManager.playAudioNetwork({
+                            src: this.utility.getRandomInArray(SFX.PLAYER.MALE.GRUNT), // TODO: Allow player to define gender
+                            listener: {
+                                x: this.playerState.myPlayer.transform.pos.x,
+                                y: this.playerState.myPlayer.transform.pos.y
+                            },
+                            output: 'sfx',
+                            pitch: { min: 0.95, max: 1.075 },
+                            spatial: {
+                                blend: 1.0,
+                                pos: { x: this.playerState.myPlayer.transform.pos.x, y: this.playerState.myPlayer.transform.pos.y }
+                            },
+                            volume: { min: 0.9, max: 1 }
+                        });
+                    }
+
                     // Notify everyone I was hit
                     this.roomManager.sendMessage(JSON.stringify({
                         type: 'player-hit',
@@ -590,6 +608,7 @@ export class CombatController {
                                     x: player.transform.pos.x,
                                     y: player.transform.pos.y
                                 },
+                                particleType: PARTICLES.BLOOD_DRIP,
                                 playerId: playerId,
                                 pos: {
                                     x: projectile.transform.pos.x,
@@ -872,6 +891,21 @@ export class CombatController {
             duration: 0,
             partIndex: 1
         }); // duration=0 means infinite/held
+
+        this.audioManager.playAudioNetwork({
+            src: this.utility.getRandomInArray(SFX.WEAPON.GLOCK.RELOAD.START), // TODO: Use current weapon
+            listener: {
+                x: this.playerState.myPlayer.transform.pos.x,
+                y: this.playerState.myPlayer.transform.pos.y
+            },
+            output: 'sfx',
+            pitch: { min: 0.975, max: 1.05 },
+            spatial: {
+                blend: 1.0,
+                pos: { x: this.playerState.myPlayer.transform.pos.x, y: this.playerState.myPlayer.transform.pos.y }
+            },
+            volume: { min: 0.985, max: 1 }
+        });
     }
 
     /**
@@ -896,6 +930,21 @@ export class CombatController {
             },
             duration: 175,
             partIndex: 1
+        });
+
+        this.audioManager.playAudioNetwork({
+            src: this.utility.getRandomInArray(SFX.WEAPON.GLOCK.RELOAD.END), // TODO: Use current weapon
+            listener: {
+                x: this.playerState.myPlayer.transform.pos.x,
+                y: this.playerState.myPlayer.transform.pos.y
+            },
+            output: 'sfx',
+            pitch: { min: 0.975, max: 1.05 },
+            spatial: {
+                blend: 1.0,
+                pos: { x: this.playerState.myPlayer.transform.pos.x, y: this.playerState.myPlayer.transform.pos.y }
+            },
+            volume: { min: 0.985, max: 1 }
         });
 
         console.log(`Reload complete...`);

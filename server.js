@@ -263,7 +263,7 @@ function handleGameMessage(ws, message) {
     } else if (gameData.type === 'new-round') {
       const room = rooms.get(message.roomId);
       if (room) {
-        const spawnMap = startNewRoundServer(message.roomId, gameData.hostSpawn);
+        const spawnMap = startNewRoundServer(message.roomId, gameData.reservedSpawn);
         gameData.spawnMap = spawnMap;
         message.message = JSON.stringify(gameData);
       }
@@ -322,15 +322,15 @@ function handleStartGame(roomId, userId, gameData) {
     room.playerHealth.set(client.userId, maxHealth);
   });
 
-  room.spawnMap = generateSpawnMap(room, userId, gameData.hostSpawn);
+  room.spawnMap = generateSpawnMap(room, userId, gameData.reservedSpawn);
   gameData.spawnMap = room.spawnMap;
 
   console.log(`Game started in room ${roomId}`);
 }
 
-function generateSpawnMap(room, hostUserId, hostSpawn) {
-  const spawnMap = { [hostUserId]: hostSpawn };
-  const usedSpawns = [hostSpawn];
+function generateSpawnMap(room, hostUserId, reservedSpawn) {
+  const spawnMap = { [hostUserId]: reservedSpawn };
+  const usedSpawns = [reservedSpawn];
 
   room.participants.forEach(client => {
     if (spawnMap[client.userId]) return;
@@ -462,7 +462,7 @@ function endRound(roomId, winnerId) {
   }, null);
 }
 
-function startNewRoundServer(roomId, hostSpawn) {
+function startNewRoundServer(roomId, reservedSpawn) {
   const room = rooms.get(roomId);
   if (!room) return;
 
@@ -477,7 +477,7 @@ function startNewRoundServer(roomId, hostSpawn) {
     room.playerHealth.set(client.userId, maxHealth);
   });
 
-  const spawnMap = generateSpawnMap(room, room.hostUserId, hostSpawn);
+  const spawnMap = generateSpawnMap(room, room.hostUserId, reservedSpawn);
 
   console.log('=== NEW ROUND STARTED ===');
   console.log('Room:', roomId);

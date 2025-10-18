@@ -90,7 +90,7 @@ export class UpgradeManager {
         }
     };
 
-    public upgrades: Upgrade[] = [ // TODO: Update all upgrades to use the player object instead of the olayer defaults
+    public upgrades: Upgrade[] = [
         // #region [ EQUIPMENT ]
         //
         {
@@ -446,21 +446,5 @@ export class UpgradeManager {
      */
     private getRarityWeight(rarity: UpgradeRarity): number {
         return this.rarityConfig[rarity].weight;
-    }
-
-    /**
-     * Toggle all equipment based on player state.
-     */
-    private toggleEquipment(equipmentId: string): void {
-        if (!this.hasEquipment(this.playerState.myPlayer, equipmentId)) return;
-
-        switch (equipmentId) {
-            case 'test_id':
-                break;
-            // TODO: Add more equipment types here
-
-            default:
-                console.warn(`Unknown equipment: ${equipmentId}`);
-        }
     }
 }
