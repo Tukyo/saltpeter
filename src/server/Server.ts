@@ -59,7 +59,7 @@ type Vec2 = { x: number, y: number }
 // #region STATE
 // =============================================================================
 
-const rooms = new Map(); // roomId -> RoomState
+const rooms = new Map<string, Room>();
 
 //
 // #endregion
@@ -622,6 +622,7 @@ function joinRoom(ws: ConnectedClient, roomId: string, userId: string) {
   }
 
   const room = rooms.get(roomId);
+  if (!room) return;
 
   // Check if room is full
   if (room.participants.size >= room.maxPlayers) {
@@ -670,6 +671,8 @@ function leaveRoom(ws: ConnectedClient, roomId: string) {
   if (!rooms.has(roomId)) return;
 
   const room = rooms.get(roomId);
+  if (!room) return;
+  
   const wasHost = room.hostUserId === ws.userId;
   room.participants.delete(ws);
 

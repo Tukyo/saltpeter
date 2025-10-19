@@ -466,7 +466,7 @@ toggle[checked]::before {
     flex-wrap: nowrap;
     flex-direction: row;
     align-items: center;
-    gap: 5px;
+    gap: 2px;
     justify-content: center;
     overflow: hidden;
     background: var(--black-60);
