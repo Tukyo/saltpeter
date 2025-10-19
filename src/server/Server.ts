@@ -1,8 +1,8 @@
 
-const http = require("http");
-const fs = require("fs");
-const path = require("path");
-const WebSocket = require("ws");
+import http from "http";
+import fs from "fs";
+import path from "path";
+import { WebSocket, WebSocketServer } from "ws";
 
 // =============================================================================
 // #region CONFIGURATION
@@ -18,6 +18,39 @@ const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
 const BORDER_MARGIN = 15;
 
+interface ConnectedClient extends WebSocket {
+  isAlive: boolean;
+  currentRoom: string | null;
+  userId: string | null;
+}
+
+interface Room {
+  hostUserId: string;
+  participants: Set<ConnectedClient>;
+  lastActivityTime: number;
+  isPrivate: boolean;
+  upgradesEnabled: boolean;
+  maxWins: number;
+  maxPlayers: number;
+  gameActive: boolean;
+  roundActive: boolean;
+  alivePlayers: Set<string>;
+  playerHealth: Map<string, number>;
+  playerMaxHealth: Map<string, number>;
+  spawnMap?: { [playerId: string]: { x: number; y: number } };
+}
+
+interface RoomMessage {
+  type: string;
+  roomId: string;
+  userId: string;
+  message?: string;
+  key?: string;
+  data?: any;
+  id?: string;
+}
+
+type Vec2 = { x: number, y: number }
 //
 // #endregion
 // =============================================================================
@@ -38,11 +71,13 @@ const rooms = new Map(); // roomId -> RoomState
 
 // Create HTTP server to serve files
 const server = http.createServer((req, res) => {
+  if (!req.url) return;
+
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   // Check if there's a room query parameter - serve index.html
   if (url.pathname === '/' && url.searchParams.has('room')) {
-    let filePath = path.join(__dirname, "public", "index.html");
+    let filePath = path.join(process.cwd(), "public", "index.html");
 
     fs.readFile(filePath, (err, data) => {
       if (err) {
@@ -58,10 +93,10 @@ const server = http.createServer((req, res) => {
 
   // Handle quickplay endpoint
   if (req.url === "/quickplay") {
-    const availableRooms = [];
+    const availableRooms: { roomId: string; playerCount: number }[] = [];
 
     rooms.forEach((room, roomId) => {
-      // FIX: Only consider rooms with at least 1 connected player
+      // Only consider rooms with at least 1 connected player
       if (!room.gameActive && !room.isPrivate && room.participants.size > 0 && room.participants.size < room.maxPlayers) {
         availableRooms.push({
           roomId: roomId,
@@ -94,9 +129,9 @@ const server = http.createServer((req, res) => {
   let filePath = req.url === "/" ? "/index.html" : req.url;
 
   if (filePath === "/app.js") {
-    filePath = path.join(__dirname, "dist", "app.js");
+    filePath = path.join(process.cwd(), "dist", "app.js");
   } else {
-    filePath = path.join(__dirname, "public", filePath);
+    filePath = path.join(process.cwd(), "public", filePath);
   }
 
   fs.readFile(filePath, (err, data) => {
@@ -124,39 +159,41 @@ const server = http.createServer((req, res) => {
 // =============================================================================
 
 // Attach WebSocket server to the same HTTP server
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocketServer({ server });
 
-wss.on("connection", (ws) => {
+wss.on("connection", (ws: WebSocket) => {
+  const client = ws as ConnectedClient;
+
   console.log("New client connected!");
-  ws.currentRoom = null;
-  ws.userId = null;
+  client.currentRoom = null;
+  client.userId = null;
+  client.isAlive = true;
 
-  ws.isAlive = true;
-  ws.on('pong', () => {
-    ws.isAlive = true;
+  client.on('pong', () => {
+    client.isAlive = true;
   });
 
-  ws.on("message", (data) => {
+  client.on("message", (data) => {
     try {
-      const message = JSON.parse(data);
-      handleRoomMessage(ws, message);
+      const message = JSON.parse(data.toString());
+      handleRoomMessage(client, message);
     } catch (error) {
       // Handle plain text messages (backwards compatibility)
       console.log(`Received plain message: ${data}`);
-      if (ws.currentRoom) {
-        broadcastToRoom(ws.currentRoom, {
+      if (client.currentRoom) {
+        broadcastToRoom(client.currentRoom, {
           type: 'room-message',
-          userId: ws.userId || 'anonymous',
+          userId: client.userId || 'anonymous',
           message: data.toString()
-        }, ws);
+        }, client);
       }
     }
   });
 
-  ws.on("close", () => {
+  client.on("close", () => {
     console.log("Client disconnected.");
-    if (ws.currentRoom) {
-      leaveRoom(ws, ws.currentRoom);
+    if (client.currentRoom) {
+      leaveRoom(client, client.currentRoom);
     }
   });
 });
@@ -171,17 +208,19 @@ wss.on("connection", (ws) => {
 
 // Detect dead connections
 const heartbeatInterval = setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (ws.isAlive === false) {
-      console.log('Terminating dead connection for user:', ws.userId);
-      if (ws.currentRoom) {
-        leaveRoom(ws, ws.currentRoom);
+  wss.clients.forEach((ws: WebSocket) => {
+    const client = ws as ConnectedClient;
+
+    if (client.isAlive === false) {
+      console.log('Terminating dead connection for user:', client.userId);
+      if (client.currentRoom) {
+        leaveRoom(client, client.currentRoom);
       }
-      return ws.terminate();
+      return client.terminate();
     }
 
-    ws.isAlive = false;
-    ws.ping();
+    client.isAlive = false;
+    client.ping();
   });
 }, HEARTBEAT_INTERVAL);
 
@@ -193,9 +232,9 @@ const cleanupInterval = setInterval(() => {
 
   rooms.forEach((room, roomId) => {
     // Check if all participants are actually connected
-    const connectedParticipants = new Set();
+    const connectedParticipants = new Set<ConnectedClient>();
 
-    room.participants.forEach(ws => {
+    room.participants.forEach((ws: ConnectedClient) => {
       if (ws.readyState === WebSocket.OPEN) {
         connectedParticipants.add(ws);
       } else {
@@ -244,8 +283,8 @@ wss.on('close', () => {
 // #region ROOM MESSAGE
 // =============================================================================
 
-function handleRoomMessage(ws, message) {
-  const handlers = {
+function handleRoomMessage(ws: ConnectedClient, message: RoomMessage): void {
+  const handlers: { [key: string]: () => void } = {
     'create-room': () => createRoom(ws, message.roomId, message.userId),
     'join-room': () => joinRoom(ws, message.roomId, message.userId),
     'leave-room': () => leaveRoom(ws, message.roomId),
@@ -259,7 +298,7 @@ function handleRoomMessage(ws, message) {
   }
 }
 
-function handleGameMessage(ws, message) {
+function handleGameMessage(ws: ConnectedClient, message: RoomMessage): void {
   if (ws.currentRoom !== message.roomId || !message.message) return;
 
   const room = rooms.get(message.roomId);
@@ -324,7 +363,7 @@ function handleGameMessage(ws, message) {
 // #region GAME LOGIC
 // =============================================================================
 
-function handleStartGame(roomId, userId, gameData) {
+function handleStartGame(roomId: string, userId: string, gameData: any): void {
   const room = rooms.get(roomId);
   if (!room) return;
 
@@ -334,10 +373,12 @@ function handleStartGame(roomId, userId, gameData) {
   room.alivePlayers.clear();
   room.playerHealth.clear();
 
-  room.participants.forEach(client => {
-    room.alivePlayers.add(client.userId);
-    const maxHealth = room.playerMaxHealth.get(client.userId) || 100;
-    room.playerHealth.set(client.userId, maxHealth);
+  room.participants.forEach((client: ConnectedClient) => {
+    if (client.userId) {
+      room.alivePlayers.add(client.userId);
+      const maxHealth = room.playerMaxHealth.get(client.userId) || 100;
+      room.playerHealth.set(client.userId, maxHealth);
+    }
   });
 
   room.spawnMap = generateSpawnMap(room, userId, gameData.reservedSpawn);
@@ -346,12 +387,12 @@ function handleStartGame(roomId, userId, gameData) {
   console.log(`Game started in room ${roomId}`);
 }
 
-function generateSpawnMap(room, hostUserId, reservedSpawn) {
-  const spawnMap = { [hostUserId]: reservedSpawn };
-  const usedSpawns = [reservedSpawn];
+function generateSpawnMap(room: Room, hostUserId: string, reservedSpawn: Vec2) {
+  const spawnMap: { [playerId: string]: Vec2 } = { [hostUserId]: reservedSpawn };
+  const usedSpawns: Vec2[] = [reservedSpawn];
 
-  room.participants.forEach(client => {
-    if (spawnMap[client.userId]) return;
+  room.participants.forEach((client: ConnectedClient) => {
+    if (!client.userId || spawnMap[client.userId]) return;
 
     const spawn = findValidSpawn(usedSpawns);
     usedSpawns.push(spawn);
@@ -361,8 +402,9 @@ function generateSpawnMap(room, hostUserId, reservedSpawn) {
   return spawnMap;
 }
 
-function findValidSpawn(usedSpawns) {
-  let spawn, tries = 0;
+function findValidSpawn(usedSpawns: Vec2[]): Vec2 {
+  let spawn: Vec2;
+  let tries = 0;
 
   do {
     spawn = {
@@ -378,15 +420,15 @@ function findValidSpawn(usedSpawns) {
   return spawn;
 }
 
-function handleLobbyOptions(roomId, userId, gameData) {
+function handleLobbyOptions(roomId: string, userId: string, gameData: any): void {
   const room = rooms.get(roomId);
   if (!room || room.hostUserId !== userId) return;
 
-  const optionUpdates = {
-    privateRoom: (val) => { room.isPrivate = val; console.log(`Room ${roomId} privacy: ${val ? 'Private' : 'Public'}`); },
-    maxWins: (val) => { room.maxWins = val; console.log(`Room ${roomId} max wins: ${val}`); },
-    maxPlayers: (val) => { room.maxPlayers = val; console.log(`Room ${roomId} max players: ${val}`); },
-    upgradesEnabled: (val) => { room.upgradesEnabled = val; console.log(`Room ${roomId} upgrades: ${val}`); }
+  const optionUpdates: { [key: string]: (val: any) => void } = {
+    privateRoom: (val: boolean) => { room.isPrivate = val; console.log(`Room ${roomId} privacy: ${val ? 'Private' : 'Public'}`); },
+    maxWins: (val: number) => { room.maxWins = val; console.log(`Room ${roomId} max wins: ${val}`); },
+    maxPlayers: (val: number) => { room.maxPlayers = val; console.log(`Room ${roomId} max players: ${val}`); },
+    upgradesEnabled: (val: boolean) => { room.upgradesEnabled = val; console.log(`Room ${roomId} upgrades: ${val}`); }
   };
 
   Object.entries(gameData).forEach(([key, value]) => {
@@ -404,7 +446,7 @@ function handleLobbyOptions(roomId, userId, gameData) {
 // #region ROUND MANAGEMENT
 // =============================================================================
 
-function handlePlayerHealthUpdate(roomId, userId, newHealth) {
+function handlePlayerHealthUpdate(roomId: string, userId: string, newHealth: number): void {
   const room = rooms.get(roomId);
 
   if (!room || !room.roundActive) {
@@ -430,7 +472,7 @@ function handlePlayerHealthUpdate(roomId, userId, newHealth) {
   }
 }
 
-function checkRoundEnd(roomId) {
+function checkRoundEnd(roomId: string): void {
   const room = rooms.get(roomId);
 
   if (!room || !room.roundActive) {
@@ -444,7 +486,11 @@ function checkRoundEnd(roomId) {
 
   // Round ends when 1 or 0 players alive
   if (aliveCount <= 1) {
-    const winnerId = aliveCount === 1 ? Array.from(room.alivePlayers)[0] : null;
+    let winnerId: string | null = null;
+    for (const playerId of room.alivePlayers) {
+      winnerId = playerId;
+      break;
+    }
     console.log('[TRIGGERING ROUND END] Winner:', winnerId || 'No one');
     endRound(roomId, winnerId);
   } else {
@@ -452,7 +498,7 @@ function checkRoundEnd(roomId) {
   }
 }
 
-function endRound(roomId, winnerId) {
+function endRound(roomId: string, winnerId: string | null): void {
   const room = rooms.get(roomId);
 
   if (!room || !room.roundActive) {
@@ -480,7 +526,7 @@ function endRound(roomId, winnerId) {
   }, null);
 }
 
-function startNewRoundServer(roomId, reservedSpawn) {
+function startNewRoundServer(roomId: string, reservedSpawn: Vec2): { [playerId: string]: Vec2 } | undefined {
   const room = rooms.get(roomId);
   if (!room) return;
 
@@ -489,13 +535,20 @@ function startNewRoundServer(roomId, reservedSpawn) {
   room.playerHealth.clear();
 
   // Initialize all players as alive with their tracked max health
-  room.participants.forEach(client => {
-    room.alivePlayers.add(client.userId);
-    const maxHealth = room.playerMaxHealth.get(client.userId) || 100;
-    room.playerHealth.set(client.userId, maxHealth);
+  room.participants.forEach((client: ConnectedClient) => {
+    if (client.userId) {
+      room.alivePlayers.add(client.userId);
+      const maxHealth = room.playerMaxHealth.get(client.userId) || 100;
+      room.playerHealth.set(client.userId, maxHealth);
+    }
   });
 
   const spawnMap = generateSpawnMap(room, room.hostUserId, reservedSpawn);
+
+  const healthString: string[] = [];
+  room.playerHealth.forEach((hp: number, id: string) => {
+    healthString.push(`${id}: ${hp}hp`);
+  });
 
   console.log('=== NEW ROUND STARTED ===');
   console.log('Room:', roomId);
@@ -503,7 +556,7 @@ function startNewRoundServer(roomId, reservedSpawn) {
   console.log('Host:', room.hostUserId);
   console.log('Alive Players:', Array.from(room.alivePlayers).join(', '));
   console.log('Spawn Map:', JSON.stringify(spawnMap, null, 2));
-  console.log('Player Health:', Array.from(room.playerHealth.entries()).map(([id, hp]) => id + ': ' + hp + 'hp').join(', '));
+  console.log('Player Health:', healthString.join(', '));
   console.log('========================');
 
   return spawnMap;
@@ -516,7 +569,7 @@ function startNewRoundServer(roomId, reservedSpawn) {
 // #region ROOM
 // =============================================================================
 
-function createRoom(ws, roomId, userId) {
+function createRoom(ws: ConnectedClient, roomId: string, userId: string): void {
   if (rooms.has(roomId)) {
     ws.send(JSON.stringify({
       type: 'room-error',
@@ -558,7 +611,7 @@ function createRoom(ws, roomId, userId) {
   console.log(`Room ${roomId} created by ${userId}`);
 }
 
-function joinRoom(ws, roomId, userId) {
+function joinRoom(ws: ConnectedClient, roomId: string, userId: string) {
   if (!rooms.has(roomId)) {
     ws.send(JSON.stringify({
       type: 'room-error',
@@ -612,7 +665,8 @@ function joinRoom(ws, roomId, userId) {
 
   console.log(`User ${userId} joined room ${roomId} (game active: ${room.gameActive})`);
 }
-function leaveRoom(ws, roomId) {
+
+function leaveRoom(ws: ConnectedClient, roomId: string) {
   if (!rooms.has(roomId)) return;
 
   const room = rooms.get(roomId);
@@ -631,40 +685,54 @@ function leaveRoom(ws, roomId) {
   // Handle different scenarios based on remaining players
   if (room.participants.size === 1 && room.gameActive) {
     // Only 1 player left during active game - return to lobby
-    const lastPlayer = Array.from(room.participants)[0];
-    room.hostUserId = lastPlayer.userId;
-    room.gameActive = false;
+    let lastPlayer: ConnectedClient | null = null;
+    for (const client of room.participants) {
+      lastPlayer = client;
+      break;
+    }
 
-    broadcastToRoom(roomId, {
-      type: 'room-message',
-      userId: 'server',
-      message: JSON.stringify({
-        type: 'return-to-lobby',
-        reason: 'last-player',
-        newHostId: lastPlayer.userId
-      }),
-      roomId: roomId
-    }, null);
+    if (lastPlayer && lastPlayer.userId) {
+      room.hostUserId = lastPlayer.userId;
+      room.gameActive = false;
 
-    console.log(`Last player ${lastPlayer.userId} in room ${roomId}, returning to lobby as host`);
+      broadcastToRoom(roomId, {
+        type: 'room-message',
+        userId: 'server',
+        message: JSON.stringify({
+          type: 'return-to-lobby',
+          reason: 'last-player',
+          newHostId: lastPlayer.userId
+        }),
+        roomId: roomId
+      }, null);
+
+      console.log(`Last player ${lastPlayer.userId} in room ${roomId}, returning to lobby as host`);
+    }
 
   } else if (wasHost && room.participants.size > 0) {
     // Host left but others remain - migrate host
-    const newHost = Array.from(room.participants)[0];
-    room.hostUserId = newHost.userId;
+    let newHost: ConnectedClient | null = null;
+    for (const client of room.participants) {
+      newHost = client;
+      break;
+    }
 
-    broadcastToRoom(roomId, {
-      type: 'room-message',
-      userId: 'server',
-      message: JSON.stringify({
-        type: 'promote-player',
-        targetPlayerId: newHost.userId,
-        reason: 'host-migration'
-      }),
-      roomId: roomId
-    }, null);
+    if (newHost && newHost.userId) {
+      room.hostUserId = newHost.userId;
 
-    console.log(`Host migrated from ${ws.userId} to ${newHost.userId} in room ${roomId}`);
+      broadcastToRoom(roomId, {
+        type: 'room-message',
+        userId: 'server',
+        message: JSON.stringify({
+          type: 'promote-player',
+          targetPlayerId: newHost.userId,
+          reason: 'host-migration'
+        }),
+        roomId: roomId
+      }, null);
+
+      console.log(`Host migrated from ${ws.userId} to ${newHost.userId} in room ${roomId}`);
+    }
   }
 
   // Delete room if empty
@@ -678,13 +746,13 @@ function leaveRoom(ws, roomId) {
   ws.userId = null;
 }
 
-function broadcastToRoom(roomId, message, sender = null) {
+function broadcastToRoom(roomId: string, message: any, sender: ConnectedClient | null = null): void {
   if (!rooms.has(roomId)) return;
 
-  const room = rooms.get(roomId);
+  const room = rooms.get(roomId)!;
   const messageStr = JSON.stringify(message);
 
-  room.participants.forEach(client => {
+  room.participants.forEach((client: ConnectedClient) => {
     // Send to all if sender is null, or exclude sender unless it's a promote-player message
     if (client.readyState === WebSocket.OPEN &&
       (sender === null ||
@@ -703,20 +771,25 @@ function broadcastToRoom(roomId, message, sender = null) {
 // #region ADMIN
 // =============================================================================
 
-function handleAdminCommand(ws, message) {
-  if (message.key !== ADMIN_KEY) { // Verify admin key
+function handleAdminCommand(ws: ConnectedClient, message: RoomMessage): void {
+  if (message.key !== ADMIN_KEY) {
     console.log(`❌ Unauthorized admin command attempt from ${ws.userId}`);
-    return sendError(ws, 'Unauthorized');
+    ws.send(JSON.stringify({
+      type: 'admin-error',
+      message: 'Unauthorized',
+      userId: 'server'
+    }));
+    return;
   }
 
-  const commands = {
+  const commands: { [key: string]: () => void } = {
     'clear_rooms': clearAllRooms,
     'list_rooms': () => listRooms(ws),
     'close_room': () => closeRoom(message.data?.roomId),
     'server_stats': () => sendServerStats(ws)
   };
 
-  const command = commands[message.id];
+  const command = commands[message.id || ''];
   if (command) {
     console.log(`🔧 Admin command executed: ${message.id} by ${ws.userId}`);
     command();
@@ -727,11 +800,15 @@ function handleAdminCommand(ws, message) {
       userId: 'server'
     }));
   } else {
-    sendError(ws, `Unknown admin command: ${message.id}`);
+    ws.send(JSON.stringify({
+      type: 'admin-error',
+      message: `Unknown admin command: ${message.id}`,
+      userId: 'server'
+    }));
   }
 }
 
-function clearAllRooms() {
+function clearAllRooms(): void {
   const count = rooms.size;
 
   rooms.forEach((room, roomId) => {
@@ -742,8 +819,8 @@ function clearAllRooms() {
   console.log(`🧹 Cleared ${count} rooms via admin command`);
 }
 
-function listRooms(ws) {
-  const roomList = [];
+function listRooms(ws: ConnectedClient): void {
+  const roomList: any[] = [];
   rooms.forEach((room, roomId) => {
     roomList.push({
       roomId,
@@ -765,11 +842,11 @@ function listRooms(ws) {
   }));
 }
 
-function closeRoom(roomId) {
+function closeRoom(roomId: string | undefined): void {
   if (!roomId || !rooms.has(roomId)) return;
 
-  const room = rooms.get(roomId);
-  room.participants.forEach(client => {
+  const room = rooms.get(roomId)!;
+  room.participants.forEach((client: ConnectedClient) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(JSON.stringify({
         type: 'room-message',
@@ -787,7 +864,7 @@ function closeRoom(roomId) {
   console.log(`🚫 Closed room: ${roomId}`);
 }
 
-function sendServerStats(ws) {
+function sendServerStats(ws: ConnectedClient): void {
   const stats = {
     totalRooms: rooms.size,
     totalPlayers: wss.clients.size,
@@ -805,11 +882,11 @@ function sendServerStats(ws) {
   }));
 }
 
-function kickPlayersFromRoom(roomId, reason) {
+function kickPlayersFromRoom(roomId: string, reason: string): void {
   const room = rooms.get(roomId);
   if (!room) return;
 
-  room.participants.forEach(client => {
+  room.participants.forEach((client: ConnectedClient) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(JSON.stringify({
         type: 'room-message',
@@ -824,6 +901,7 @@ function kickPlayersFromRoom(roomId, reason) {
     }
   });
 }
+
 //
 // #endregion
 // =============================================================================

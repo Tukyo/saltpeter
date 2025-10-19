@@ -1,11 +1,12 @@
 import { CANVAS } from "./Config";
-
 import { Player } from "./Types";
-import { PlayerState } from "./player/PlayerState";
+
+import { ObjectsManager } from "./ObjectsManager";
 import { RoomManager } from "./RoomManager";
 
 import { AmmoReservesUIController } from "./player/AmmoReservesUIController";
-import { ObjectsManager } from "./ObjectsManager";
+import { PlayerState } from "./player/PlayerState";
+
 
 export class CollisionsManager {
     constructor(

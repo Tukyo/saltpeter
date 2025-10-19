@@ -1,5 +1,6 @@
-import { SettingsManager } from "../SettingsManager";
 import { ReserveBulletParticle } from "../Types";
+
+import { SettingsManager } from "../SettingsManager";
 import { UserInterface } from "../UserInterface";
 import { Utility } from "../Utility";
 

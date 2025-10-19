@@ -1,9 +1,9 @@
 import { AMMO_BOX, CANVAS, GAME, PLAYER_DEFAULTS, UI } from "./Config";
+import { CharacterLayer, Player, Projectile } from "./Types";
 
 import { Animator } from "./Animator";
 import { CharacterManager } from "./CharacterManager";
 import { ObjectsManager } from "./ObjectsManager";
-import { CharacterLayer, Player, Projectile } from "./Types";
 import { UserInterface } from "./UserInterface";
 
 export class RenderingManager {

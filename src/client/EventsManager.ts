@@ -1,6 +1,7 @@
+import { GAMEPAD_MAP } from "./Config";
+
 import { Animator } from "./Animator";
 import { ChatManager } from "./ChatManager";
-import { GAMEPAD_MAP } from "./Config";
 import { ControlsManager } from "./ControlsManager";
 import { GameState } from "./GameState";
 import { RoomController } from "./RoomController";

@@ -1,10 +1,11 @@
 import { CANVAS, GAMEPAD_MAP } from "./Config";
-
 import { GameSettings, Leaderboard, Players } from "./Types";
+
 import { LobbyManager } from "./LobbyManager";
 import { SettingsManager } from "./SettingsManager";
-import { PlayerState } from "./player/PlayerState";
 import { Utility } from "./Utility";
+
+import { PlayerState } from "./player/PlayerState";
 
 export class UserInterface {
     // [ Canvas ]

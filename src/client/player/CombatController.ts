@@ -1,11 +1,11 @@
 import { CANVAS, DECALS, OBJECT_DEFAULTS, PARTICLES, SFX, SHRAPNEL } from "../Config";
+import { AttackType, PlayerHitParams, Projectile, ProjectileOverrides, Shrapnel, Vec2 } from "../Types";
 
 import { AmmoReservesUIController } from "./AmmoReservesUIController";
 import { Animator } from "../Animator";
 import { AudioManager } from "../AudioManager";
 import { CollisionsManager } from "../CollisionsManager";
 import { DecalsManager } from "../DecalsManager";
-import { AttackType, PlayerHitParams, Projectile, ProjectileOverrides, Shrapnel, Vec2 } from "../Types";
 import { GameState } from "../GameState";
 import { LuckController } from "./LuckController";
 import { ParticlesManager } from "../ParticlesManager";

@@ -1,7 +1,7 @@
-import { CacheManager } from "./CacheManager";
 import { AUDIO, GAME } from "./Config";
-
 import { GameSettings } from "./Types";
+
+import { CacheManager } from "./CacheManager";
 
 export class SettingsManager {
     private gameSettings: GameSettings

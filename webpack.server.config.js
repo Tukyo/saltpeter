@@ -1,13 +1,19 @@
 const path = require('path');
 
 module.exports = {
-  entry: './src/client.ts',
+  entry: './src/server/Server.ts',
+  target: 'node',
   mode: 'production',
   module: {
     rules: [
       {
         test: /\.ts$/,
-        use: 'ts-loader',
+        use: {
+          loader: 'ts-loader',
+          options: {
+            configFile: 'tsconfig.server.json'
+          }
+        },
         exclude: /node_modules/,
       },
     ],
@@ -16,8 +22,11 @@ module.exports = {
     extensions: ['.ts', '.js'],
   },
   output: {
-    filename: 'app.js',
+    filename: 'server.js',
     path: path.resolve(__dirname, 'dist'),
-    clean: true,
+    clean: false,
   },
+  externals: {
+    ws: 'commonjs ws'
+  }
 };

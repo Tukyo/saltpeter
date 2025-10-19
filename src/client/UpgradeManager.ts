@@ -1,8 +1,10 @@
 import { PLAYER_DEFAULTS } from './Config';
+import { Player, Upgrade, UpgradeRarity, UpgradeType } from './Types';
+
+import { Utility } from './Utility';
+
 import { AmmoReservesUIController } from './player/AmmoReservesUIController';
 import { PlayerState } from './player/PlayerState';
-import { Player, Upgrade, UpgradeRarity, UpgradeType } from './Types';
-import { Utility } from './Utility';
 
 /**
  Upgrade Ideas:

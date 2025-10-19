@@ -1,6 +1,6 @@
 import { ROOM } from './Config';
-
 import { RoomMessage } from './Types';
+
 import { Utility } from './Utility';
 
 export class RoomManager {

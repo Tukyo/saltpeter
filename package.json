@@ -4,10 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "webpack",
-    "build:dev": "webpack --mode development",
-    "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "webpack --config webpack.client.config.js",
+    "build:server": "webpack --config webpack.server.config.js",
+    "build:dev": "npm run build:client:dev && npm run build:server",
+    "build:client:dev": "webpack --mode development --config webpack.client.config.js",
+    "start": "node dist/server.js",
+    "dev": "npm run build && npm start"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +19,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "ts-loader": "^9.5.4",
     "typescript": "^5.9.2",
     "webpack": "^5.101.3",

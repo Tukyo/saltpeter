@@ -1,5 +1,6 @@
-import { SettingsManager } from "./SettingsManager";
 import { Vec2 } from "./Types";
+
+import { SettingsManager } from "./SettingsManager";
 
 export class ControlsManager {
     private activeKeys: Set<string> = new Set();
