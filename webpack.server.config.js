@@ -4,6 +4,7 @@ module.exports = {
   entry: './src/server/Server.ts',
   target: 'node',
   mode: 'production',
+  devtool: 'source-map',
   module: {
     rules: [
       {

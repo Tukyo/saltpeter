@@ -11,7 +11,7 @@ export class WebsocketManager {
         private gameState: GameState,
         private roomManager: RoomManager,
         private utility: Utility
-    ) {}
+    ) { }
 
     /**
      * Used for creating the websocket connection between clients.
@@ -20,7 +20,18 @@ export class WebsocketManager {
      */
     public connectWebSocket(): void {
         const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
-        this.ws = new WebSocket(`${wsProtocol}//${location.host}`);
+        let wsHost: string;
+
+        if (location.port === '8888') { // Electron testing → connect to localhost:8080
+            wsHost = 'localhost:8080';
+            this.ws = new WebSocket(`ws://${wsHost}`);
+        } else if (location.port === '9999') { // Electron production → connect to saltpeter.xyz
+            wsHost = 'saltpeter.xyz';
+            this.ws = new WebSocket(`wss://${wsHost}`);
+        } else { // Browser (not Electron)
+            wsHost = location.hostname === 'localhost' ? 'localhost:8080' : location.host;
+            this.ws = new WebSocket(`${wsProtocol}//${wsHost}`);
+        }
 
         this.ws.onopen = () => {
             console.log("Connected to WebSocket");
@@ -37,6 +48,7 @@ export class WebsocketManager {
             console.error("WebSocket error:", error);
         };
     }
+
 
     /**
      * Returns the current WebSocket connection.

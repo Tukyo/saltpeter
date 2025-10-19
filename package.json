@@ -10,7 +10,9 @@
     "build:dev": "npm run build:client:dev && npm run build:server",
     "build:client:dev": "webpack --mode development --config webpack.client.config.js",
     "start": "node dist/server.js",
-    "dev": "npm run build && npm start"
+    "dev": "npm run build && npm start",
+    "electron": "electron electron/main.js",
+    "electron:build": "npm run build:client && electron-builder"
   },
   "keywords": [],
   "author": "",
@@ -20,9 +22,24 @@
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",
+    "electron": "^38.3.0",
+    "electron-builder": "^26.0.12",
     "ts-loader": "^9.5.4",
     "typescript": "^5.9.2",
     "webpack": "^5.101.3",
     "webpack-cli": "^5.1.4"
+  },
+  "build": {
+    "appId": "com.saltpeter.game",
+    "productName": "Saltpeter",
+    "files": [
+      "electron/**/*",
+      "dist/app.js",
+      "dist/app.js.map",
+      "public/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    }
   }
 }

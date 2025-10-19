@@ -3,6 +3,7 @@ const path = require('path');
 module.exports = {
   entry: './src/client/client.ts',
   mode: 'production',
+  devtool: 'source-map',
   module: {
     rules: [
       {
