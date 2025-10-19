@@ -1,17 +1,23 @@
-import { NETWORK } from "../Config";
+import { DECALS, NETWORK, PARTICLES, SFX } from "../Config";
+import { DeathDecal, EmitterParams, PlayerHitParams, SetSliderParams } from "../Types";
 
+import { AudioManager } from "../AudioManager";
 import { GameState } from "../GameState";
+import { LuckController } from "./LuckController";
+import { MoveController } from "./MoveController";
 import { ObjectsManager } from "../ObjectsManager";
 import { ParticlesManager } from "../ParticlesManager";
 import { PlayerState } from "./PlayerState";
 import { RoomManager } from "../RoomManager";
-import { MoveController } from "./MoveController";
-import { LuckController } from "./LuckController";
-import { DeathDecal } from "../Types";
 import { Utility } from "../Utility";
+import { DecalsManager } from "../DecalsManager";
+import { UserInterface } from "../UserInterface";
+
 
 export class PlayerController {
     constructor(
+        private audioManager: AudioManager,
+        private decalsManager: DecalsManager,
         private gameState: GameState,
         private luckController: LuckController,
         private moveController: MoveController,
@@ -19,9 +25,19 @@ export class PlayerController {
         private particlesManager: ParticlesManager,
         private playerState: PlayerState,
         private roomManager: RoomManager,
+        private ui: UserInterface,
         private userId: string,
         private utility: Utility
-    ) { }
+    ) {
+        this.setupEventListeners();
+    }
+
+    private setupEventListeners(): void {
+        window.addEventListener('customEvent_playerHitRelay', ((event: CustomEvent) => {
+            console.log('Player hit event received:', event.detail.params);
+            this.playerHit(event.detail.params);
+        }) as EventListener);
+    }
 
     /**
      * Updates the local player's position and movement state.
@@ -89,6 +105,104 @@ export class PlayerController {
 
         if (Math.abs(this.playerState.playerVelocityX) < 0.01) this.playerState.playerVelocityX = 0;
         if (Math.abs(this.playerState.playerVelocityY) < 0.01) this.playerState.playerVelocityY = 0;
+    }
+
+    /**
+     * Processes local hits to players. Sends network message for syncing.
+     */
+    public playerHit(params: PlayerHitParams): void {
+        // Update health slider
+        const sliderLerpTime = 300; //TODO: Define UI lerping times globally
+        const healthSliderParams: SetSliderParams = {
+            sliderId: 'healthBar',
+            targetValue: this.playerState.myPlayer.stats.health.value,
+            maxValue: this.playerState.myPlayer.stats.health.max,
+            lerpTime: sliderLerpTime
+        }
+        this.utility.setSlider(healthSliderParams);
+
+        if (params.target.id === this.userId) { // Random chance to play grunt when I'm hit
+            if (this.utility.getRandomNum(0, 1) < 0.2) { // 20%
+                this.audioManager.playAudioNetwork({
+                    src: this.utility.getRandomInArray(SFX.PLAYER.MALE.GRUNT), // TODO: Allow player to define gender
+                    listener: {
+                        x: this.playerState.myPlayer.transform.pos.x,
+                        y: this.playerState.myPlayer.transform.pos.y
+                    },
+                    output: 'sfx',
+                    pitch: { min: 0.95, max: 1.075 },
+                    spatial: {
+                        blend: 1.0,
+                        pos: { x: this.playerState.myPlayer.transform.pos.x, y: this.playerState.myPlayer.transform.pos.y }
+                    },
+                    volume: { min: 0.9, max: 1 }
+                });
+            }
+        } else { // The player hit was not me
+            this.audioManager.playAudioNetwork({ // Play hit sound
+                src: this.utility.getRandomInArray(SFX.IMPACT.FLESH.BULLET), // TODO: User current body material
+                listener: {
+                    x: this.playerState.myPlayer.transform.pos.x,
+                    y: this.playerState.myPlayer.transform.pos.y
+                },
+                output: 'sfx',
+                pitch: { min: 0.925, max: 1.15 },
+                spatial: {
+                    blend: 1.0,
+                    pos: { x: params.source.transform.pos.x, y: params.source.transform.pos.y }
+                },
+                volume: { min: 0.95, max: 1 }
+            });
+
+            const bloodDirection = {
+                x: -params.source.velocity.x / Math.sqrt(params.source.velocity.x ** 2 + params.source.velocity.y ** 2),
+                y: -params.source.velocity.y / Math.sqrt(params.source.velocity.x ** 2 + params.source.velocity.y ** 2)
+            };
+
+            this.decalsManager.createDecal(params.source.transform.pos.x, params.source.transform.pos.y, `blood_${params.source.id}`, DECALS.BLOOD);
+            this.particlesManager.createParticles(params.source.transform.pos.x, params.source.transform.pos.y, `blood_${params.source.id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
+
+            const emission: EmitterParams = {
+                id: `particle_emitter_${params.target.id}_${Date.now()}`,
+                interval: this.utility.getRandomNum(200, 400), // ms
+                lifetime: this.utility.getRandomNum(1000, 3000), // ms
+                offset: {
+                    x: params.target.transform.pos.x,
+                    y: params.target.transform.pos.y
+                },
+                particleType: PARTICLES.BLOOD_DRIP,
+                playerId: params.target.id,
+                pos: {
+                    x: params.source.transform.pos.x,
+                    y: params.source.transform.pos.y
+                }
+            };
+            this.particlesManager.createEmitter(emission);
+
+            if (params.newHealth <= 0) { // If they died, I get a kill
+                console.log(`I killed ${params.target.id}!`);
+
+                const me = this.ui.leaderboard.get(this.userId);
+                if (me) { me.kills++; }
+
+                const other = this.ui.leaderboard.get(params.target.id);
+                if (other) { other.deaths++; }
+
+                this.ui.updateLeaderboardDisplay(this.userId);
+            }
+        }
+
+        const message = {
+            type: 'player-hit',
+            targetId: params.target.id,
+            shooterId: params.shooterId,
+            damage: params.damage,
+            newHealth: params.newHealth,
+            projectileId: params.source.id,
+            wasKill: params.wasKill
+        }
+
+        this.roomManager.sendMessage(JSON.stringify(message));
     }
 
     /**

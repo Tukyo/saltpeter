@@ -5,14 +5,14 @@ import { Animator } from "../Animator";
 import { AudioManager } from "../AudioManager";
 import { CollisionsManager } from "../CollisionsManager";
 import { DecalsManager } from "../DecalsManager";
-import { AttackType, EmitterParams, Projectile, ProjectileOverrides, SetSliderParams, Shrapnel, Vec2 } from "../Types";
+import { AttackType, PlayerHitParams, Projectile, ProjectileOverrides, Shrapnel, Vec2 } from "../Types";
 import { GameState } from "../GameState";
 import { LuckController } from "./LuckController";
 import { ParticlesManager } from "../ParticlesManager";
 import { PlayerState } from "./PlayerState";
 import { RoomManager } from "../RoomManager";
-import { UserInterface } from "../UserInterface";
 import { Utility } from "../Utility";
+import { PlayerController,  } from "./PlayerController";
 
 export class CombatController {
     public projectiles: Map<string, Projectile> = new Map();
@@ -26,9 +26,9 @@ export class CombatController {
         private gameState: GameState,
         private luckController: LuckController,
         private particlesManager: ParticlesManager,
+        private playerController: PlayerController,
         private playerState: PlayerState,
         private roomManager: RoomManager,
-        private ui: UserInterface,
         private userId: string,
         private utility: Utility
     ) { }
@@ -534,44 +534,17 @@ export class CombatController {
                     projectilesToRemove.push(id);
 
                     const actualDamage = Math.max(0, projectile.damage - this.playerState.myPlayer.stats.defense);
-                    this.playerState.myPlayer.stats.health.value -= actualDamage;
+                    this.playerState.myPlayer.stats.health.value = Math.max(0, this.playerState.myPlayer.stats.health.value - actualDamage);
 
-                    const sliderLerpTime = 300; //TODO: Define UI lerping times globally
-                    const healthSliderParams: SetSliderParams = {
-                        sliderId: 'healthBar',
-                        targetValue: this.playerState.myPlayer.stats.health.value,
-                        maxValue: this.playerState.myPlayer.stats.health.max,
-                        lerpTime: sliderLerpTime
-                    }
-                    this.utility.setSlider(healthSliderParams);
-
-                    // 20% chance to play hit sound
-                    if (this.utility.getRandomNum(0, 1) < 0.2) {
-                        this.audioManager.playAudioNetwork({
-                            src: this.utility.getRandomInArray(SFX.PLAYER.MALE.GRUNT), // TODO: Allow player to define gender
-                            listener: {
-                                x: this.playerState.myPlayer.transform.pos.x,
-                                y: this.playerState.myPlayer.transform.pos.y
-                            },
-                            output: 'sfx',
-                            pitch: { min: 0.95, max: 1.075 },
-                            spatial: {
-                                blend: 1.0,
-                                pos: { x: this.playerState.myPlayer.transform.pos.x, y: this.playerState.myPlayer.transform.pos.y }
-                            },
-                            volume: { min: 0.9, max: 1 }
-                        });
-                    }
-
-                    // Notify everyone I was hit
-                    this.roomManager.sendMessage(JSON.stringify({
-                        type: 'player-hit',
-                        targetId: this.userId,
+                    const params: PlayerHitParams = {
+                        target: this.playerState.myPlayer,
                         shooterId: projectile.ownerId,
                         damage: projectile.damage,
                         newHealth: this.playerState.myPlayer.stats.health.value,
-                        projectileId: id
-                    }));
+                        source: projectile,
+                        wasKill: this.playerState.myPlayer.stats.health.value <= 0
+                    }
+                    this.playerController.playerHit(params);
                 }
             }
 
@@ -590,74 +563,15 @@ export class CombatController {
                             const newHealth = Math.max(0, player.stats.health.value - actualDamage);
                             player.stats.health.value = newHealth;
 
-                            // Create directional blood spray - spray backwards from projectile direction
-                            const bloodDirection = {
-                                x: -projectile.velocity.x / Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2),
-                                y: -projectile.velocity.y / Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2)
-                            };
-
-                            this.decalsManager.createDecal(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, DECALS.BLOOD);
-                            this.particlesManager.createParticles(projectile.transform.pos.x, projectile.transform.pos.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
-
-
-                            const emission: EmitterParams = {
-                                id: `particle_emitter_${playerId}_${Date.now()}`,
-                                interval: this.utility.getRandomNum(200, 400), // ms
-                                lifetime: this.utility.getRandomNum(1000, 3000), // ms
-                                offset: {
-                                    x: player.transform.pos.x,
-                                    y: player.transform.pos.y
-                                },
-                                particleType: PARTICLES.BLOOD_DRIP,
-                                playerId: playerId,
-                                pos: {
-                                    x: projectile.transform.pos.x,
-                                    y: projectile.transform.pos.y
-                                }
-                            };
-                            this.particlesManager.createEmitter(emission);
-
-                            this.audioManager.playAudioNetwork({
-                                src: this.utility.getRandomInArray(SFX.IMPACT.FLESH.BULLET), // TODO: User current body material
-                                listener: {
-                                    x: this.playerState.myPlayer.transform.pos.x,
-                                    y: this.playerState.myPlayer.transform.pos.y
-                                },
-                                output: 'sfx',
-                                pitch: { min: 0.925, max: 1.15 },
-                                spatial: {
-                                    blend: 1.0,
-                                    pos: { x: projectile.transform.pos.x, y: projectile.transform.pos.y }
-                                },
-                                volume: { min: 0.95, max: 1 }
-                            });
-
-                            if (newHealth <= 0) { // If they died, I get a kill
-                                console.log(`I killed ${playerId}!`);
-
-                                const me = this.ui.leaderboard.get(this.userId);
-                                if (me) {
-                                    me.kills++;
-                                }
-
-                                const other = this.ui.leaderboard.get(playerId);
-                                if (other) {
-                                    other.deaths++;
-                                }
-
-                                this.ui.updateLeaderboardDisplay(this.userId);
-                            }
-
-                            // Notify everyone about the hit
-                            this.roomManager.sendMessage(JSON.stringify({
-                                type: 'player-hit',
-                                targetId: playerId,
+                            const params: PlayerHitParams = {
+                                target: player,
                                 shooterId: this.userId,
                                 damage: projectile.damage,
                                 newHealth: newHealth,
-                                projectileId: id,
+                                source: projectile,
                                 wasKill: newHealth <= 0
-                            }));
+                            }
+                            this.playerController.playerHit(params);
                         }
                     }
                 });
@@ -749,7 +663,7 @@ export class CombatController {
                 }
                 const shrapnel: Shrapnel = {
                     amount: amount,
-                    damage: 1,
+                    damage: this.playerState.myPlayer.actions.primary.projectile.damage * 0.1,
                     images: images,
                     lifetime: { // ms
                         min: 100,

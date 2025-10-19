@@ -2,7 +2,7 @@ import { CANVAS, DECALS, OBJECT_DEFAULTS, PARTICLES } from "./Config";
 
 import { CharacterConfig } from "./CharacterConfig";
 import { DecalsManager } from "./DecalsManager";
-import { DeathDecal, DeathStamp, Emitter, EmitterParams, Particle, Shrapnel, ShrapnelPiece, Vec2 } from "./Types";
+import { DeathDecal, DeathStamp, Emitter, EmitterParams, Particle, PlayerHitParams, Shrapnel, ShrapnelPiece, Vec2 } from "./Types";
 import { RenderingManager } from "./RenderingManager";
 import { RoomManager } from "./RoomManager";
 import { UserInterface } from "./UserInterface";
@@ -509,15 +509,17 @@ export class ParticlesManager {
             const piece: ShrapnelPiece = {
                 id: this.utility.generateUID(OBJECT_DEFAULTS.DATA.ID_LENGTH),
                 image: params.images[i], // Already randomly selected in triggerUnique
-                pos: {
-                    x: params.pos.x,
-                    y: params.pos.y
+                transform: {
+                    pos: {
+                        x: params.pos.x,
+                        y: params.pos.y
+                    },
+                    rot: this.utility.getRandomNum(0, Math.PI * 2), // Random start rot
                 },
                 velocity: {
                     x: Math.cos(angle) * speed,
                     y: Math.sin(angle) * speed
                 },
-                rotation: this.utility.getRandomNum(0, Math.PI * 2), // Random start rot
                 rotationSpeed: torque, // Random spin
                 size: size,
                 age: 0,
@@ -560,9 +562,9 @@ export class ParticlesManager {
 
         this.shrapnel.forEach((piece, id) => {
             // Update physics
-            piece.pos.x += piece.velocity.x * delta;
-            piece.pos.y += piece.velocity.y * delta;
-            piece.rotation += piece.rotationSpeed * delta;
+            piece.transform.pos.x += piece.velocity.x * delta;
+            piece.transform.pos.y += piece.velocity.y * delta;
+            piece.transform.rot += piece.rotationSpeed * delta;
             piece.age += 16.67 * delta;
 
             // Apply friction
@@ -575,48 +577,29 @@ export class ParticlesManager {
                 // Check collision with all players
                 this.playerState.players.forEach((player, playerId) => {
                     if (player.stats.health.value > 0) {
-                        const dx = piece.pos.x - player.transform.pos.x;
-                        const dy = piece.pos.y - player.transform.pos.y;
+                        const dx = piece.transform.pos.x - player.transform.pos.x;
+                        const dy = piece.transform.pos.y - player.transform.pos.y;
                         const distance = Math.sqrt(dx * dx + dy * dy);
 
                         // Collision detection (using player collider + shrapnel size for padding)
                         if (distance <= this.collisionsManager.getPlayerCollider(player, piece.size)) {
-                            const newHealth = Math.max(0, player.stats.health.value - piece.damage);
+                            const actualDamage = Math.max(0, piece.damage - player.stats.defense);
+                            const newHealth = Math.max(0, player.stats.health.value - actualDamage);
                             player.stats.health.value = newHealth;
-
-                            if (newHealth <= 0) {
-                                const me = this.ui.leaderboard.get(this.userId);
-                                if (me) {
-                                    me.kills++;
-                                }
-
-                                const other = this.ui.leaderboard.get(playerId);
-                                if (other) {
-                                    other.deaths++;
-                                }
-
-                                this.ui.updateLeaderboardDisplay(this.userId);
-                            }
 
                             // Remove this shrapnel piece after hit
                             shrapnelToRemove.push(id);
                             console.log(`Shrapnel hit ${playerId} for ${piece.damage} damage`);
 
-                            const bloodDirection = {
-                                x: -piece.velocity.x / Math.sqrt(piece.velocity.x ** 2 + piece.velocity.y ** 2),
-                                y: -piece.velocity.y / Math.sqrt(piece.velocity.x ** 2 + piece.velocity.y ** 2)
-                            };
-                            this.createParticles(piece.pos.x, piece.pos.y, `blood_${id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
-
-                            // Send damage message
-                            this.roomManager.sendMessage(JSON.stringify({
-                                type: 'player-hit',
-                                targetId: playerId,
+                            const params: PlayerHitParams = {
+                                target: player,
                                 shooterId: this.userId,
                                 damage: piece.damage,
                                 newHealth: newHealth,
+                                source: piece,
                                 wasKill: newHealth <= 0
-                            }));
+                            }
+                            window.dispatchEvent(new CustomEvent("customEvent_playerHitRelay", { detail: { params }}));
                         }
                     }
                 });
@@ -624,12 +607,12 @@ export class ParticlesManager {
 
             // Remove if lifetime expired or out of bounds
             if (piece.age >= piece.lifetime ||
-                piece.pos.x < 0 || piece.pos.x > CANVAS.WIDTH ||
-                piece.pos.y < 0 || piece.pos.y > CANVAS.HEIGHT) {
+                piece.transform.pos.x < 0 || piece.transform.pos.x > CANVAS.WIDTH ||
+                piece.transform.pos.y < 0 || piece.transform.pos.y > CANVAS.HEIGHT) {
 
                 // Stamp as decal if died in bounds
-                if (piece.pos.x >= 0 && piece.pos.x <= CANVAS.WIDTH &&
-                    piece.pos.y >= 0 && piece.pos.y <= CANVAS.HEIGHT) {
+                if (piece.transform.pos.x >= 0 && piece.transform.pos.x <= CANVAS.WIDTH &&
+                    piece.transform.pos.y >= 0 && piece.transform.pos.y <= CANVAS.HEIGHT) {
                     this.stampShrapnel(piece);
                 }
 
@@ -663,8 +646,8 @@ export class ParticlesManager {
             if (!image.complete || image.naturalWidth === 0) return;
 
             this.ui.ctx.save();
-            this.ui.ctx.translate(piece.pos.x, piece.pos.y);
-            this.ui.ctx.rotate(piece.rotation);
+            this.ui.ctx.translate(piece.transform.pos.x, piece.transform.pos.y);
+            this.ui.ctx.rotate(piece.transform.rot);
 
             this.ui.ctx.drawImage(
                 image,
@@ -688,8 +671,8 @@ export class ParticlesManager {
         if (!image || !image.complete || image.naturalWidth === 0) return;
 
         this.ui.decalCtx.save();
-        this.ui.decalCtx.translate(params.pos.x, params.pos.y);
-        this.ui.decalCtx.rotate(params.rotation);
+        this.ui.decalCtx.translate(params.transform.pos.x, params.transform.pos.y);
+        this.ui.decalCtx.rotate(params.transform.rot);
 
         this.ui.decalCtx.drawImage(
             image,
@@ -705,8 +688,8 @@ export class ParticlesManager {
         this.decalsManager.decals.set(`shrapnel_${params.id}`, {
             params: null,
             pos: {
-                x: params.pos.x,
-                y: params.pos.y
+                x: params.transform.pos.x,
+                y: params.transform.pos.y
             }
         });
     }

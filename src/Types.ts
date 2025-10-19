@@ -333,6 +333,15 @@ export type SetToggleParams = {
   toggleId: string;
   value: boolean;
 }
+
+export type PlayerHitParams = {
+    target: Player;
+    shooterId: string;
+    damage: number;
+    newHealth: number;
+    source: Projectile | ShrapnelPiece;
+    wasKill: boolean;
+}
 //
 // #endregion
 
@@ -431,9 +440,8 @@ export type Shrapnel = {
 export type ShrapnelPiece = {
   id: string;
   image: string;
-  pos: Vec2;
+  transform: Transform;
   velocity: Vec2;
-  rotation: number;
   rotationSpeed: number;
   size: number;
   age: number;

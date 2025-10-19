@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 8080;
 const ADMIN_KEY = process.env.ADMIN_KEY || "123";
 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 const CLEANUP_INTERVAL = 60000;   // 60 seconds
+const INACTIVITY_TIMEOUT = 600000; // 10 min
 const SPAWN_MIN_DISTANCE = 120;
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
@@ -202,14 +203,26 @@ const cleanupInterval = setInterval(() => {
       }
     });
 
-    // Update participants to only include connected clients
     room.participants = connectedParticipants;
+
+    // Check for inactivity
+    const inactiveTime = Date.now() - room.lastActivityTime;
+    if (inactiveTime > INACTIVITY_TIMEOUT) {
+      console.log(`Room ${roomId} inactive for 10 minutes, closing...`);
+
+      kickPlayersFromRoom(roomId, 'inactivity');
+
+      rooms.delete(roomId);
+      cleanedRooms++;
+      console.log(`Cleaned up inactive room ${roomId}`);
+      return;
+    }
 
     // Delete room if empty
     if (room.participants.size === 0) {
       rooms.delete(roomId);
       cleanedRooms++;
-      console.log(`Cleaned up stale room ${roomId}`);
+      console.log(`Cleaned up empty room ${roomId}`);
     }
   });
 
@@ -248,6 +261,11 @@ function handleRoomMessage(ws, message) {
 
 function handleGameMessage(ws, message) {
   if (ws.currentRoom !== message.roomId || !message.message) return;
+
+  const room = rooms.get(message.roomId);
+  if (room) {
+    room.lastActivityTime = Date.now();
+  }
 
   try {
     const gameData = JSON.parse(message.message);
@@ -512,6 +530,7 @@ function createRoom(ws, roomId, userId) {
     // [ Detail ]
     hostUserId: userId,
     participants: new Set([ws]),
+    lastActivityTime: Date.now(),
 
     // [ Settings ]
     isPrivate: false,
@@ -716,19 +735,7 @@ function clearAllRooms() {
   const count = rooms.size;
 
   rooms.forEach((room, roomId) => {
-    room.participants.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({
-          type: 'room-message',
-          userId: 'server',
-          message: JSON.stringify({
-            type: 'kick-player',
-            targetPlayerId: client.userId
-          }),
-          roomId: roomId
-        }));
-      }
-    });
+    kickPlayersFromRoom(roomId, 'admin-clear');
   });
 
   rooms.clear();
@@ -798,6 +805,25 @@ function sendServerStats(ws) {
   }));
 }
 
+function kickPlayersFromRoom(roomId, reason) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+
+  room.participants.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify({
+        type: 'room-message',
+        userId: 'server',
+        message: JSON.stringify({
+          type: 'kick-player',
+          targetPlayerId: client.userId,
+          reason: reason
+        }),
+        roomId: roomId
+      }));
+    }
+  });
+}
 //
 // #endregion
 // =============================================================================

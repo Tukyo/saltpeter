@@ -170,6 +170,8 @@ class Client {
         );
 
         this.playerController = new PlayerController(
+            this.audioManager,
+            this.decalsManager,
             this.gameState,
             this.luckController,
             this.moveController,
@@ -177,6 +179,7 @@ class Client {
             this.particlesManager,
             this.playerState,
             this.roomManager,
+            this.ui,
             this.userId,
             this.utility
         );
@@ -190,9 +193,9 @@ class Client {
             this.gameState,
             this.luckController,
             this.particlesManager,
+            this.playerController,
             this.playerState,
             this.roomManager,
-            this.ui,
             this.userId,
             this.utility
         );
@@ -616,7 +619,8 @@ class Client {
                 }
                 case 'player-move':
                     if (!this.lobbyManager.inLobby && this.playerState.players.has(message.userId)) {
-                        const player = this.playerState.players.get(message.userId)!;
+                        const player = this.playerState.players.get(message.userId);
+                        if (!player) break;
 
                         if (gameData.transform.pos) {
                             player.transform.pos.x = gameData.transform.pos.x;
@@ -649,7 +653,9 @@ class Client {
                             this.playerController.playerDeath();
                         }
                     } else if (this.playerState.players.has(gameData.targetId)) { // Another player got hit
-                        const hitPlayer = this.playerState.players.get(gameData.targetId)!;
+                        const hitPlayer = this.playerState.players.get(gameData.targetId);
+                        if (!hitPlayer) break;
+
                         hitPlayer.stats.health.value = gameData.newHealth;
 
                         if (hitPlayer.stats.health.value <= 0) {
@@ -699,7 +705,8 @@ class Client {
                     if (gameData.playerId === this.userId) break;
 
                     if (this.objectsManager.ammoBoxes.has(gameData.ammoBoxId)) {
-                        const box = this.objectsManager.ammoBoxes.get(gameData.ammoBoxId)!;
+                        const box = this.objectsManager.ammoBoxes.get(gameData.ammoBoxId);
+                        if (!box) break;
 
                         // Update box state
                         box.isOpen = gameData.boxState.isOpen;
@@ -710,7 +717,9 @@ class Client {
                     break;
                 case 'weapon-change':
                     if (message.userId !== this.userId && this.playerState.players.has(message.userId)) {
-                        const player = this.playerState.players.get(message.userId)!;
+                        const player = this.playerState.players.get(message.userId);
+                        if (!player) break;
+
                         player.rig.weapon = gameData.weapon;
                         console.log(`${message.userId} switched to ${gameData.weapon}`);
                     }
@@ -733,7 +742,8 @@ class Client {
                     break;
                 case 'projectile-deflect':
                     if (!this.lobbyManager.inLobby && this.combatController.projectiles.has(gameData.projectileId)) {
-                        const projectile = this.combatController.projectiles.get(gameData.projectileId)!;
+                        const projectile = this.combatController.projectiles.get(gameData.projectileId);
+                        if (!projectile) break;
 
                         // Update projectile properties
                         projectile.ownerId = gameData.newOwnerId;
@@ -992,7 +1002,9 @@ class Client {
 
         // Increment win for the winner
         if (winnerId && this.ui.leaderboard.has(winnerId)) {
-            const winnerEntry = this.ui.leaderboard.get(winnerId)!;
+            const winnerEntry = this.ui.leaderboard.get(winnerId);
+            if (!winnerEntry) return;
+
             winnerEntry.wins++;
             console.log(`${winnerId} won the round! Total wins: ${winnerEntry.wins}`);
 
