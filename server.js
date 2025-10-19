@@ -6,13 +6,13 @@ const WebSocket = require("ws");
 
 // =============================================================================
 // #region CONFIGURATION
-// =============================================================================/
+// =============================================================================
 
 const PORT = process.env.PORT || 8080;
 const ADMIN_KEY = process.env.ADMIN_KEY || "123";
 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
-const CLEANUP_INTERVAL = 60000;   // 60 seconds
-const INACTIVITY_TIMEOUT = 600000; // 10 min
+const CLEANUP_INTERVAL = HEARTBEAT_INTERVAL * 2; // 1 minute
+const INACTIVITY_TIMEOUT = CLEANUP_INTERVAL * 5; // 5 Minutes
 const SPAWN_MIN_DISTANCE = 120;
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
