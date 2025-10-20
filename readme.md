@@ -50,7 +50,7 @@ The tech design goals of this game are to create a top-down experience similar t
 This is achieved using client-side stamping mechanisms, and using static pixel data on a separate rendering canvas. Influenced directly by Daniel Tabar's implementation of static voxel data in the [Atomontage](https://www.atomontage.com/) engine. Blood, gore, and all effects in the game will stain the canvas, narrating a story of your battles.
 
 ## Modding
-Want to create custom upgrades? See the [Upgrade Modding Guide](src/client/upgrades/README.md)!
+Want to create custom upgrades? See the [Upgrade Modding Guide](src/client/upgrades/readme.md)!
 
 ## Credits
 Designed by Tukyo and Bigf0ck.
