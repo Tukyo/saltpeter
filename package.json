@@ -1,8 +1,9 @@
 {
-  "name": "websockettest",
+  "name": "saltpeter",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Multiplayer FFA Roguelike",
+  "main": "electron/main.js",
+  "author": "Tukyo",
   "scripts": {
     "build": "npm run build:client && npm run build:server",
     "build:client": "webpack --config webpack.client.config.js",
@@ -14,10 +15,14 @@
     "electron": "electron electron/main.js",
     "electron:build": "npm run build:client && electron-builder"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "license": "CC0-1.0",
+  "keywords": [
+    "game",
+    "multiplayer",
+    "roguelike"
+  ],
   "dependencies": {
+    "steamworks.js": "^0.4.0",
     "ws": "^8.18.3"
   },
   "devDependencies": {
@@ -30,16 +35,32 @@
     "webpack-cli": "^5.1.4"
   },
   "build": {
-    "appId": "com.saltpeter.game",
+    "appId": "tukyo.saltpeter",
     "productName": "Saltpeter",
     "files": [
       "electron/**/*",
       "dist/app.js",
       "dist/app.js.map",
-      "public/**/*"
+      "public/**/*",
+      "steam_appid.txt"
     ],
     "directories": {
+      "buildResources": "build",
       "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "signAndEditExecutable": false,
+      "icon": "electron/build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Saltpeter"
     }
   }
 }

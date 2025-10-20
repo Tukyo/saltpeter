@@ -1,7 +1,6 @@
 import { CANVAS, DECALS, OBJECT_DEFAULTS, PARTICLES, SFX, SHRAPNEL } from "../Config";
 import { AttackType, PlayerHitParams, Projectile, ProjectileOverrides, Shrapnel, Vec2 } from "../Types";
 
-import { AmmoReservesUIController } from "./AmmoReservesUIController";
 import { Animator } from "../Animator";
 import { AudioManager } from "../AudioManager";
 import { CollisionsManager } from "../CollisionsManager";
@@ -13,12 +12,12 @@ import { PlayerState } from "./PlayerState";
 import { RoomManager } from "../RoomManager";
 import { Utility } from "../Utility";
 import { PlayerController,  } from "./PlayerController";
+import { UserInterface } from "../UserInterface";
 
 export class CombatController {
     public projectiles: Map<string, Projectile> = new Map();
 
     constructor(
-        private ammoReservesUIController: AmmoReservesUIController,
         private animator: Animator,
         private audioManager: AudioManager,
         private collisionsManager: CollisionsManager,
@@ -29,6 +28,7 @@ export class CombatController {
         private playerController: PlayerController,
         private playerState: PlayerState,
         private roomManager: RoomManager,
+        private ui: UserInterface,
         private userId: string,
         private utility: Utility
     ) { }
@@ -716,7 +716,7 @@ export class CombatController {
     private triggerBurstUniques(): string[] {
         const triggered: string[] = [];
 
-        if (this.playerState.myPlayer.unique.includes('muzzle_spliter')) {
+        if (this.playerState.myPlayer.unique.includes('muzzle_splitter')) {
             if (this.luckController.luckRoll()) {
                 const baseAngle = this.playerState.myPlayer.transform.rot - Math.PI / 2;
                 const angleOffset = 10 * (Math.PI / 180); // 10 degrees
@@ -738,8 +738,8 @@ export class CombatController {
                 this.launchProjectile(dirA, baseParams);
                 this.launchProjectile(dirB, baseParams);
 
-                console.log(`Triggered burst unique: muzzle_spliter`);
-                triggered.push('muzzle_spliter');
+                console.log(`Triggered burst unique: muzzle_splitter`);
+                triggered.push('muzzle_splitter');
             }
         }
 
@@ -833,7 +833,7 @@ export class CombatController {
         this.playerState.myPlayer.actions.primary.magazine.currentReserve -= ammoToReload;
         this.playerState.isReloading = false;
 
-        this.ammoReservesUIController.removeAmmoFromReserveUI(ammoToReload);
+        this.ui.ammoReservesUIController.removeAmmoFromReserveUI(ammoToReload);
 
         this.animator.animateCharacterPart({
             playerId: this.userId,

@@ -109,15 +109,6 @@ h6 {
     user-select: none;
 }
 
-h1 {
-    position: absolute;
-    bottom: 0px;
-    left: 2.5rem;
-    font-size: 5rem;
-    font-weight: bold;
-    color: var(--grey);
-}
-
 button {
     margin: 10px;
     padding: 12px 24px;
@@ -587,7 +578,17 @@ toggle[checked]::before {
 /* #region [ Visuals ] */
 /**/
 #saltpeterTitle {
+    position: absolute;
+    bottom: 0px;
+    left: 2.5rem;
+    font-size: 5rem;
+    font-weight: bold;
+    color: var(--grey);
     z-index: var(--z-minus-one);
+}
+
+#saltpeterTitle img {
+    color: white;
 }
 
 #background {

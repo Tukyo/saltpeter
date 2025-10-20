@@ -5,7 +5,7 @@
 
 [saltpeter.xyz](https://saltpeter.xyz/)
 
-![asd](public/assets/img/icon/upgrades/spatialtargeting.png) ![asd](public/assets/img/icon/upgrades/spectralimage.png) ![asd](public/assets/img/icon/upgrades/switch.png)
+![asd](public/assets/img/icon/upgrades/unique/spatialtargeting.png) ![asd](public/assets/img/icon/upgrades/unique/spectralimage.png) ![asd](public/assets/img/icon/upgrades/equipment/switch.png)
 
 
 ## Game
@@ -29,7 +29,7 @@ These electronics are so small that they can be installed between ions and atoms
 
 Quantum mechanical pico computation powered by bonded energy differentials.
 
-![asd](public/assets/img/icon/upgrades/locomotionmodule.png) ![asd](public/assets/img/icon/upgrades/muzzlesplitter.png) ![asd](public/assets/img/icon/upgrades/phoenixmodule.png) ![asd](public/assets/img/icon/upgrades/projectilearray.png)
+![asd](public/assets/img/icon/upgrades/stats/locomotionmodule.png) ![asd](public/assets/img/icon/upgrades/unique/muzzlesplitter.png) ![asd](public/assets/img/icon/upgrades/unique/phoenixmodule.png) ![asd](public/assets/img/icon/upgrades/unique/projectilearray.png)
 
 
 ## Tech
@@ -49,23 +49,15 @@ The tech design goals of this game are to create a top-down experience similar t
 
 This is achieved using client-side stamping mechanisms, and using static pixel data on a separate rendering canvas. Influenced directly by Daniel Tabar's implementation of static voxel data in the [Atomontage](https://www.atomontage.com/) engine. Blood, gore, and all effects in the game will stain the canvas, narrating a story of your battles.
 
-## Crypto
-Everything was perfect until this part, right? Well, I hope that this game can alter your pre-conceived notion of that word. Saltpeter is fully free-to-play, with no microtransactions, subscriptions or purchases.
-
-### **Everything in the game can be accessed without spending any money, or worrying about this part at all if desired.**
-
-If you are curious however, the goal here is to define a more distinct use-case for cryptography, and the benefits that the blockchain provides. If you have a crypto wallet, you can connect to the website and after this, your **Neural ID** will update to your crypto wallet address.
-
-This allows you to retain a persistent neural id, and remain pseudonymous, or anonymous depending on your wallet's trace. If you have an ENS name, this will now become your displayed username.
-
-This allows me to bypass any required time needed to code server-side UID validation. And, everybody hates crypto so it is obviously cool.
+## Modding
+Want to create custom upgrades? See the [Upgrade Modding Guide](src/client/upgrades/README.md)!
 
 ## Credits
 Designed by Tukyo and Bigf0ck.
 
 Built because we were tired of desyncing in isaac.
 
-![asd](public/assets/img/icon/upgrades/bioregulator.png) ![asd](public/assets/img/icon/upgrades/carepackage.png) ![asd](public/assets/img/icon/upgrades/clustermodule.png) ![asd](public/assets/img/icon/upgrades/damagebuffer.png) ![asd](public/assets/img/icon/upgrades/hemoglobinsaturator.png) ![asd](public/assets/img/icon/upgrades/kineticbrain.png)
+![asd](public/assets/img/icon/upgrades/stats/bioregulator.png) ![asd](public/assets/img/icon/upgrades/resource/carepackage.png) ![asd](public/assets/img/icon/upgrades/unique/clustermodule.png) ![asd](public/assets/img/icon/upgrades/stats/damagebuffer.png) ![asd](public/assets/img/icon/upgrades/stats/hemoglobinsaturator.png) ![asd](public/assets/img/icon/upgrades/unique/kineticbrain.png)
 
 **This project is released under the [CC0 1.0 Universal license](LICENSE)**
 

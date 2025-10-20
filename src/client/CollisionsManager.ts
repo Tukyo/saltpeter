@@ -4,16 +4,16 @@ import { Player } from "./Types";
 import { ObjectsManager } from "./ObjectsManager";
 import { RoomManager } from "./RoomManager";
 
-import { AmmoReservesUIController } from "./player/AmmoReservesUIController";
 import { PlayerState } from "./player/PlayerState";
+import { UserInterface } from "./UserInterface";
 
 
 export class CollisionsManager {
     constructor(
-        private ammoReservesUIController: AmmoReservesUIController,
         private objectsManager: ObjectsManager,
         private playerState: PlayerState,
         private roomManager: RoomManager,
+        private ui: UserInterface,
         private userId: string
     ) {}
 
@@ -59,7 +59,7 @@ export class CollisionsManager {
                     this.playerState.myPlayer.actions.primary.magazine.currentReserve += actualAmmoAdded;
 
                     // Spawn UI bullets based on ACTUAL ammo added, not ammo box amount
-                    this.ammoReservesUIController.spawnAmmoInReserveUI(actualAmmoAdded);
+                    this.ui.ammoReservesUIController.spawnAmmoInReserveUI(actualAmmoAdded);
 
                     console.log(`Picked up ammo box! +${actualAmmoAdded} bullets. Inventory: ${this.playerState.myPlayer.actions.primary.magazine.currentReserve}/${this.playerState.myPlayer.actions.primary.magazine.maxReserve}`);
 

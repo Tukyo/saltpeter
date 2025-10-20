@@ -3,7 +3,37 @@
 
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#333333" />
+
+  <title>Saltpeter</title>
+  <meta name="description"
+    content="Saltpeter is a top-down multiplayer roguelike focused on responsive combat, synergy-driven upgrades, and persistent visual effects. Battle your friends and leave lasting decals that tell the story of your fights." />
+
+  <link rel="canonical" href="https://saltpeter.xyz/" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://saltpeter.xyz/" />
+  <meta property="og:title" content="Saltpeter — A Top-Down Multiplayer Roguelike" />
+  <meta property="og:description"
+    content="Saltpeter — a top-down multiplayer roguelike with persistent decals and synergy-driven upgrades." />
+  <meta property="og:image" content="https://saltpeter.xyz/assets/img/promo/banner.jpg" />
+  <meta property="og:image:alt" content="Saltpeter logo and gameplay preview" />
+  <meta property="og:site_name" content="Saltpeter" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Saltpeter — A Top-Down Multiplayer Roguelike" />
+  <meta name="twitter:description"
+    content="Saltpeter — a top-down multiplayer roguelike with persistent decals and synergy-driven upgrades." />
+  <meta name="twitter:image" content="https://saltpeter.xyz/assets/img/promo/banner.jpg" />
+  <meta name="twitter:creator" content="@saltpeter_game" />
+
+  <link rel="icon" type="image/png" href="favicon.ico" />
+
   <link rel="stylesheet" type="text/css" href="style.css" />
+
+  <h1 style="display: none;">Saltpeter: top-down multiplayer roguelike. Tukyo</h1>
 </head>
 
 <body>
@@ -13,7 +43,7 @@
   <canvas class='hacker hacker_3d'></canvas>
   <canvas class='hacker hacker_bars'></canvas>
 
-  <h1 id="saltpeterTitle">SALTPETER</h1>
+  <div id="saltpeterTitle"><img src="/assets/img/header.png" alt="Saltpeter" loading="lazy"></img></div>
 
   <div class="user_info">
     <strong>Neural ID:</strong> <span id="userId"></span>
@@ -168,7 +198,8 @@
           </div>
           <div class="divider stats_divider middle"></div>
           <div id="statShotSpeed" class="stat">
-            <img id="shotSpeedIcon" src="/assets/img/icon/stats/shotspeed.png" alt="Shot Speed Icon" loading="lazy"></img>
+            <img id="shotSpeedIcon" src="/assets/img/icon/stats/shotspeed.png" alt="Shot Speed Icon"
+              loading="lazy"></img>
             <span id="shotSpeedValue">35.00</span>
           </div>
           <div class="divider stats_divider top"></div>
@@ -257,11 +288,12 @@
             <div class="controls_mapping_header container row">
               <div class="controls_mapping_cell"></div>
               <div class="controls_mapping_cell controls_mapping_icon">
-                <img id="keyboardIcon" src="/assets/img/icon/elements/settings/keyboard.png" alt="Keyboard Icon" loading="lazy"></img>
+                <img id="keyboardIcon" src="/assets/img/icon/elements/settings/keyboard.png" alt="Keyboard Icon"
+                  loading="lazy"></img>
               </div>
               <div class="controls_mapping_cell controls_mapping_icon">
-                <img id="controllerIcon" src="/assets/img/icon/elements/settings/controller.png"
-                  alt="Controller Icon" loading="lazy"></img>
+                <img id="controllerIcon" src="/assets/img/icon/elements/settings/controller.png" alt="Controller Icon"
+                  loading="lazy"></img>
               </div>
             </div>
 
@@ -351,21 +383,21 @@
           <div id="graphicsSettingsContainer" class="container">
             <span>Work in Progress</span>
             <div style="display: none;">
-            <span>Render Background Particles</span>
-            <div class="toggle_wrapper">
-              <toggle id="particleJSToggle" role="switch" aria-checked="true"></toggle>
-              <div class="toggle_foreground"></div>
-            </div>
-            <span>Show Static Overlay</span>
-            <div class="toggle_wrapper">
-              <toggle id="staticToggle" role="switch" aria-checked="true"></toggle>
-              <div class="toggle_foreground"></div>
-            </div>
-            <span>Ammo Reserves Physics</span>
-            <div class="toggle_wrapper">
-              <toggle id="ammoReservesPhysicsToggle" role="switch" aria-checked="true"></toggle>
-              <div class="toggle_foreground"></div>
-            </div>
+              <span>Render Background Particles</span>
+              <div class="toggle_wrapper">
+                <toggle id="particleJSToggle" role="switch" aria-checked="true"></toggle>
+                <div class="toggle_foreground"></div>
+              </div>
+              <span>Show Static Overlay</span>
+              <div class="toggle_wrapper">
+                <toggle id="staticToggle" role="switch" aria-checked="true"></toggle>
+                <div class="toggle_foreground"></div>
+              </div>
+              <span>Ammo Reserves Physics</span>
+              <div class="toggle_wrapper">
+                <toggle id="ammoReservesPhysicsToggle" role="switch" aria-checked="true"></toggle>
+                <div class="toggle_foreground"></div>
+              </div>
             </div>
           </div>
         </div>

@@ -1,6 +1,10 @@
 import { DECALS, PARTICLES } from "./Config";
 
 import { LobbyManager } from "./LobbyManager";
+import { UserInterface } from "./UserInterface";
+import { Utility } from "./Utility";
+
+import { PlayerState } from "./player/PlayerState";
 
 // #region [ Core ]
 //
@@ -515,6 +519,12 @@ export interface Upgrade {
   type: UpgradeType;
   unique: boolean;
   func: (player: Player) => void;
+}
+
+export type UpgradeParams = {
+  playerState: PlayerState;
+  ui: UserInterface;
+  utility: Utility;
 }
 //
 // #endregion

@@ -26,7 +26,6 @@ import { UserInterface } from './UserInterface';
 import { Utility } from './Utility';
 import { WebsocketManager } from './WebsocketManager';
 
-import { AmmoReservesUIController } from './player/AmmoReservesUIController';
 import { CombatController } from './player/CombatController';
 import { DashController } from './player/DashController';
 import { LuckController } from './player/LuckController';
@@ -45,7 +44,6 @@ class Client {
     private gameWinner: string | null = null; // TODO: Use the game winner to display lobby historical wins
 
     private admin: Admin;
-    private ammoReservesUIController: AmmoReservesUIController;
     private animator: Animator;
     private audioManager: AudioManager;
     private cacheManager: CacheManager;
@@ -93,19 +91,8 @@ class Client {
         this.playerState = new PlayerState(this.userId, this.utility);
 
         this.ui = new UserInterface(this.playerState, this.settingsManager, this.utility);
-        this.ammoReservesUIController = new AmmoReservesUIController(
-            this.settingsManager,
-            this.ui,
-            this.utility
-        );
 
         this.admin = new Admin(this.cacheManager, this.ui);
-
-        this.upgradeManager = new UpgradeManager(
-            this.ammoReservesUIController,
-            this.playerState,
-            this.utility
-        );
 
         this.objectsManager = new ObjectsManager(
             this.playerState,
@@ -116,6 +103,12 @@ class Client {
         this.lobbyManager = new LobbyManager(this.utility, this.ui, this.roomManager);
         this.wsManager = new WebsocketManager(this.gameState, this.roomManager, this.utility);
         this.chatManager = new ChatManager(this.roomManager, this.ui);
+
+        this.upgradeManager = new UpgradeManager(
+            this.playerState,
+            this.ui,
+            this.utility
+        );
 
         this.roomController = new RoomController(
             this.gameState,
@@ -130,10 +123,10 @@ class Client {
         );
 
         this.collisionsManager = new CollisionsManager(
-            this.ammoReservesUIController,
             this.objectsManager,
             this.playerState,
             this.roomManager,
+            this.ui,
             this.userId
         );
 
@@ -185,7 +178,6 @@ class Client {
         );
 
         this.combatController = new CombatController(
-            this.ammoReservesUIController,
             this.animator,
             this.audioManager,
             this.collisionsManager,
@@ -196,6 +188,7 @@ class Client {
             this.playerController,
             this.playerState,
             this.roomManager,
+            this.ui,
             this.userId,
             this.utility
         );
@@ -236,7 +229,7 @@ class Client {
                 const ammo = 20;
 
                 this.playerState.myPlayer.actions.primary.magazine.currentReserve += ammo;
-                this.ammoReservesUIController.spawnAmmoInReserveUI(ammo);
+                this.ui.ammoReservesUIController.spawnAmmoInReserveUI(ammo);
             }
         });
     }
@@ -265,7 +258,7 @@ class Client {
         this.ui.initSettingsInputs(settings);
         this.ui.initSettingsToggles(settings)
 
-        this.ammoReservesUIController.initAmmoReserveCanvas();
+        this.ui.ammoReservesUIController.initAmmoReserveCanvas();
 
         this.eventsManager.initKeybindListeners();
 
@@ -1180,7 +1173,7 @@ class Client {
 
         this.playerState.myPlayer.actions.primary.magazine.currentReserve = Math.floor(PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.MAX_RESERVE / 2);
         this.playerState.myPlayer.actions.primary.magazine.currentAmmo = this.playerState.myPlayer.actions.primary.magazine.size;
-        this.ammoReservesUIController.spawnAmmoInReserveUI(this.playerState.myPlayer.actions.primary.magazine.currentReserve);
+        this.ui.ammoReservesUIController.spawnAmmoInReserveUI(this.playerState.myPlayer.actions.primary.magazine.currentReserve);
         this.playerState.isReloading = false;
 
         this.ui.createLeaderboard(this.lobbyManager, this.playerState.players, this.userId);
@@ -1421,7 +1414,7 @@ class Client {
         this.particlesManager.shrapnel.clear();
         this.upgradeManager.upgradesCompleted.clear();
 
-        this.ammoReservesUIController.reserveBulletParticles = [];
+        this.ui.ammoReservesUIController.reserveBulletParticles = [];
 
         if (resetType === 'Room') {
             this.lobbyManager.lobbyPlayers.clear();

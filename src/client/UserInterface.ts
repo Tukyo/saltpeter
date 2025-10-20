@@ -6,8 +6,11 @@ import { SettingsManager } from "./SettingsManager";
 import { Utility } from "./Utility";
 
 import { PlayerState } from "./player/PlayerState";
+import { AmmoReservesUIController } from "./player/AmmoReservesUIController";
 
 export class UserInterface {
+    public ammoReservesUIController: AmmoReservesUIController;
+
     // [ Canvas ]
     //
     public ammoReservesCanvas: HTMLCanvasElement | null = null;
@@ -129,6 +132,12 @@ export class UserInterface {
         private settingsManager: SettingsManager,
         private utility: Utility
     ) {
+        this.ammoReservesUIController = new AmmoReservesUIController(
+            this.settingsManager,
+            this,
+            this.utility
+        );
+
         this.initInterfaceListeners();
     }
 
