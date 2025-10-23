@@ -1,4 +1,3 @@
-import { PLAYER_DEFAULTS } from './Config';
 import { Player, Upgrade, UpgradeParams, UpgradeRarity, UpgradeType } from './Types';
 
 import { upgradeFiles } from './upgrades';
@@ -7,6 +6,7 @@ import { UserInterface } from './UserInterface';
 import { Utility } from './Utility';
 
 import { PlayerState } from './player/PlayerState';
+import { PlayerConfig } from './player/PlayerConfig';
 
 export class UpgradeManager {
     public takenUniques = new Set<string>(); // Pool of uniques already taken by players during this session
@@ -60,6 +60,7 @@ export class UpgradeManager {
     public upgrades: Upgrade[] = []
 
     constructor(
+        private playerConfig: PlayerConfig,
         private playerState: PlayerState,
         private ui: UserInterface,
         private utility: Utility
@@ -197,8 +198,8 @@ export class UpgradeManager {
     public resetUpgrades(player: Player): void {
         this.takenUniques.clear();
 
-        player.equipment = PLAYER_DEFAULTS.EQUIPMENT;
-        player.unique = PLAYER_DEFAULTS.UNIQUE;
+        player.equipment = this.playerConfig.default.equipment;
+        player.unique = this.playerConfig.default.unique;
     }
 
     // #region [ Helpers ]

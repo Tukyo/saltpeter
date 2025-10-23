@@ -1,4 +1,4 @@
-import { CANVAS, OBJECT_DEFAULTS, SFX, SHRAPNEL } from "../Config";
+import { CANVAS, OBJECT_DEFAULTS, SHRAPNEL } from "../Config";
 import { AttackType, AudioParams, CreateParticleParams, DecalParams, PlayerHitParams, Projectile, ProjectileOverrides, Shrapnel, Vec2 } from "../Types";
 
 import { Animator } from "../Animator";
@@ -13,12 +13,14 @@ import { RoomManager } from "../RoomManager";
 import { Utility } from "../Utility";
 import { PlayerController, } from "./PlayerController";
 import { UserInterface } from "../UserInterface";
+import { AudioConfig } from "../AudioConfig";
 
 export class CombatController {
     public projectiles: Map<string, Projectile> = new Map();
 
     constructor(
         private animator: Animator,
+        private audioConfig: AudioConfig,
         private audioManager: AudioManager,
         private collisionsManager: CollisionsManager,
         private decalsManager: DecalsManager,
@@ -123,12 +125,12 @@ export class CombatController {
         this.playerState.isMelee = true;
         this.playerState.lastMeleeTime = Date.now();
 
-        this.playerState.myPlayer.rig.weapon = 'KNIFE'; //TODO: Use whatever currently unlocked melee weapon is equipped
+        this.playerState.myPlayer.rig.weapon = this.playerState.myPlayer.inventory.melee;
 
         this.roomManager.sendMessage(JSON.stringify({
             type: 'weapon-change',
             playerId: this.userId,
-            weapon: 'KNIFE' //TODO: Use whatever currently unlocked melee weapon is equipped
+            weapon: this.playerState.myPlayer.inventory.melee
         }));
 
         // Calculate melee direction (use current rotation)
@@ -179,12 +181,12 @@ export class CombatController {
             this.projectiles.delete(meleeProjectile.id);
             this.playerState.isMelee = false;
 
-            this.playerState.myPlayer.rig.weapon = 'GLOCK'; //TODO: Use whatever currently unlocked ranged primary is equipped
+            this.playerState.myPlayer.rig.weapon = this.playerState.myPlayer.inventory.primary;
 
             this.roomManager.sendMessage(JSON.stringify({
                 type: 'weapon-change',
                 playerId: this.userId,
-                weapon: 'GLOCK' //TODO: Use whatever currently unlocked ranged primary is equipped
+                weapon: this.playerState.myPlayer.inventory.primary
             }));
         }, this.playerState.myPlayer.actions.melee.duration);
     }
@@ -221,7 +223,7 @@ export class CombatController {
             }); // duration=0 means infinite/held
 
             this.audioManager.playAudioNetwork({
-                src: this.utility.getRandomInArray(SFX.WEAPON.GLOCK.EMPTY), // TODO: Use current weapon
+                src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon.glock.empty),
                 listener: {
                     x: this.playerState.myPlayer.transform.pos.x,
                     y: this.playerState.myPlayer.transform.pos.y
@@ -260,7 +262,7 @@ export class CombatController {
         if (emptyBlend > 0.5) { // Only play when below 50% ammo (half mag empty)
             const blendVolume = (emptyBlend - 0.5) * 2 * 0.5; // Remap 0.5-1.0 to 0-0.5 volume
             this.audioManager.playAudio({ // Play sound locally
-                src: this.utility.getRandomInArray(SFX.WEAPON.GLOCK.EMPTY), // TODO: Use current weapon
+                src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon.glock.empty), // TODO: Use current weapon
                 listener: {
                     x: this.playerState.myPlayer.transform.pos.x,
                     y: this.playerState.myPlayer.transform.pos.y
@@ -372,7 +374,7 @@ export class CombatController {
         this.particlesManager.createParticles(shellParams);
 
         this.audioManager.playAudioNetwork({
-            src: this.utility.getRandomInArray(SFX.WEAPON.GLOCK.ATTACK), // TODO: Use current weapon
+            src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon.glock.attack), // TODO: Use current weapon
             listener: {
                 x: this.playerState.myPlayer.transform.pos.x,
                 y: this.playerState.myPlayer.transform.pos.y
@@ -392,7 +394,7 @@ export class CombatController {
         });
 
         this.audioManager.playAudioNetwork({
-            src: this.utility.getRandomInArray(SFX.WEAPON.GLOCK.SHELL), // TODO: Use current weapon
+            src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon.glock.shell), // TODO: Use current weapon
             delay: { min: 0.25, max: 0.5 }, // Play with a short delay trigger to simulate the shell hitting the ground
             listener: {
                 x: this.playerState.myPlayer.transform.pos.x,
@@ -529,7 +531,7 @@ export class CombatController {
 
                         // Broadcast deflection
                         this.roomManager.sendMessage(JSON.stringify({
-                            type: 'projectile-deflect',
+                            type: 'projectile-update',
                             projectileId: projectile.id,
                             newOwnerId: this.userId,
                             velocity: projectile.velocity,
@@ -624,7 +626,7 @@ export class CombatController {
                     this.particlesManager.createParticles(sparksParams);
 
                     const sfxParams: AudioParams = {
-                        src: this.utility.getRandomInArray(SFX.IMPACT.METAL.BULLET), // TODO: Use current projectile type
+                        src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.impact.metal.bullet), // TODO: Use current projectile type
                         listener: {
                             x: this.playerState.myPlayer.transform.pos.x,
                             y: this.playerState.myPlayer.transform.pos.y
@@ -823,7 +825,7 @@ export class CombatController {
         this.playerState.isBurstActive = false;
         this.playerState.currentBurstShot = 0;
 
-        this.particlesManager.spawnMagazineDecal();
+        this.decalsManager.spawnMagazineDecal();
 
         this.animator.animateCharacterPart({
             playerId: this.userId,
@@ -836,7 +838,7 @@ export class CombatController {
         }); // duration=0 means infinite/held
 
         this.audioManager.playAudioNetwork({
-            src: this.utility.getRandomInArray(SFX.WEAPON.GLOCK.RELOAD.START), // TODO: Use current weapon
+            src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon.glock.reload.start), // TODO: Use current weapon
             listener: {
                 x: this.playerState.myPlayer.transform.pos.x,
                 y: this.playerState.myPlayer.transform.pos.y
@@ -876,7 +878,7 @@ export class CombatController {
         });
 
         this.audioManager.playAudioNetwork({
-            src: this.utility.getRandomInArray(SFX.WEAPON.GLOCK.RELOAD.END), // TODO: Use current weapon
+            src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon.glock.reload.end), // TODO: Use current weapon
             listener: {
                 x: this.playerState.myPlayer.transform.pos.x,
                 y: this.playerState.myPlayer.transform.pos.y

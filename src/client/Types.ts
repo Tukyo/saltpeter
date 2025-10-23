@@ -101,6 +101,10 @@ export interface Player extends GameObject {
     hidden: boolean;
     invulnerable: boolean;
   }
+  inventory: {
+    primary: string;
+    melee: string;
+  }
   physics: {
     acceleration: number;
     friction: number;
@@ -254,6 +258,7 @@ export interface LobbyPlayer {
     headwear: string;
     weapon: string;
   }
+  transform: Transform;
 }
 
 export type LobbyControlsParams = {
@@ -386,16 +391,6 @@ export type AttackType = 'melee' | 'ranged';
 
 // #region [ Visual ]
 //
-export type CharacterAnimation = Map<string, {
-  playerId: string;
-  part: string;
-  partIndex?: number;
-  frames: { [key: number]: { x: number, y: number } };
-  duration: number;
-  startTime: number;
-  originalOffset: { x: number, y: number };
-}>
-
 export type CreateParticleParams = {
   id: string;
   pos: Vec2;
@@ -531,11 +526,6 @@ export type ImageDecalParams = {
   rotation: number;
 };
 
-
-
-
-
-
 export type Shrapnel = {
   amount: number;
   damage: number;
@@ -588,6 +578,21 @@ export type ReserveBulletParticle = {
   width: number;
   height: number;
 }
+
+export type RenderCharacterParams = {
+  player: Player | LobbyPlayer;
+  context: CanvasRenderingContext2D;
+}
+
+export type CharacterAnimation = Map<string, {
+  playerId: string;
+  part: string;
+  partIndex?: number;
+  frames: { [key: number]: { x: number, y: number } };
+  duration: number;
+  startTime: number;
+  originalOffset: { x: number, y: number };
+}>
 
 export type CharacterLayer = 'BODY' | 'WEAPON' | 'HEAD' | 'HEADWEAR' | 'UPGRADES';
 //

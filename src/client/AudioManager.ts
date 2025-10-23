@@ -1,20 +1,25 @@
-import { AUDIO, CANVAS } from "./Config";
+import { CANVAS } from "./Config";
 
 import { AudioPool } from "./AudioPool";
 import { AudioParams } from "./Types";
 import { RoomManager } from "./RoomManager";
 import { SettingsManager } from "./SettingsManager";
 import { Utility } from "./Utility";
+import { AudioConfig } from "./AudioConfig";
 
 export class AudioManager {
     private audioPool: AudioPool;
 
     constructor(
+        private audioConfig: AudioConfig,
         private roomManager: RoomManager,
         private settingsManager: SettingsManager,
         private utility: Utility
     ) {
-        this.audioPool = new AudioPool(AUDIO.SETTINGS.POOL_SIZE, AUDIO.SETTINGS.MAX_CONCURRENT); //TODO: Abstract config reliance
+        this.audioPool = new AudioPool(
+            this.audioConfig.settings.poolSize,
+            this.audioConfig.settings.maxConcurrent
+        );
     }
 
     // #region [ Playback ]

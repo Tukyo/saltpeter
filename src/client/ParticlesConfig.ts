@@ -236,7 +236,7 @@ export class ParticlesConfig {
                     paint: true,
                     spread: 0.4,
                     stain: false,
-                    colors: ["#d4af37", "#c69e1cff", "#dcb01f"]
+                    colors: ["#d4af37", "#c69e1c", "#dcb01f"]
                 } as ParticleParams,
                 sparks: {
                     count: {

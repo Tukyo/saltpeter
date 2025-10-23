@@ -411,7 +411,7 @@ export class ParticlesManager {
      * Generates gore particles using the decals for the character object.
      */
     public generateGore(params: DeathDecal): void {
-        const gorePool = [...this.charConfig.CHARACTER_DECALS.DEFAULT.GORE]; // TODO: Get current pool for gore
+        const gorePool = [...this.charConfig.characterDecals.default.gore]; // TODO: Get current pool for gore
         for (let i = 0; i < params.gore.amount && gorePool.length > 0; i++) {
             const goreAsset = this.utility.getRandomInArray(gorePool);
             gorePool.splice(gorePool.indexOf(goreAsset), 1);
@@ -442,7 +442,7 @@ export class ParticlesManager {
             });
         }
 
-        const bloodPool = [...this.charConfig.CHARACTER_DECALS.DEFAULT.BLOOD]; // TODO: Get current pool for blood
+        const bloodPool = [...this.charConfig.characterDecals.default.blood]; // TODO: Get current pool for blood
         for (let i = 0; i < params.blood.amount && bloodPool.length > 0; i++) {
             const bloodAsset = this.utility.getRandomInArray(bloodPool);
             bloodPool.splice(bloodPool.indexOf(bloodAsset), 1);
@@ -720,40 +720,4 @@ export class ParticlesManager {
     }
     //
     // #endregion
-
-    public spawnMagazineDecal(): void {
-        setTimeout(() => {
-            const currentAmmo = this.playerState.myPlayer.actions.primary.magazine.currentAmmo;
-
-            // Choose magazine sprite: empty if 0 ammo, full if > 0
-            const magazineSrc = currentAmmo > 0 // TODO: Get current ranged weapon
-                ? this.charConfig.MAGAZINE.GLOCK.FULL
-                : this.charConfig.MAGAZINE.GLOCK.EMPTY;
-
-            // Random position in small radius around player
-            const angle = this.utility.getRandomNum(0, Math.PI * 2);
-            const distance = this.utility.getRandomNum(8, 24);
-
-            const x = this.playerState.myPlayer.transform.pos.x + Math.cos(angle) * distance;
-            const y = this.playerState.myPlayer.transform.pos.y + Math.sin(angle) * distance;
-            const rotation = this.utility.getRandomNum(0, Math.PI * 2);
-            const scale = this.utility.getRandomNum(0.65, 0.75);
-
-            const decalId = `magazine_${this.userId}_${Date.now()}`;
-
-            const decalParams: DecalParams = {
-                id: decalId,
-                pos: { x, y },
-                type: 'image',
-                image: {
-                    src: magazineSrc,
-                    scale: scale,
-                    rotation: rotation
-                }
-            };
-            this.decalsManager.createDecal(decalParams);
-
-            console.log(`Spawned ${currentAmmo > 0 ? 'full' : 'empty'} magazine at reload`);
-        }, 150);
-    }
 }

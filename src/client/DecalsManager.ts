@@ -5,6 +5,8 @@ import { RoomManager } from "./RoomManager";
 import { UserInterface } from "./UserInterface";
 import { Utility } from "./Utility";
 import { DecalsConfig } from "./DecalsConfig";
+import { PlayerState } from "./player/PlayerState";
+import { CharacterConfig } from "./CharacterConfig";
 
 export class DecalsManager {
     public decalsConfig: DecalsConfig;
@@ -13,8 +15,11 @@ export class DecalsManager {
     public staticDecalData: ImageData | null = null;
 
     constructor(
+        private charConfig: CharacterConfig,
+        private playerState: PlayerState,
         private roomManager: RoomManager,
         private ui: UserInterface,
+        private userId: string,
         private utility: Utility
     ) {
         this.decalsConfig = new DecalsConfig();
@@ -185,6 +190,49 @@ export class DecalsManager {
     private renderBakedDecals(): void {
         if (!this.staticDecalData || !this.ui.decalCtx) return;
         this.ui.decalCtx.putImageData(this.staticDecalData, 0, 0);
+    }
+    //
+    // #endregion
+
+    // #region [ Weapon Magazine ]
+    //
+    /**
+     * Spawns weapon magazine using createDecal function, also being broadcast over the network.
+     */
+    public spawnMagazineDecal(): void {
+        setTimeout(() => {
+            const currentAmmo = this.playerState.myPlayer.actions.primary.magazine.currentAmmo;
+
+            // Choose magazine sprite: empty if 0 ammo, full if > 0
+            const magazineSrc = currentAmmo > 0 // TODO: Get current ranged weapon
+                ? this.charConfig.magazine.glock.full
+                : this.charConfig.magazine.glock.empty;
+
+            // Random position in small radius around player
+            const angle = this.utility.getRandomNum(0, Math.PI * 2);
+            const distance = this.utility.getRandomNum(8, 24);
+
+            const x = this.playerState.myPlayer.transform.pos.x + Math.cos(angle) * distance;
+            const y = this.playerState.myPlayer.transform.pos.y + Math.sin(angle) * distance;
+            const rotation = this.utility.getRandomNum(0, Math.PI * 2);
+            const scale = this.utility.getRandomNum(0.65, 0.75);
+
+            const decalId = `magazine_${this.userId}_${Date.now()}`;
+
+            const decalParams: DecalParams = {
+                id: decalId,
+                pos: { x, y },
+                type: 'image',
+                image: {
+                    src: magazineSrc,
+                    scale: scale,
+                    rotation: rotation
+                }
+            };
+            this.createDecal(decalParams);
+
+            console.log(`Spawned ${currentAmmo > 0 ? 'full' : 'empty'} magazine at reload`);
+        }, 150);
     }
     //
     // #endregion

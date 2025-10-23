@@ -1,12 +1,13 @@
-import { AUDIO, GAME } from "./Config";
+import { GAME } from "./Config";
 import { GameSettings } from "./Types";
 
 import { CacheManager } from "./CacheManager";
+import { AudioConfig } from "./AudioConfig";
 
 export class SettingsManager {
     private gameSettings: GameSettings
 
-    constructor(private cacheManager: CacheManager) {
+    constructor(private audioConfig: AudioConfig, private cacheManager: CacheManager) {
         this.gameSettings = this.initSettings();
     }
 
@@ -17,11 +18,11 @@ export class SettingsManager {
         return { // [ IMPORTANT ] Keep track of the default game options here
             audio: {
                 mixer: {
-                    master: AUDIO.MIXER.MASTER,
-                    interface: AUDIO.MIXER.INTERFACE,
-                    music: AUDIO.MIXER.MUSIC,
-                    sfx: AUDIO.MIXER.SFX,
-                    voice: AUDIO.MIXER.VOICE
+                    master: this.audioConfig.mixer.master,
+                    interface: this.audioConfig.mixer.interface,
+                    music: this.audioConfig.mixer.music,
+                    sfx: this.audioConfig.mixer.sfx,
+                    voice: this.audioConfig.mixer.voice
                 }
             },
             controls: {

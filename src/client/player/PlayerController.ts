@@ -1,4 +1,4 @@
-import { NETWORK, SFX } from "../Config";
+import { NETWORK } from "../Config";
 import { AudioParams, CreateParticleParams, DeathDecal, DecalParams, EmitterParams, PlayerHitParams, SetSliderParams, Vec2 } from "../Types";
 
 import { LuckController } from "./LuckController";
@@ -13,10 +13,12 @@ import { ParticlesManager } from "../ParticlesManager";
 import { RoomManager } from "../RoomManager";
 import { UserInterface } from "../UserInterface";
 import { Utility } from "../Utility";
+import { AudioConfig } from "../AudioConfig";
 
 
 export class PlayerController {
     constructor(
+        private audioConfig: AudioConfig,
         private audioManager: AudioManager,
         private decalsManager: DecalsManager,
         private gameState: GameState,
@@ -127,7 +129,7 @@ export class PlayerController {
         if (params.target.id === this.userId) { // Random chance to play grunt when I'm hit
             if (this.utility.getRandomNum(0, 1) < 0.2) { // 20%
                 const gruntParams: AudioParams = {
-                    src: this.utility.getRandomInArray(SFX.PLAYER.MALE.GRUNT), // TODO: Allow player to define gender
+                    src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.player.male.grunt), // TODO: Allow player to define gender
                     listener: {
                         x: this.playerState.myPlayer.transform.pos.x,
                         y: this.playerState.myPlayer.transform.pos.y
@@ -144,7 +146,7 @@ export class PlayerController {
             }
         } else { // The player hit was not me
             const sfxParams: AudioParams = {
-                src: this.utility.getRandomInArray(SFX.IMPACT.FLESH.BULLET), // TODO: User current body material
+                src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.impact.flesh.bullet), // TODO: User current body material
                 listener: {
                     x: this.playerState.myPlayer.transform.pos.x,
                     y: this.playerState.myPlayer.transform.pos.y

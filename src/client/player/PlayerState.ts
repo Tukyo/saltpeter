@@ -1,7 +1,8 @@
-import { CANVAS, PLAYER_DEFAULTS } from "../Config";
+import { CANVAS } from "../Config";
 
 import { Player, Players } from "../Types";
 import { Utility } from "../Utility";
+import { PlayerConfig } from "./PlayerConfig";
 
 export class PlayerState {
     public myPlayer: Player; // My player object
@@ -39,15 +40,15 @@ export class PlayerState {
 
     private statListeners: Map<string, (value: any) => void> = new Map();
 
-    constructor(userId: string, private utility: Utility) {
-        this.myPlayer = this.initPlayer(userId);
+    constructor(private playerConfig: PlayerConfig, private userId: string, private utility: Utility) {
+        this.myPlayer = this.initPlayer(this.userId);
     }
 
     // #region [ State ]
     //
     // [ IMPORTANT ] Keep full track of Player object here
     /**
-     * Initializes the default player object using the PLAYER_DEFAULTS defined in the config.
+     * Initializes the default player object using the playerConfig.
      */
     public initPlayer(userId: string): Player {
         return this.myPlayer = {
@@ -63,84 +64,88 @@ export class PlayerState {
             color: this.utility.getRandomColor(), // TODO: Replace with char customization
             actions: {
                 dash: {
-                    cooldown: PLAYER_DEFAULTS.ACTIONS.DASH.COOLDOWN,
-                    drain: PLAYER_DEFAULTS.ACTIONS.DASH.DRAIN,
-                    multiplier: PLAYER_DEFAULTS.ACTIONS.DASH.MULTIPLIER,
-                    time: PLAYER_DEFAULTS.ACTIONS.DASH.TIME
+                    cooldown: this.playerConfig.default.actions.dash.cooldown,
+                    drain: this.playerConfig.default.actions.dash.drain,
+                    multiplier: this.playerConfig.default.actions.dash.multiplier,
+                    time: this.playerConfig.default.actions.dash.time
                 },
                 melee: {
-                    cooldown: PLAYER_DEFAULTS.ACTIONS.MELEE.COOLDOWN,
-                    damage: PLAYER_DEFAULTS.ACTIONS.MELEE.DAMAGE,
-                    duration: PLAYER_DEFAULTS.ACTIONS.MELEE.DURATION,
-                    range: PLAYER_DEFAULTS.ACTIONS.MELEE.RANGE,
-                    size: PLAYER_DEFAULTS.ACTIONS.MELEE.SIZE
+                    cooldown: this.playerConfig.default.actions.melee.cooldown,
+                    damage: this.playerConfig.default.actions.melee.damage,
+                    duration: this.playerConfig.default.actions.melee.duration,
+                    range: this.playerConfig.default.actions.melee.range,
+                    size: this.playerConfig.default.actions.melee.size
                 },
                 primary: {
-                    buffer: PLAYER_DEFAULTS.ACTIONS.PRIMARY.BUFFER,
+                    buffer: this.playerConfig.default.actions.primary.buffer,
                     burst: {
-                        amount: PLAYER_DEFAULTS.ACTIONS.PRIMARY.BURST.AMOUNT,
-                        delay: PLAYER_DEFAULTS.ACTIONS.PRIMARY.BURST.DELAY
+                        amount: this.playerConfig.default.actions.primary.burst.amount,
+                        delay: this.playerConfig.default.actions.primary.burst.delay
                     },
                     magazine: {
-                        currentAmmo: PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.SIZE,
-                        currentReserve: PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.STARTING_RESERVE,
-                        maxReserve: PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.MAX_RESERVE,
-                        size: PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.SIZE
+                        currentAmmo: this.playerConfig.default.actions.primary.magazine.size,
+                        currentReserve: this.playerConfig.default.actions.primary.magazine.startingReserve,
+                        maxReserve: this.playerConfig.default.actions.primary.magazine.maxReserve,
+                        size: this.playerConfig.default.actions.primary.magazine.size
                     },
-                    offset: PLAYER_DEFAULTS.ACTIONS.PRIMARY.OFFSET,
+                    offset: this.playerConfig.default.actions.primary.offset,
                     projectile: {
-                        amount: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.AMOUNT,
-                        color: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.COLOR,
-                        damage: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.DAMAGE,
-                        length: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.LENGTH,
-                        range: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.RANGE,
-                        size: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SIZE,
-                        speed: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPEED,
-                        spread: PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD
+                        amount: this.playerConfig.default.actions.primary.projectile.amount,
+                        color: this.playerConfig.default.actions.primary.projectile.color,
+                        damage: this.playerConfig.default.actions.primary.projectile.damage,
+                        length: this.playerConfig.default.actions.primary.projectile.length,
+                        range: this.playerConfig.default.actions.primary.projectile.range,
+                        size: this.playerConfig.default.actions.primary.projectile.size,
+                        speed: this.playerConfig.default.actions.primary.projectile.speed,
+                        spread: this.playerConfig.default.actions.primary.projectile.spread
                     },
                     reload: {
-                        time: PLAYER_DEFAULTS.ACTIONS.PRIMARY.RELOAD.TIME
+                        time: this.playerConfig.default.actions.primary.reload.time
                     }
                 },
                 sprint: {
-                    drain: PLAYER_DEFAULTS.ACTIONS.SPRINT.DRAIN,
-                    multiplier: PLAYER_DEFAULTS.ACTIONS.SPRINT.MULTIPLIER
+                    drain: this.playerConfig.default.actions.sprint.drain,
+                    multiplier: this.playerConfig.default.actions.sprint.multiplier
                 }
             },
-            equipment: PLAYER_DEFAULTS.EQUIPMENT,
+            equipment: this.playerConfig.default.equipment,
             flags: {
-                hidden: PLAYER_DEFAULTS.FLAGS.HIDDEN,
-                invulnerable: PLAYER_DEFAULTS.FLAGS.INVULNERABLE
+                hidden: this.playerConfig.default.flags.hidden,
+                invulnerable: this.playerConfig.default.flags.invulnerable
+            },
+            inventory: {
+                primary: this.playerConfig.default.inventory.primary,
+                melee: this.playerConfig.default.inventory.melee
             },
             physics: {
-                acceleration: PLAYER_DEFAULTS.PHYSICS.ACCELERATION,
-                friction: PLAYER_DEFAULTS.PHYSICS.FRICTION
+                acceleration: this.playerConfig.default.physics.acceleration,
+                friction: this.playerConfig.default.physics.friction
             },
             rig: {
-                body: PLAYER_DEFAULTS.RIG.BODY,
-                head: PLAYER_DEFAULTS.RIG.HEAD,
-                headwear: PLAYER_DEFAULTS.RIG.HEADWEAR,
-                weapon: PLAYER_DEFAULTS.RIG.WEAPON
+                body: this.playerConfig.default.rig.body,
+                head: this.playerConfig.default.rig.head,
+                headwear: this.playerConfig.default.rig.headwear,
+                weapon: this.playerConfig.default.rig.weapon
             },
             stats: {
-                defense: PLAYER_DEFAULTS.STATS.DEFENSE,
+                defense: this.playerConfig.default.stats.defense,
                 health: {
-                    max: PLAYER_DEFAULTS.STATS.HEALTH.MAX,
-                    value: PLAYER_DEFAULTS.STATS.HEALTH.MAX,
+                    max: this.playerConfig.default.stats.health.max,
+                    value: this.playerConfig.default.stats.health.max,
                 },
-                luck: PLAYER_DEFAULTS.STATS.LUCK,
-                size: PLAYER_DEFAULTS.STATS.SIZE,
-                speed: PLAYER_DEFAULTS.STATS.SPEED,
+                luck: this.playerConfig.default.stats.luck,
+                size: this.playerConfig.default.stats.size,
+                speed: this.playerConfig.default.stats.speed,
                 stamina: {
-                    max: PLAYER_DEFAULTS.STATS.STAMINA.MAX,
+                    max: this.playerConfig.default.stats.stamina.max,
                     recovery: {
-                        delay: PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.DELAY,
-                        rate: PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.RATE
+                        delay: this.playerConfig.default.stats.stamina.recovery.delay,
+                        rate: this.playerConfig.default.stats.stamina.recovery.rate
                     },
-                    value: PLAYER_DEFAULTS.STATS.STAMINA.MAX,
+                    value: this.playerConfig.default.stats.stamina.max,
                 },
             },
-            unique: PLAYER_DEFAULTS.UNIQUE
+            unique: this.playerConfig.default.unique
         };
     }
 
@@ -180,7 +185,7 @@ export class PlayerState {
 
     // #region [ Events ]
     //
-    
+
     public onStatChange(statPath: string, callback: (value: any) => void): void {
         this.statListeners.set(statPath, callback);
     }

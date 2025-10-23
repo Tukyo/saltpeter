@@ -1,10 +1,12 @@
-import { AMMO_BOX, CANVAS, GAME, PLAYER_DEFAULTS, UI } from "./Config";
-import { CharacterLayer, Player, Projectile } from "./Types";
+import { AMMO_BOX, CANVAS, GAME, UI } from "./Config";
+import { CharacterLayer, Projectile, RenderCharacterParams } from "./Types";
 
 import { Animator } from "./Animator";
 import { CharacterManager } from "./CharacterManager";
 import { ObjectsManager } from "./ObjectsManager";
 import { UserInterface } from "./UserInterface";
+import { LobbyManager } from "./LobbyManager";
+import { PlayerConfig } from "./player/PlayerConfig";
 
 export class RenderingManager {
     public characterImages: Map<string, HTMLImageElement> = new Map();
@@ -13,10 +15,17 @@ export class RenderingManager {
     constructor(
         private animator: Animator,
         private charManager: CharacterManager,
+        private lobbyManager: LobbyManager,
         private objectsManager: ObjectsManager,
+        private playerConfig: PlayerConfig,
         private ui: UserInterface,
-    ) { }
+        private userId: string,
+    ) {
+        this.initEventListeners();
+    }
 
+    // #region [ General ]
+    //
     /**
      * Clear all canvas rendering context in the game.
      * 
@@ -35,15 +44,182 @@ export class RenderingManager {
         this.ui.ctx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
         this.ui.decalCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
     }
+    //
+    // #endregion
 
-    // [ Character ]
+    // #region [ Character ]
     //
     /**
      * Draws the corresponding character layers defined in the rig to create the player character.
      */
-    public drawCharacter(player: Player, isMe: boolean = false): void {
-        if (!this.ui.ctx) return;
-        if (player.stats.health.value <= 0) return;
+    public drawCharacter(params: RenderCharacterParams): void {
+        const { player, context } = params;
+        if (!context || !player) return;
+
+        if ('stats' in player) {
+            if (player.stats.health.value <= 0) return;
+            this.renderUniqueEffects(params);
+            if (player.flags.hidden) return;
+
+            context.fillStyle = UI.TEXT_COLOR;
+            context.font = UI.FONT;
+            context.textAlign = 'center';
+
+            const displayName = player.id === this.userId ? 'You' : player.id.substring(0, 6);
+            context.fillText(
+                displayName,
+                player.transform.pos.x,
+                player.transform.pos.y - this.playerConfig.default.data.idOffset
+            );
+        }
+
+        // Main player
+        this.drawCharacterLayers(params);
+    }
+    /**
+     * Entrypoint for rendering of all character layers.
+     */
+    private drawCharacterLayers(params: RenderCharacterParams): void {
+        const player = params.player;
+        if (!player) return;
+
+        this.drawCharacterLayer(params, 'BODY', player.rig.body);
+        this.drawCharacterLayer(params, 'WEAPON', player.rig.weapon);
+        this.drawCharacterLayer(params, 'HEAD', player.rig.head);
+        this.drawCharacterLayer(params, 'HEADWEAR', player.rig.headwear);
+
+        if ('stats' in player) { this.drawUpgradeLayers(params); }
+    }
+
+    /**
+     * Retrieves character assets and draws each layer using drawCharacterPart.
+     */
+    private drawCharacterLayer(params: RenderCharacterParams, layer: CharacterLayer, variant: string): void {
+        if (!params) return;
+
+        const assets = this.charManager.getCharacterAsset(layer, variant);
+
+        if (typeof assets === 'string') {
+            this.drawCharacterPart(params, assets, layer);
+        }
+        else if (Array.isArray(assets)) {
+            assets.forEach((assetPath, index) => {
+                this.drawCharacterPart(params, assetPath, layer, index);
+            });
+        }
+    }
+
+    /**
+     * Handles the actual rendering for all player parts on each layer.
+     */
+    private drawCharacterPart(params: RenderCharacterParams, assetPath: string, partType: CharacterLayer, partIndex?: number): void {
+        const { context, player } = params;
+        if (!context || !player) return;
+
+        let image = this.characterImages.get(assetPath);
+
+        if (!image) {
+            image = new Image();
+            image.src = assetPath;
+            this.characterImages.set(assetPath, image);
+
+            image.onload = () => { this.renderLobbyPlayer(); };
+
+            if (!image.complete) return;
+        }
+
+        if (!image.complete || image.naturalWidth === 0) return;
+
+        // Determine draw size based on player type
+        const drawSize = 'stats' in player
+            ? GAME.CHARACTER_SIZE * (player.stats.size / GAME.CHARACTER_SIZE)
+            : GAME.CHARACTER_SIZE * 0.35;
+
+        // Get position - lobby players might not have transform
+        const posX = player.transform?.pos?.x ?? 0;
+        const posY = player.transform?.pos?.y ?? 0;
+
+        context.save();
+
+        // Only apply rotation and animation for full players
+        if ('stats' in player && player.transform.rot !== undefined) {
+            const animationId = `${player.id}_${partType}_${partIndex || 0}`;
+            const animationOffset = this.animator.characterOffsets?.get(animationId) || { x: 0, y: 0 };
+
+            context.translate(posX, posY);
+            context.rotate(player.transform.rot);
+            context.translate(animationOffset.x, animationOffset.y);
+
+            context.drawImage(
+                image,
+                -drawSize / 2,
+                -drawSize / 2,
+                drawSize,
+                drawSize
+            );
+        } else {
+            // Simple centered draw for lobby players
+            context.drawImage(
+                image,
+                posX - drawSize / 2,
+                posY - drawSize / 2,
+                drawSize,
+                drawSize
+            );
+        }
+
+        context.restore();
+    }
+    //
+    // #endregion
+
+    // #region [ Uniques & Upgrades ]
+    //
+    /**
+     * Draws the equipment and unique upgrades that have a character layer visual component.
+     */
+    private drawUpgradeLayers(params: RenderCharacterParams): void {
+        const { player } = params;
+
+        if ('unique' in player) {
+            // Check unique upgrades
+            player.unique.forEach(uniqueName => {
+                const assetPath = this.charManager.getUpgradeVisual(uniqueName);
+                if (assetPath) {
+                    this.drawCharacterPart(params, assetPath, 'UPGRADES');
+                }
+            });
+
+            // Check equipment upgrades
+            player.equipment.forEach(equipmentName => {
+                const assetPath = this.charManager.getUpgradeVisual(equipmentName);
+                if (assetPath) {
+                    this.drawCharacterPart(params, assetPath, 'UPGRADES');
+                }
+            });
+        }
+    }
+
+    /**
+     * Called in main rendering loop, used to override standard rendering when unique effects temporarily need to.
+     */
+    private renderUniqueEffects(params: RenderCharacterParams): void {
+        const { player } = params;
+        if (!player) return;
+
+        if ('unique' in player) {
+            if (player.unique.includes("spectral_image")) {
+                this.renderSpectralImage(params);
+            }
+        }
+    }
+
+    /**
+     * Renders the chosen player as a spectral image.
+     */
+    private renderSpectralImage(params: RenderCharacterParams): void {
+        const { context, player } = params;
+        if (!context || !player || !('stats' in player)) return;
 
         // Static ghost memory (attached per instance)
         const staticGhosts = (this as any)._spectralGhosts ??= {
@@ -60,10 +236,9 @@ export class RenderingManager {
         const now = Date.now();
         const wasHidden = staticGhosts.lastHidden.get(player.id) ?? false;
         const isHidden = player.flags.hidden;
-        const isSpectral = player.unique.includes("spectral_image");
 
         // Detect start of dash (flash out)
-        if (!wasHidden && isHidden && isSpectral) {
+        if (!wasHidden && isHidden) {
             staticGhosts.flashes.push({
                 x: player.transform.pos.x,
                 y: player.transform.pos.y,
@@ -74,7 +249,7 @@ export class RenderingManager {
         }
 
         // Detect end of dash (flash in)
-        if (wasHidden && !isHidden && isSpectral) {
+        if (wasHidden && !isHidden) {
             staticGhosts.flashes.push({
                 x: player.transform.pos.x,
                 y: player.transform.pos.y,
@@ -96,12 +271,12 @@ export class RenderingManager {
                 ? 1 - (age / player.actions.dash.time)
                 : (age / player.actions.dash.time);
 
-            this.ui.ctx.save();
+            context.save();
 
             // Invert-style effect via difference + high saturation
-            this.ui.ctx.globalAlpha = alpha * 0.8;
-            this.ui.ctx.globalCompositeOperation = 'difference';
-            this.ui.ctx.filter = 'saturate(100) contrast(2)';
+            context.globalAlpha = alpha * 0.8;
+            context.globalCompositeOperation = 'difference';
+            context.filter = 'saturate(100) contrast(2)';
 
             const ghostPlayer = {
                 ...player,
@@ -111,132 +286,41 @@ export class RenderingManager {
                 }
             };
 
-            this.drawCharacterLayers(ghostPlayer);
-            this.ui.ctx.restore();
-        }
-
-        if (isHidden) return;
-
-        // Main player
-        this.drawCharacterLayers(player);
-
-        this.ui.ctx.fillStyle = UI.TEXT_COLOR;
-        this.ui.ctx.font = UI.FONT;
-        this.ui.ctx.textAlign = 'center';
-
-        const displayName = isMe ? 'You' : player.id.substring(0, 6);
-        this.ui.ctx.fillText(
-            displayName,
-            player.transform.pos.x,
-            player.transform.pos.y - PLAYER_DEFAULTS.VISUAL.ID_DISPLAY_OFFSET
-        );
-    }
-
-    /**
-     * Entrypoint for rendering of all character layers.
-     */
-    private drawCharacterLayers(player: Player): void {
-        this.drawCharacterLayer(player, 'BODY', player.rig.body);
-        this.drawCharacterLayer(player, 'WEAPON', player.rig.weapon);
-        this.drawCharacterLayer(player, 'HEAD', player.rig.head);
-        this.drawCharacterLayer(player, 'HEADWEAR', player.rig.headwear);
-        this.drawUpgradeLayers(player);
-    }
-
-    /**
-     * Retrieves character assets and draws each layer using drawCharacterPart.
-     */
-    private drawCharacterLayer(player: Player, layer: CharacterLayer, variant: string): void {
-        if (!this.ui.ctx) return;
-
-        const assets = this.charManager.getCharacterAsset(layer, variant);
-
-        if (typeof assets === 'string') {
-            this.drawCharacterPart(player, assets, layer);
-        }
-        else if (Array.isArray(assets)) {
-            assets.forEach((assetPath, index) => {
-                this.drawCharacterPart(player, assetPath, layer, index);
+            this.drawCharacterLayers({
+                player: ghostPlayer,
+                context: context
             });
+            context.restore();
         }
     }
+    //
+    // #endregion
 
+    // #region [ Lobby Rendering ]
+    //
     /**
-     * Handles the actual rendering for all player parts on each layer.
+     * Renders lobby player in customization canvas via character rendering functions.
      */
-    private drawCharacterPart(player: Player, assetPath: string, partType: CharacterLayer, partIndex?: number): void {
-        if (!this.ui.ctx) return;
+    private renderLobbyPlayer(): void {
+        if (!this.lobbyManager.inLobby) return;
 
-        let image = this.characterImages.get(assetPath);
+        const myLobbyPlayer = this.lobbyManager.lobbyPlayers.get(this.userId);
+        if (!myLobbyPlayer || !this.ui.charCustomizeCanvas) return;
 
-        if (!image) {
-            image = new Image();
-            image.src = assetPath;
-            this.characterImages.set(assetPath, image);
-            if (!image.complete) return;
-        }
+        const ctx = this.ui.charCustomizeCanvas.getContext('2d');
+        if (!ctx) return;
 
-        if (!image.complete || image.naturalWidth === 0) return;
+        ctx.clearRect(0, 0, this.ui.charCustomizeCanvas.width, this.ui.charCustomizeCanvas.height);
 
-        const drawSize = GAME.CHARACTER_SIZE * (player.stats.size / GAME.CHARACTER_SIZE);
-
-        // Check for animation offset
-        const animationId = `${player.id}_${partType}_${partIndex || 0}`;
-        const animationOffset = this.animator.characterOffsets?.get(animationId) || { x: 0, y: 0 };
-
-        this.ui.ctx.save();
-
-        // Apply rotation if it exists
-        if (player.transform.rot !== undefined) {
-            this.ui.ctx.translate(player.transform.pos.x, player.transform.pos.y);
-            this.ui.ctx.rotate(player.transform.rot);
-
-            // Apply animation offset
-            this.ui.ctx.translate(animationOffset.x, animationOffset.y);
-
-            this.ui.ctx.drawImage(
-                image,
-                -drawSize / 2,
-                -drawSize / 2,
-                drawSize,
-                drawSize
-            );
-        } else {
-            this.ui.ctx.drawImage(
-                image,
-                player.transform.pos.x - drawSize / 2 + animationOffset.x,
-                player.transform.pos.y - drawSize / 2 + animationOffset.y,
-                drawSize,
-                drawSize
-            );
-        }
-
-        this.ui.ctx.restore();
-    }
-
-    /**
-     * Draws the equipment and unique upgrades that have a character layer visual component.
-     */
-    private drawUpgradeLayers(player: Player): void {
-        // Check unique upgrades
-        player.unique.forEach(uniqueName => {
-            const assetPath = this.charManager.getUpgradeVisual(uniqueName);
-            if (assetPath) {
-                this.drawCharacterPart(player, assetPath, 'UPGRADES');
-            }
-        });
-
-        // Check equipment upgrades
-        player.equipment.forEach(equipmentName => {
-            const assetPath = this.charManager.getUpgradeVisual(equipmentName);
-            if (assetPath) {
-                this.drawCharacterPart(player, assetPath, 'UPGRADES');
-            }
+        this.drawCharacter({
+            player: myLobbyPlayer,
+            context: ctx
         });
     }
     //
+    // #endregion
 
-    // [ Objects ]
+    // #region [ Objects ]
     //
     /**
      * Draws object entities on the canvas.
@@ -333,4 +417,14 @@ export class RenderingManager {
         this.ui.ctx.lineTo(frontX, frontY);
         this.ui.ctx.stroke();
     }
+    //
+    // #endregion
+
+    // #region [ Events ]
+    //
+    private initEventListeners(): void {
+        window.addEventListener("customEvent_renderCharacter", () => this.renderLobbyPlayer());
+    }
+    //
+    // #endregion
 }

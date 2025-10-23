@@ -1,7 +1,7 @@
 
-import { PLAYER_DEFAULTS, CANVAS, GAME, SFX, AUDIO } from './Config';
+import { CANVAS, GAME } from './Config';
 
-import { Player, RoomMessage, LobbyPlayer, LeaderboardEntry, ResetType, SetSliderParams, SetSpanParams, DeathDecal, EmitterParams, GameSettings } from './Types';
+import { Player, RoomMessage, LobbyPlayer, LeaderboardEntry, ResetType, SetSliderParams, SetSpanParams, DeathDecal, EmitterParams, GameSettings, RenderCharacterParams } from './Types';
 
 import { Admin } from './Admin';
 import { Animator } from './Animator';
@@ -34,6 +34,8 @@ import { ObjectsManager } from './ObjectsManager';
 import { PlayerController } from './player/PlayerController';
 import { PlayerState } from './player/PlayerState';
 import { StaminaController } from './player/StaminaController';
+import { PlayerConfig } from './player/PlayerConfig';
+import { AudioConfig } from './AudioConfig';
 
 class Client {
     private userId: string;
@@ -45,6 +47,7 @@ class Client {
 
     private admin: Admin;
     private animator: Animator;
+    private audioConfig: AudioConfig;
     private audioManager: AudioManager;
     private cacheManager: CacheManager;
     private charConfig: CharacterConfig;
@@ -62,6 +65,7 @@ class Client {
     private moveController: MoveController;
     private objectsManager: ObjectsManager;
     private particlesManager: ParticlesManager;
+    private playerConfig: PlayerConfig;
     private playerController: PlayerController;
     private playerState: PlayerState;
     private renderingManager: RenderingManager;
@@ -81,14 +85,18 @@ class Client {
         this.utility = new Utility();
         this.gameState = new GameState();
 
-        this.settingsManager = new SettingsManager(this.cacheManager);
+        this.audioConfig = new AudioConfig();
+
+        this.settingsManager = new SettingsManager(this.audioConfig, this.cacheManager);
         this.controlsManager = new ControlsManager(this.settingsManager);
 
         this.charConfig = new CharacterConfig();
         this.charManager = new CharacterManager(this.charConfig);
 
-        this.userId = this.utility.generateUID(PLAYER_DEFAULTS.DATA.ID_LENGTH);
-        this.playerState = new PlayerState(this.userId, this.utility);
+        this.playerConfig = new PlayerConfig();
+
+        this.userId = this.utility.generateUID(this.playerConfig.default.data.idLength);
+        this.playerState = new PlayerState(this.playerConfig, this.userId, this.utility);
 
         this.ui = new UserInterface(this.playerState, this.settingsManager, this.utility);
 
@@ -100,11 +108,12 @@ class Client {
         );
 
         this.roomManager = new RoomManager(this.userId, this.utility);
-        this.lobbyManager = new LobbyManager(this.charManager, this.playerState, this.roomManager, this.ui, this.utility);
+        this.lobbyManager = new LobbyManager(this.charManager, this.playerConfig, this.playerState, this.roomManager, this.ui, this.utility);
         this.wsManager = new WebsocketManager(this.gameState, this.roomManager, this.utility);
         this.chatManager = new ChatManager(this.roomManager, this.ui);
 
         this.upgradeManager = new UpgradeManager(
+            this.playerConfig,
             this.playerState,
             this.ui,
             this.utility
@@ -134,19 +143,25 @@ class Client {
         this.staminaController = new StaminaController(this.playerState);
         this.luckController = new LuckController(this.playerState);
 
-        this.audioManager = new AudioManager(this.roomManager, this.settingsManager, this.utility);
+        this.audioManager = new AudioManager(this.audioConfig, this.roomManager, this.settingsManager, this.utility);
         this.animator = new Animator(this.playerState, this.roomManager, this.userId);
 
         this.renderingManager = new RenderingManager(
             this.animator,
             this.charManager,
+            this.lobbyManager,
             this.objectsManager,
-            this.ui
+            this.playerConfig,
+            this.ui,
+            this.userId
         );
 
         this.decalsManager = new DecalsManager(
+            this.charConfig,
+            this.playerState,
             this.roomManager,
             this.ui,
+            this.userId,
             this.utility
         );
 
@@ -163,6 +178,7 @@ class Client {
         );
 
         this.playerController = new PlayerController(
+            this.audioConfig,
             this.audioManager,
             this.decalsManager,
             this.gameState,
@@ -179,6 +195,7 @@ class Client {
 
         this.combatController = new CombatController(
             this.animator,
+            this.audioConfig,
             this.audioManager,
             this.collisionsManager,
             this.decalsManager,
@@ -262,8 +279,8 @@ class Client {
 
         this.eventsManager.initKeybindListeners();
 
-        if (AUDIO.SETTINGS.PRELOAD_SOUNDS) {
-            this.audioManager.preloadAudioAssets(SFX, '.ogg');
+        if (this.audioConfig.settings.preloadSounds) {
+            this.audioManager.preloadAudioAssets(this.audioConfig.resources.sfx, '.ogg');
         }
 
         this.watchForInputs();
@@ -323,12 +340,15 @@ class Client {
                     type: 'lobby-join',
                     color: this.playerState.myPlayer.color,
                     rig: {
-                        body: PLAYER_DEFAULTS.RIG.BODY,
-                        head: PLAYER_DEFAULTS.RIG.HEAD,
-                        headwear: PLAYER_DEFAULTS.RIG.HEADWEAR,
-                        weapon: PLAYER_DEFAULTS.RIG.WEAPON
+                        body: this.playerConfig.default.rig.body,
+                        head: this.playerConfig.default.rig.head,
+                        headwear: this.playerConfig.default.rig.headwear,
+                        weapon: this.playerConfig.default.rig.weapon
                     }
                 }));
+
+                const centerX = this.ui.charCustomizeCanvas ? this.ui.charCustomizeCanvas.width / 2 : 0;
+                const centerY = this.ui.charCustomizeCanvas ? this.ui.charCustomizeCanvas.height / 2 : 0;
 
                 // Add myself to lobby
                 this.lobbyManager.lobbyPlayers.set(this.userId, {
@@ -336,10 +356,14 @@ class Client {
                     color: this.playerState.myPlayer.color,
                     isHost: this.playerState.isHost,
                     rig: {
-                        body: PLAYER_DEFAULTS.RIG.BODY,
-                        head: PLAYER_DEFAULTS.RIG.HEAD,
-                        headwear: PLAYER_DEFAULTS.RIG.HEADWEAR,
-                        weapon: PLAYER_DEFAULTS.RIG.WEAPON
+                        body: this.playerConfig.default.rig.body,
+                        head: this.playerConfig.default.rig.head,
+                        headwear: this.playerConfig.default.rig.headwear,
+                        weapon: this.playerConfig.default.rig.weapon
+                    },
+                    transform: {
+                        pos: { x: centerX, y: centerY },
+                        rot: 0
                     }
                 });
                 this.ui.displayLobbyPlayers(this.playerState.isHost, this.lobbyManager, this.userId);
@@ -387,14 +411,21 @@ class Client {
 
             switch (gameData.type) {
                 //
-                // #region [ Lobby ]
+                // [ Lobby ]
                 //
                 case 'lobby-join':
+                    const centerX = this.ui.charCustomizeCanvas ? this.ui.charCustomizeCanvas.width / 2 : 0;
+                    const centerY = this.ui.charCustomizeCanvas ? this.ui.charCustomizeCanvas.height / 2 : 0;
+
                     this.lobbyManager.lobbyPlayers.set(message.userId, {
                         id: message.userId,
                         color: gameData.color,
                         isHost: false,
-                        rig: gameData.rig
+                        rig: gameData.rig,
+                        transform: {
+                            pos: { x: centerX, y: centerY },
+                            rot: 0
+                        }
                     });
                     this.ui.displayLobbyPlayers(this.playerState.isHost, this.lobbyManager, this.userId);
 
@@ -487,9 +518,7 @@ class Client {
                     }
                     break;
                 //
-                // #endregion
-                //
-                // #region [ Chat ]
+                // [ Chat ]
                 //
                 case 'chat-message':
                     if (message.userId !== this.userId) {
@@ -501,9 +530,7 @@ class Client {
                     }
                     break;
                 //
-                // #endregion
-                //
-                // #region [ Player ]
+                // [ Player ]
                 //
                 // [ IMPORTANT ] Keep full track of Player object here
                 case 'player-state':
@@ -523,84 +550,88 @@ class Client {
                             color: gameData.color,
                             actions: {
                                 dash: {
-                                    cooldown: gameData.actions?.dash.cooldown || PLAYER_DEFAULTS.ACTIONS.DASH.COOLDOWN,
-                                    drain: gameData.actions?.dash.drain || PLAYER_DEFAULTS.ACTIONS.DASH.DRAIN,
-                                    multiplier: gameData.actions?.dash.multiplier || PLAYER_DEFAULTS.ACTIONS.DASH.MULTIPLIER,
-                                    time: gameData.actions?.dash.time || PLAYER_DEFAULTS.ACTIONS.DASH.TIME
+                                    cooldown: gameData.actions?.dash.cooldown || this.playerConfig.default.actions.dash.cooldown,
+                                    drain: gameData.actions?.dash.drain || this.playerConfig.default.actions.dash.drain,
+                                    multiplier: gameData.actions?.dash.multiplier || this.playerConfig.default.actions.dash.multiplier,
+                                    time: gameData.actions?.dash.time || this.playerConfig.default.actions.dash.time
                                 },
                                 melee: {
-                                    cooldown: gameData.actions?.melee.cooldown || PLAYER_DEFAULTS.ACTIONS.MELEE.COOLDOWN,
-                                    damage: gameData.actions?.melee.damage || PLAYER_DEFAULTS.ACTIONS.MELEE.DAMAGE,
-                                    duration: gameData.actions?.melee.duration || PLAYER_DEFAULTS.ACTIONS.MELEE.DURATION,
-                                    range: gameData.actions?.melee.range || PLAYER_DEFAULTS.ACTIONS.MELEE.RANGE,
-                                    size: gameData.actions?.melee.size || PLAYER_DEFAULTS.ACTIONS.MELEE.SIZE
+                                    cooldown: gameData.actions?.melee.cooldown || this.playerConfig.default.actions.melee.cooldown,
+                                    damage: gameData.actions?.melee.damage || this.playerConfig.default.actions.melee.damage,
+                                    duration: gameData.actions?.melee.duration || this.playerConfig.default.actions.melee.duration,
+                                    range: gameData.actions?.melee.range || this.playerConfig.default.actions.melee.range,
+                                    size: gameData.actions?.melee.size || this.playerConfig.default.actions.melee.size
                                 },
                                 primary: {
-                                    buffer: gameData.actions?.primary.buffer || PLAYER_DEFAULTS.ACTIONS.PRIMARY.BUFFER,
+                                    buffer: gameData.actions?.primary.buffer || this.playerConfig.default.actions.primary.buffer,
                                     burst: {
-                                        amount: gameData.actions?.primary.burst.amount || PLAYER_DEFAULTS.ACTIONS.PRIMARY.BURST.AMOUNT,
-                                        delay: gameData.actions?.primary.burst.delay || PLAYER_DEFAULTS.ACTIONS.PRIMARY.BURST.DELAY
+                                        amount: gameData.actions?.primary.burst.amount || this.playerConfig.default.actions.primary.burst.amount,
+                                        delay: gameData.actions?.primary.burst.delay || this.playerConfig.default.actions.primary.burst.delay
                                     },
                                     magazine: {
                                         currentAmmo: gameData.actions?.primary.magazine.currentAmmo,
                                         currentReserve: gameData.actions?.primary.magazine.currentReserve,
                                         maxReserve: gameData.actions?.primary.magazine.maxReserve,
-                                        size: gameData.actions?.primary.magazine.size || PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.SIZE
+                                        size: gameData.actions?.primary.magazine.size || this.playerConfig.default.actions.primary.magazine.size
                                     },
-                                    offset: gameData.actions?.primary.offset || PLAYER_DEFAULTS.ACTIONS.PRIMARY.OFFSET,
+                                    offset: gameData.actions?.primary.offset || this.playerConfig.default.actions.primary.offset,
                                     projectile: {
-                                        amount: gameData.actions?.primary.projectile.amount || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.AMOUNT,
-                                        color: gameData.actions?.primary.projectile.color || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.COLOR,
-                                        damage: gameData.actions?.primary.projectile.damage || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.DAMAGE,
-                                        length: gameData.actions?.primary.projectile.length || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.LENGTH,
-                                        range: gameData.actions?.primary.projectile.range || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.RANGE,
-                                        size: gameData.actions?.primary.projectile.size || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SIZE,
-                                        speed: gameData.actions?.primary.projectile.speed || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPEED,
-                                        spread: gameData.actions?.primary.projectile.spread || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD
+                                        amount: gameData.actions?.primary.projectile.amount || this.playerConfig.default.actions.primary.projectile.amount,
+                                        color: gameData.actions?.primary.projectile.color || this.playerConfig.default.actions.primary.projectile.color,
+                                        damage: gameData.actions?.primary.projectile.damage || this.playerConfig.default.actions.primary.projectile.damage,
+                                        length: gameData.actions?.primary.projectile.length || this.playerConfig.default.actions.primary.projectile.length,
+                                        range: gameData.actions?.primary.projectile.range || this.playerConfig.default.actions.primary.projectile.range,
+                                        size: gameData.actions?.primary.projectile.size || this.playerConfig.default.actions.primary.projectile.size,
+                                        speed: gameData.actions?.primary.projectile.speed || this.playerConfig.default.actions.primary.projectile.speed,
+                                        spread: gameData.actions?.primary.projectile.spread ||this.playerConfig.default.actions.primary.projectile.spread
                                     },
                                     reload: {
-                                        time: gameData.actions?.primary.reload.time || PLAYER_DEFAULTS.ACTIONS.PRIMARY.RELOAD.TIME
+                                        time: gameData.actions?.primary.reload.time || this.playerConfig.default.actions.primary.reload.time
                                     }
                                 },
                                 sprint: {
-                                    drain: gameData.actions?.sprint.drain || PLAYER_DEFAULTS.ACTIONS.SPRINT.DRAIN,
-                                    multiplier: gameData.actions?.sprint.multiplier || PLAYER_DEFAULTS.ACTIONS.SPRINT.MULTIPLIER
+                                    drain: gameData.actions?.sprint.drain || this.playerConfig.default.actions.sprint.drain,
+                                    multiplier: gameData.actions?.sprint.multiplier || this.playerConfig.default.actions.sprint.multiplier
                                 }
                             },
-                            equipment: gameData.equipment || PLAYER_DEFAULTS.EQUIPMENT,
+                            equipment: gameData.equipment || this.playerConfig.default.equipment,
                             flags: {
-                                hidden: gameData.flags.hidden || PLAYER_DEFAULTS.FLAGS.HIDDEN,
-                                invulnerable: gameData.flags.invulnerable || PLAYER_DEFAULTS.FLAGS.INVULNERABLE
+                                hidden: gameData.flags?.hidden || this.playerConfig.default.flags.hidden,
+                                invulnerable: gameData.flags?.invulnerable || this.playerConfig.default.flags.invulnerable
+                            },
+                            inventory: {
+                                primary: gameData.inventory?.primary || this.playerConfig.default.inventory.primary,
+                                melee: gameData.inventory?.melee || this.playerConfig.default.inventory.melee
                             },
                             physics: {
-                                acceleration: gameData.physics?.acceleration || PLAYER_DEFAULTS.PHYSICS.ACCELERATION,
-                                friction: gameData.physics?.friction || PLAYER_DEFAULTS.PHYSICS.FRICTION
+                                acceleration: gameData.physics?.acceleration || this.playerConfig.default.physics.acceleration,
+                                friction: gameData.physics?.friction || this.playerConfig.default.physics.friction
                             },
                             rig: {
-                                body: gameData.rig?.body || PLAYER_DEFAULTS.RIG.BODY,
-                                head: gameData.rig?.head || PLAYER_DEFAULTS.RIG.HEAD,
-                                headwear: gameData.rig?.headwear || PLAYER_DEFAULTS.RIG.HEADWEAR,
-                                weapon: gameData.rig?.weapon || PLAYER_DEFAULTS.RIG.WEAPON
+                                body: gameData.rig?.body || this.playerConfig.default.rig.body,
+                                head: gameData.rig?.head || this.playerConfig.default.rig.head,
+                                headwear: gameData.rig?.headwear || this.playerConfig.default.rig.headwear,
+                                weapon: gameData.rig?.weapon || this.playerConfig.default.rig.weapon
                             },
                             stats: {
-                                defense: gameData.stats?.defense || PLAYER_DEFAULTS.STATS.DEFENSE,
+                                defense: gameData.stats?.defense || this.playerConfig.default.stats.defense,
                                 health: {
-                                    max: gameData.stats?.health.max || PLAYER_DEFAULTS.STATS.HEALTH.MAX,
-                                    value: gameData.stats?.health.value || PLAYER_DEFAULTS.STATS.HEALTH.MAX
+                                    max: gameData.stats?.health.max || this.playerConfig.default.stats.health.max,
+                                    value: gameData.stats?.health.value || this.playerConfig.default.stats.health.max
                                 },
-                                luck: gameData.stats?.luck || PLAYER_DEFAULTS.STATS.LUCK,
-                                size: gameData.stats?.size || PLAYER_DEFAULTS.STATS.SIZE,
-                                speed: gameData.stats?.speed || PLAYER_DEFAULTS.STATS.SPEED,
+                                luck: gameData.stats?.luck || this.playerConfig.default.stats.luck,
+                                size: gameData.stats?.size || this.playerConfig.default.stats.size,
+                                speed: gameData.stats?.speed || this.playerConfig.default.stats.speed,
                                 stamina: {
-                                    max: gameData.stats?.stamina.max || PLAYER_DEFAULTS.STATS.STAMINA.MAX,
+                                    max: gameData.stats?.stamina.max || this.playerConfig.default.stats.stamina.max,
                                     recovery: {
-                                        delay: gameData.stats?.stamina.recovery.delay || PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.DELAY,
-                                        rate: gameData.stats?.stamina.recovery.rate || PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.RATE
+                                        delay: gameData.stats?.stamina.recovery.delay || this.playerConfig.default.stats.stamina.recovery.delay,
+                                        rate: gameData.stats?.stamina.recovery.rate || this.playerConfig.default.stats.stamina.recovery.rate
                                     },
-                                    value: gameData.stats?.stamina.value || PLAYER_DEFAULTS.STATS.STAMINA.MAX,
+                                    value: gameData.stats?.stamina.value || this.playerConfig.default.stats.stamina.max,
                                 },
                             },
-                            unique: gameData.unique || PLAYER_DEFAULTS.UNIQUE
+                            unique: gameData.unique || this.playerConfig.default.unique
                         });
                     }
 
@@ -731,22 +762,20 @@ class Client {
                     }
                     break;
                 //
-                // #endregion
                 //
-                // #region [ Projectile ]
+                // [ Projectile ]
                 //
                 case 'projectile-launch':
                     if (!this.lobbyManager.inLobby && message.userId !== this.userId) {
                         this.combatController.projectiles.set(gameData.projectile.id, gameData.projectile);
                     }
                     break;
-
                 case 'projectile-remove':
                     if (!this.lobbyManager.inLobby) {
                         this.combatController.projectiles.delete(gameData.projectileId);
                     }
                     break;
-                case 'projectile-deflect':
+                case 'projectile-update': // Used for deflections or any projectile mid trajectory updates
                     if (!this.lobbyManager.inLobby && this.combatController.projectiles.has(gameData.projectileId)) {
                         const projectile = this.combatController.projectiles.get(gameData.projectileId);
                         if (!projectile) break;
@@ -757,13 +786,12 @@ class Client {
                         projectile.color = gameData.color;
                         projectile.transform.rot = Math.atan2(projectile.velocity.y, projectile.velocity.x);
 
-                        console.log(`Projectile ${gameData.projectileId} deflected by ${gameData.newOwnerId}`);
+                        console.log(`Projectile ${gameData.projectileId} data updated by ${gameData.newOwnerId}`);
                     }
                     break;
                 //
-                // #endregion
                 //
-                // #region [ Game ]
+                // [ Game ]
                 //
                 case 'start-game':
                     if (gameData.spawnMap && gameData.spawnMap[this.userId]) {
@@ -790,9 +818,8 @@ class Client {
                     this.gameWinner = gameData.winnerId;
                     break;
                 //
-                // #endregion
                 //
-                // #region [ Round ]
+                // [ Round ]
                 //
                 case 'round-end':
                     console.log(`Round ended! Winner: ${gameData.winnerId || 'No one'}`);
@@ -866,9 +893,8 @@ class Client {
                     }
                     break;
                 //
-                // #endregion
                 //
-                // #region [ Audio ]
+                // [ Audio ]
                 //
                 case 'play-audio':
                     if (message.userId !== this.userId) {
@@ -876,9 +902,8 @@ class Client {
                     }
                     break;
                 //
-                // #endregion
                 //
-                // #region [ Visual ]
+                // [ Visual ]
                 //
                 case 'add-decal':
                     if (message.userId !== this.userId) {
@@ -921,7 +946,6 @@ class Client {
                     }
                     break;
                 //
-                // #endregion
                 //
             }
         } catch (error) {
@@ -1059,54 +1083,56 @@ class Client {
         this.playerState.players.forEach((player: Player) => {
             player.transform.rot = 0;
             player.timestamp = player.timestamp || Date.now();
-            player.actions.dash.cooldown = player.actions.dash.cooldown || PLAYER_DEFAULTS.ACTIONS.DASH.COOLDOWN;
-            player.actions.dash.drain = player.actions.dash.drain || PLAYER_DEFAULTS.ACTIONS.DASH.DRAIN;
-            player.actions.dash.multiplier = player.actions.dash.multiplier || PLAYER_DEFAULTS.ACTIONS.DASH.MULTIPLIER;
-            player.actions.dash.time = player.actions.dash.time || PLAYER_DEFAULTS.ACTIONS.DASH.TIME;
-            player.actions.melee.cooldown = player.actions.melee.cooldown || PLAYER_DEFAULTS.ACTIONS.MELEE.COOLDOWN;
-            player.actions.melee.damage = player.actions.melee.damage || PLAYER_DEFAULTS.ACTIONS.MELEE.DAMAGE;
-            player.actions.melee.duration = player.actions.melee.duration || PLAYER_DEFAULTS.ACTIONS.MELEE.DURATION;
-            player.actions.melee.range = player.actions.melee.range || PLAYER_DEFAULTS.ACTIONS.MELEE.RANGE;
-            player.actions.melee.size = player.actions.melee.size || PLAYER_DEFAULTS.ACTIONS.MELEE.SIZE;
-            player.actions.primary.buffer = player.actions.primary.buffer || PLAYER_DEFAULTS.ACTIONS.PRIMARY.BUFFER;
-            player.actions.primary.burst.amount = player.actions.primary.burst.amount || PLAYER_DEFAULTS.ACTIONS.PRIMARY.BURST.AMOUNT;
-            player.actions.primary.burst.delay = player.actions.primary.burst.delay || PLAYER_DEFAULTS.ACTIONS.PRIMARY.BURST.DELAY;
-            player.actions.primary.magazine.currentAmmo = player.actions.primary.magazine.currentAmmo || PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.SIZE;
-            player.actions.primary.magazine.currentReserve = player.actions.primary.magazine.currentReserve || PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.STARTING_RESERVE;
-            player.actions.primary.magazine.maxReserve = player.actions.primary.magazine.maxReserve || PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.MAX_RESERVE;
-            player.actions.primary.magazine.size = player.actions.primary.magazine.size || PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.SIZE;
-            player.actions.primary.offset = player.actions.primary.offset || PLAYER_DEFAULTS.ACTIONS.PRIMARY.OFFSET;
-            player.actions.primary.projectile.amount = player.actions.primary.projectile.amount || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.AMOUNT;
-            player.actions.primary.projectile.color = player.actions.primary.projectile.color || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.COLOR;
-            player.actions.primary.projectile.damage = player.actions.primary.projectile.damage || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.DAMAGE;
-            player.actions.primary.projectile.length = player.actions.primary.projectile.length || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.LENGTH;
-            player.actions.primary.projectile.range = player.actions.primary.projectile.range || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.RANGE;
-            player.actions.primary.projectile.size = player.actions.primary.projectile.size || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SIZE;
-            player.actions.primary.projectile.speed = player.actions.primary.projectile.speed || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPEED;
-            player.actions.primary.projectile.spread = player.actions.primary.projectile.spread || PLAYER_DEFAULTS.ACTIONS.PRIMARY.PROJECTILE.SPREAD;
-            player.actions.primary.reload.time = player.actions.primary.reload.time || PLAYER_DEFAULTS.ACTIONS.PRIMARY.RELOAD.TIME;
-            player.actions.sprint.drain = player.actions.sprint.drain || PLAYER_DEFAULTS.ACTIONS.SPRINT.DRAIN;
-            player.actions.sprint.multiplier = player.actions.sprint.multiplier || PLAYER_DEFAULTS.ACTIONS.SPRINT.MULTIPLIER;
-            player.equipment = player.equipment || PLAYER_DEFAULTS.EQUIPMENT;
-            player.flags.hidden = player.flags.hidden || PLAYER_DEFAULTS.FLAGS.HIDDEN;
-            player.flags.invulnerable = player.flags.invulnerable || PLAYER_DEFAULTS.FLAGS.INVULNERABLE;
-            player.physics.acceleration = player.physics.acceleration || PLAYER_DEFAULTS.PHYSICS.ACCELERATION;
-            player.physics.friction = player.physics.friction || PLAYER_DEFAULTS.PHYSICS.FRICTION;
-            player.rig.body = player.rig.body || PLAYER_DEFAULTS.RIG.BODY;
-            player.rig.head = player.rig.head || PLAYER_DEFAULTS.RIG.HEAD;
-            player.rig.headwear = player.rig.headwear || PLAYER_DEFAULTS.RIG.HEADWEAR;
-            player.rig.weapon = player.rig.weapon || PLAYER_DEFAULTS.RIG.WEAPON;
-            player.stats.defense = player.stats.defense || PLAYER_DEFAULTS.STATS.DEFENSE;
-            player.stats.health.max = player.stats.health.max || PLAYER_DEFAULTS.STATS.HEALTH.MAX;
-            player.stats.health.value = player.stats.health.max || PLAYER_DEFAULTS.STATS.HEALTH.MAX;
-            player.stats.luck = player.stats.luck || PLAYER_DEFAULTS.STATS.LUCK;
-            player.stats.size = player.stats.size || PLAYER_DEFAULTS.STATS.SIZE;
-            player.stats.speed = player.stats.speed || PLAYER_DEFAULTS.STATS.SPEED;
-            player.stats.stamina.max = player.stats.stamina.max || PLAYER_DEFAULTS.STATS.STAMINA.MAX;
-            player.stats.stamina.recovery.delay = player.stats.stamina.recovery.delay || PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.DELAY;
-            player.stats.stamina.recovery.rate = player.stats.stamina.recovery.rate || PLAYER_DEFAULTS.STATS.STAMINA.RECOVERY.RATE;
-            player.stats.stamina.value = player.stats.stamina.value || PLAYER_DEFAULTS.STATS.STAMINA.MAX;
-            player.unique = player.unique || PLAYER_DEFAULTS.UNIQUE
+            player.actions.dash.cooldown = player.actions.dash.cooldown || this.playerConfig.default.actions.dash.cooldown;
+            player.actions.dash.drain = player.actions.dash.drain || this.playerConfig.default.actions.dash.drain;
+            player.actions.dash.multiplier = player.actions.dash.multiplier || this.playerConfig.default.actions.dash.multiplier;
+            player.actions.dash.time = player.actions.dash.time || this.playerConfig.default.actions.dash.time;
+            player.actions.melee.cooldown = player.actions.melee.cooldown || this.playerConfig.default.actions.melee.cooldown;
+            player.actions.melee.damage = player.actions.melee.damage || this.playerConfig.default.actions.melee.damage;
+            player.actions.melee.duration = player.actions.melee.duration || this.playerConfig.default.actions.melee.duration;
+            player.actions.melee.range = player.actions.melee.range || this.playerConfig.default.actions.melee.range;
+            player.actions.melee.size = player.actions.melee.size || this.playerConfig.default.actions.melee.size;
+            player.actions.primary.buffer = player.actions.primary.buffer || this.playerConfig.default.actions.primary.buffer;
+            player.actions.primary.burst.amount = player.actions.primary.burst.amount || this.playerConfig.default.actions.primary.burst.amount;
+            player.actions.primary.burst.delay = player.actions.primary.burst.delay || this.playerConfig.default.actions.primary.burst.delay;
+            player.actions.primary.magazine.currentAmmo = player.actions.primary.magazine.currentAmmo || this.playerConfig.default.actions.primary.magazine.size;
+            player.actions.primary.magazine.currentReserve = player.actions.primary.magazine.currentReserve || this.playerConfig.default.actions.primary.magazine.startingReserve;
+            player.actions.primary.magazine.maxReserve = player.actions.primary.magazine.maxReserve || this.playerConfig.default.actions.primary.magazine.maxReserve;
+            player.actions.primary.magazine.size = player.actions.primary.magazine.size || this.playerConfig.default.actions.primary.magazine.size;
+            player.actions.primary.offset = player.actions.primary.offset || this.playerConfig.default.actions.primary.offset;
+            player.actions.primary.projectile.amount = player.actions.primary.projectile.amount || this.playerConfig.default.actions.primary.projectile.amount;
+            player.actions.primary.projectile.color = player.actions.primary.projectile.color || this.playerConfig.default.actions.primary.projectile.color;
+            player.actions.primary.projectile.damage = player.actions.primary.projectile.damage || this.playerConfig.default.actions.primary.projectile.damage;
+            player.actions.primary.projectile.length = player.actions.primary.projectile.length || this.playerConfig.default.actions.primary.projectile.length;
+            player.actions.primary.projectile.range = player.actions.primary.projectile.range || this.playerConfig.default.actions.primary.projectile.range;
+            player.actions.primary.projectile.size = player.actions.primary.projectile.size || this.playerConfig.default.actions.primary.projectile.size;
+            player.actions.primary.projectile.speed = player.actions.primary.projectile.speed || this.playerConfig.default.actions.primary.projectile.speed;
+            player.actions.primary.projectile.spread = player.actions.primary.projectile.spread || this.playerConfig.default.actions.primary.projectile.spread;
+            player.actions.primary.reload.time = player.actions.primary.reload.time || this.playerConfig.default.actions.primary.reload.time;
+            player.actions.sprint.drain = player.actions.sprint.drain || this.playerConfig.default.actions.sprint.drain;
+            player.actions.sprint.multiplier = player.actions.sprint.multiplier || this.playerConfig.default.actions.sprint.multiplier;
+            player.equipment = player.equipment || this.playerConfig.default.equipment;
+            player.flags.hidden = player.flags.hidden || this.playerConfig.default.flags.hidden;
+            player.flags.invulnerable = player.flags.invulnerable || this.playerConfig.default.flags.invulnerable;
+            player.inventory.primary = player.inventory.primary || this.playerConfig.default.inventory.primary;
+            player.inventory.melee = player.inventory.melee || this.playerConfig.default.inventory.melee;
+            player.physics.acceleration = player.physics.acceleration || this.playerConfig.default.physics.acceleration;
+            player.physics.friction = player.physics.friction || this.playerConfig.default.physics.friction;
+            player.rig.body = player.rig.body || this.playerConfig.default.rig.body;
+            player.rig.head = player.rig.head || this.playerConfig.default.rig.head;
+            player.rig.headwear = player.rig.headwear || this.playerConfig.default.rig.headwear;
+            player.rig.weapon = player.rig.weapon || this.playerConfig.default.rig.weapon;
+            player.stats.defense = player.stats.defense || this.playerConfig.default.stats.defense;
+            player.stats.health.max = player.stats.health.max || this.playerConfig.default.stats.health.max;
+            player.stats.health.value = player.stats.health.max || this.playerConfig.default.stats.health.max;
+            player.stats.luck = player.stats.luck || this.playerConfig.default.stats.luck;
+            player.stats.size = player.stats.size || this.playerConfig.default.stats.size;
+            player.stats.speed = player.stats.speed || this.playerConfig.default.stats.speed;
+            player.stats.stamina.max = player.stats.stamina.max || this.playerConfig.default.stats.stamina.max;
+            player.stats.stamina.recovery.delay = player.stats.stamina.recovery.delay || this.playerConfig.default.stats.stamina.recovery.delay;
+            player.stats.stamina.recovery.rate = player.stats.stamina.recovery.rate || this.playerConfig.default.stats.stamina.recovery.rate;
+            player.stats.stamina.value = player.stats.stamina.value || this.playerConfig.default.stats.stamina.max;
+            player.unique = player.unique || this.playerConfig.default.unique
         });
 
         // Send the spawn map to all other players
@@ -1178,7 +1204,7 @@ class Client {
         this.gameState.gameInProgress = true;
         this.isRoundInProgress = true;
 
-        this.playerState.myPlayer.actions.primary.magazine.currentReserve = Math.floor(PLAYER_DEFAULTS.ACTIONS.PRIMARY.MAGAZINE.MAX_RESERVE / 2);
+        this.playerState.myPlayer.actions.primary.magazine.currentReserve = Math.floor(this.playerConfig.default.actions.primary.magazine.maxReserve / 2);
         this.playerState.myPlayer.actions.primary.magazine.currentAmmo = this.playerState.myPlayer.actions.primary.magazine.size;
         this.ui.ammoReservesUIController.spawnAmmoInReserveUI(this.playerState.myPlayer.actions.primary.magazine.currentReserve);
         this.playerState.isReloading = false;
@@ -1263,6 +1289,10 @@ class Client {
             flags: {
                 hidden: this.playerState.myPlayer.flags.hidden,
                 invulnerable: this.playerState.myPlayer.flags.invulnerable
+            },
+            inventory: {
+                primary: this.playerState.myPlayer.inventory.primary,
+                melee: this.playerState.myPlayer.inventory.melee
             },
             physics: {
                 acceleration: this.playerState.myPlayer.physics.acceleration,
@@ -1366,10 +1396,15 @@ class Client {
 
         // Draw other players
         this.playerState.players.forEach((player: Player) => {
-            this.renderingManager.drawCharacter(player);
+            if (!this.ui.ctx) return;
+
+            const charRenderParams: RenderCharacterParams = { player, context: this.ui.ctx };
+            this.renderingManager.drawCharacter(charRenderParams);
         });
 
-        this.renderingManager.drawCharacter(this.playerState.myPlayer, true);
+        const myRenderParams: RenderCharacterParams = { player: this.playerState.myPlayer, context: this.ui.ctx };
+        this.renderingManager.drawCharacter(myRenderParams);
+
         this.particlesManager.drawParticles();
         this.particlesManager.drawShrapnel();
 
@@ -1754,6 +1789,10 @@ class Client {
             flags: {
                 hidden: this.playerState.myPlayer.flags.hidden,
                 invulnerable: this.playerState.myPlayer.flags.invulnerable
+            },
+            inventory: {
+                primary: this.playerState.myPlayer.inventory.primary,
+                melee: this.playerState.myPlayer.inventory.melee
             },
             physics: {
                 acceleration: this.playerState.myPlayer.physics.acceleration,

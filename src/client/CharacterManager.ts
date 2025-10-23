@@ -7,13 +7,13 @@ export class CharacterManager {
     public getCharacterAsset(layer: CharacterLayer, variant: string): string | string[] {
         switch (layer) {
             case 'BODY':
-                return this.charConfig.BODY[variant as keyof typeof this.charConfig.BODY] || this.charConfig.BODY.DEFAULT;
+                return this.charConfig.body[variant as keyof typeof this.charConfig.body] || this.charConfig.body.default;
             case 'WEAPON':
-                return this.charConfig.WEAPON[variant as keyof typeof this.charConfig.WEAPON] || this.charConfig.WEAPON.GLOCK;
+                return this.charConfig.weapon[variant as keyof typeof this.charConfig.weapon] || this.charConfig.weapon.glock;
             case 'HEAD':
-                return this.charConfig.HEAD[variant as keyof typeof this.charConfig.HEAD] || this.charConfig.HEAD.DEFAULT;
+                return this.charConfig.head[variant as keyof typeof this.charConfig.head] || this.charConfig.head.default;
             case 'HEADWEAR':
-                return this.charConfig.HEADWEAR[variant as keyof typeof this.charConfig.HEADWEAR] || this.charConfig.HEADWEAR.DEFAULT;
+                return this.charConfig.headwear[variant as keyof typeof this.charConfig.headwear] || this.charConfig.headwear.default;
             case 'UPGRADES':
                 return variant;
             default:
@@ -22,7 +22,7 @@ export class CharacterManager {
     }
 
     public getUpgradeVisual(upgradeName: string): string | null {
-        const upperName = upgradeName.toUpperCase();
-        return this.charConfig.UPGRADES[upperName as keyof typeof this.charConfig.UPGRADES] || null;
+        const lowerName = upgradeName.toLowerCase();
+        return this.charConfig.upgrades[lowerName as keyof typeof this.charConfig.upgrades] || null;
     }
 }

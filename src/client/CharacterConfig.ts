@@ -1,51 +1,51 @@
 export class CharacterConfig {
-    public WEAPON = {
-        GLOCK: [
+    public weapon = {
+        glock: [
             '/assets/img/weapon/glock/body.png',
             '/assets/img/weapon/glock/slide.png',
         ],
-        KNIFE: [
+        knife: [
             '/assets/img/weapon/melee/knife_00.png'
         ]
     };
 
-    public MAGAZINE = {
-        GLOCK: {
-            EMPTY: '/assets/img/object/weapons/glock/magazine_empty.png',
-            FULL: '/assets/img/object/weapons/glock/magazine_full.png'
+    public magazine = {
+        glock: {
+            empty: '/assets/img/object/weapons/glock/magazine_empty.png',
+            full: '/assets/img/object/weapons/glock/magazine_full.png'
         }
-    }
-
-    public BODY = {
-        DEFAULT: '/assets/img/char/body/default.png'
     };
 
-    public HEAD = {
-        DEFAULT: '/assets/img/char/head/default.png',
-        BLONDE_AFRO: '/assets/img/char/head/blonde_afro.png'
+    public body = {
+        default: '/assets/img/char/body/default.png'
     };
 
-    public HEADWEAR = {
-        DEFAULT: '/assets/img/char/headwear/default.png',
-        FEZ: '/assets/img/char/headwear/fez.png',
-        STRAW_HAT: '/assets/img/char/headwear/straw_hat.png',
-        TRUCKER: '/assets/img/char/headwear/trucker.png'
+    public head = {
+        default: '/assets/img/char/head/default.png',
+        blondeAfro: '/assets/img/char/head/blonde_afro.png'
     };
 
-    public UPGRADES = {
-        KINETIC_BRAIN: '/assets/img/char/upgrades/kineticbrain.png'
+    public headwear = {
+        default: '/assets/img/char/headwear/default.png',
+        fez: '/assets/img/char/headwear/fez.png',
+        strawHat: '/assets/img/char/headwear/straw_hat.png',
+        trucker: '/assets/img/char/headwear/trucker.png'
     };
 
-    public CHARACTER_DECALS = {
-        DEFAULT: {
-            BLOOD: [
+    public upgrades = {
+        kineticBrain: '/assets/img/char/upgrades/kineticbrain.png'
+    };
+
+    public characterDecals = {
+        default: {
+            blood: [
                 '/assets/img/effects/blood/blood_00.png',
                 '/assets/img/effects/blood/blood_01.png',
                 '/assets/img/effects/blood/blood_02.png',
                 '/assets/img/effects/blood/blood_03.png',
                 '/assets/img/effects/blood/blood_04.png'
             ],
-            GORE: [
+            gore: [
                 '/assets/img/effects/gore/gore_00.png',
                 '/assets/img/effects/gore/gore_01.png',
                 '/assets/img/effects/gore/gore_02.png',
@@ -62,7 +62,7 @@ export class CharacterConfig {
                 '/assets/img/effects/gore/gore_13.png'
             ]
         }
-    }
+    };
 
     constructor() { }
 }
