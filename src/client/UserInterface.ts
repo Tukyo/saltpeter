@@ -66,6 +66,19 @@ export class UserInterface {
     public chatSendBtn: HTMLButtonElement | null = null;
     //
     //
+    // [ Char Customizer ]
+    //
+    public charCustomizeContainer: HTMLDivElement | null = null;
+    public charCustomizeCanvas: HTMLCanvasElement | null = null;
+    public charCustomizeCtx: CanvasRenderingContext2D | null = null;
+    public headwearArrowLeft: HTMLDivElement | null = null;
+    public headArrowLeft: HTMLDivElement | null = null;
+    public bodyArrowLeft: HTMLDivElement | null = null;
+    public headwearArrowRight: HTMLDivElement | null = null;
+    public headArrowRight: HTMLDivElement | null = null;
+    public bodyArrowRight: HTMLDivElement | null = null;
+    //
+    //
     // [ Modal ]
     //
     public modal: HTMLElement | null = null;
@@ -152,6 +165,7 @@ export class UserInterface {
         this.canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
         this.decalCanvas = document.createElement('canvas') as HTMLCanvasElement;
         this.ammoReservesCanvas = document.getElementById('ammoReservesCanvas') as HTMLCanvasElement;
+        this.charCustomizeCanvas = document.getElementById('charCustomizeCanvas') as HTMLCanvasElement;
 
         this.roomControls = document.getElementById('roomControls') as HTMLDivElement;
         this.gameContainer = document.getElementById('gameContainer') as HTMLDivElement;
@@ -168,6 +182,14 @@ export class UserInterface {
         this.chatMessages = document.getElementById('chatMessages') as HTMLDivElement;
         this.chatInput = document.getElementById('chatInput') as HTMLInputElement;
         this.chatSendBtn = document.getElementById('chatSendBtn') as HTMLButtonElement;
+
+        this.charCustomizeContainer = document.getElementById('charCustomizeContainer') as HTMLDivElement;
+        this.headwearArrowLeft = document.getElementById('headwearArrowLeft') as HTMLDivElement;
+        this.headArrowLeft = document.getElementById('headArrowLeft') as HTMLDivElement;
+        this.bodyArrowLeft = document.getElementById('bodyArrowLeft') as HTMLDivElement;
+        this.headwearArrowRight = document.getElementById('headwearArrowRight') as HTMLDivElement;
+        this.headArrowRight = document.getElementById('headArrowRight') as HTMLDivElement;
+        this.bodyArrowRight = document.getElementById('bodyArrowRight') as HTMLDivElement;
 
         this.privateToggle = document.getElementById('privateToggle') as HTMLElement;
         this.upgradesToggle = document.getElementById('upgradesToggle') as HTMLElement;
@@ -237,21 +259,24 @@ export class UserInterface {
         this.shotSpeedStat = document.getElementById('shotSpeedValue') as HTMLSpanElement;
         this.speedStat = document.getElementById('speedValue') as HTMLSpanElement;
 
-        if (!this.canvas || !this.decalCanvas || !this.ammoReservesCanvas || !this.roomControls || !this.gameContainer ||
-            !this.lobbyContainer || !this.userIdDisplay || !this.roomIdDisplay || !this.gameRoomIdDisplay ||
-            !this.lobbyPlayersList || !this.startGameBtn || !this.gameOptionsContainer ||
-            !this.chatContainer || !this.chatMessages || !this.chatInput || !this.chatSendBtn ||
-            !this.privateToggle || !this.upgradesToggle || !this.winsInput || !this.playersInput ||
-            !this.upgradeContainer || !this.leaderboardContainer || !this.leaderboardBody || !this.hostButton ||
-            !this.joinButton || !this.quickplayButton || !this.lobbyLeaveButton || !this.lobbyCodeButton ||
-            !this.gameLeaveButton || !this.gameCodeButton || !this.settingsButton || !this.settingsCloseButton ||
-            !this.settingsContainer || !this.controlsTab || !this.graphicsTab || !this.soundTab || !this.controlsBody ||
-            !this.graphicsBody || !this.soundBody || !this.masterSlider || !this.masterFill || !this.interfaceSlider ||
-            !this.interfaceFill || !this.musicSlider || !this.musicFill || !this.sfxSlider || !this.sfxFill ||
-            !this.voiceSlider || !this.voiceFill || !this.masterValue || !this.interfaceValue ||
-            !this.musicValue || !this.sfxValue || !this.voiceValue || !this.accuracyStat || !this.damageStat ||
-            !this.luckStat || !this.rangeStat || !this.shotSpeedStat || !this.speedStat || !this.deadzoneInput ||
-            !this.particleJSToggle || !this.staticVfxToggle || !this.ammoReservesPhysicsToggle
+        if (!this.canvas || !this.decalCanvas || !this.ammoReservesCanvas || !this.charCustomizeCanvas ||
+            !this.roomControls || !this.gameContainer || !this.lobbyContainer || !this.userIdDisplay ||
+            !this.roomIdDisplay || !this.gameRoomIdDisplay || !this.lobbyPlayersList || !this.startGameBtn ||
+            !this.gameOptionsContainer || !this.chatContainer || !this.chatMessages || !this.chatInput ||
+            !this.chatSendBtn || !this.privateToggle || !this.upgradesToggle || !this.winsInput ||
+            !this.playersInput || !this.upgradeContainer || !this.leaderboardContainer ||
+            !this.leaderboardBody || !this.hostButton || !this.joinButton || !this.quickplayButton ||
+            !this.lobbyLeaveButton || !this.lobbyCodeButton || !this.gameLeaveButton || !this.gameCodeButton ||
+            !this.settingsButton || !this.settingsCloseButton || !this.settingsContainer || !this.controlsTab ||
+            !this.graphicsTab || !this.soundTab || !this.controlsBody || !this.graphicsBody || !this.soundBody ||
+            !this.masterSlider || !this.masterFill || !this.interfaceSlider || !this.interfaceFill ||
+            !this.musicSlider || !this.musicFill || !this.sfxSlider || !this.sfxFill || !this.voiceSlider ||
+            !this.voiceFill || !this.masterValue || !this.interfaceValue || !this.musicValue || !this.sfxValue ||
+            !this.voiceValue || !this.accuracyStat || !this.damageStat || !this.luckStat || !this.rangeStat ||
+            !this.shotSpeedStat || !this.speedStat || !this.deadzoneInput || !this.particleJSToggle ||
+            !this.staticVfxToggle || !this.ammoReservesPhysicsToggle || !this.charCustomizeContainer ||
+            !this.headwearArrowLeft || !this.headArrowLeft || !this.bodyArrowLeft || !this.headwearArrowRight ||
+            !this.headArrowRight || !this.bodyArrowRight
         ) {
             alert('Failed to load game. Please refresh the page.');
             throw new Error('Critical error: Required DOM elements are missing.');
@@ -263,12 +288,15 @@ export class UserInterface {
         this.decalCanvas.height = CANVAS.HEIGHT;
         this.ammoReservesCanvas.width = 100;
         this.ammoReservesCanvas.height = 64;
+        this.charCustomizeCanvas.width = 200;
+        this.charCustomizeCanvas.height = 200;
 
         this.ctx = this.canvas.getContext('2d');
         this.decalCtx = this.decalCanvas.getContext('2d');
         this.ammoReservesCtx = this.ammoReservesCanvas.getContext('2d');
+        this.charCustomizeCtx = this.charCustomizeCanvas.getContext('2d')
 
-        if (!this.ctx || !this.decalCtx || !this.ammoReservesCtx) {
+        if (!this.ctx || !this.decalCtx || !this.ammoReservesCtx || !this.charCustomizeCtx) {
             alert('Failed to load game. Please refresh the page.');
             throw new Error('Could not get canvas context');
         }
@@ -283,7 +311,7 @@ export class UserInterface {
      */
     public updateDisplay(lobby: LobbyManager, target: "lobby" | "room" | "game", roomId?: string): void {
         if (!this.roomControls || !this.lobbyContainer || !this.gameContainer ||
-            !this.chatContainer || !this.leaderboardContainer) return;
+            !this.chatContainer || !this.leaderboardContainer || !this.charCustomizeContainer) return;
 
         this.clearDisplay();
 
@@ -291,6 +319,7 @@ export class UserInterface {
             case "lobby":
                 this.lobbyContainer.style.display = "flex";
                 this.chatContainer.style.display = "flex";
+                this.charCustomizeContainer.style.display = "flex";
                 if (roomId && this.roomIdDisplay) {
                     this.roomIdDisplay.textContent = roomId;
                 }
@@ -385,8 +414,9 @@ export class UserInterface {
      * Refreshes the display to a blank slate.
      */
     private clearDisplay(): void {
-        if (!this.roomControls || !this.lobbyContainer || !this.gameContainer ||
-            !this.chatContainer || !this.leaderboardContainer || !this.upgradeContainer) return;
+        if (!this.roomControls || !this.lobbyContainer || !this.gameContainer
+            || !this.chatContainer || !this.leaderboardContainer
+            || !this.upgradeContainer || !this.charCustomizeContainer) return;
 
         this.roomControls.style.display = "none";
         this.lobbyContainer.style.display = "none";
@@ -394,6 +424,7 @@ export class UserInterface {
         this.chatContainer.style.display = "none";
         this.leaderboardContainer.style.display = "none";
         this.upgradeContainer.style.display = "none";
+        this.charCustomizeContainer.style.display = "none";
     }
 
     /**
@@ -941,39 +972,122 @@ export class UserInterface {
     // #region [ Events ]
     //
     /**
-     * Initializes listeners to interface elements.
+     * Initializes listeners to interface elements, and sets up their animations.
      */
     private initInterfaceListeners(): void {
         const uiDecimals = 2;
-        
-        // Accuracy (spread - inverted)
+        const animTime = 500;
+        const steps = 20;
+        const increaseColor = '#00ff00';
+        const decreaseColor = '#ff0000';
+        const timeout = 200;
+
+        // Accuracy (spread - inverted: lower is better)
         this.playerState.onStatChange('actions.primary.projectile.spread', (value) => {
-            if (this.accuracyStat) this.accuracyStat.textContent = value.toFixed(uiDecimals);
+            if (!this.accuracyStat) return;
+            const oldValue = parseFloat(this.accuracyStat.textContent || '0');
+            const isIncrease = value < oldValue;
+
+            this.utility.animateTextInElement({
+                element: this.accuracyStat,
+                oldValue: oldValue,
+                newValue: value,
+                decimals: uiDecimals,
+                animTime: animTime,
+                steps: steps,
+                color: isIncrease ? increaseColor : decreaseColor,
+                timeout: timeout
+            });
         });
 
         // Damage
         this.playerState.onStatChange('actions.primary.projectile.damage', (value) => {
-            if (this.damageStat) this.damageStat.textContent = Math.round(value).toFixed(uiDecimals);
+            if (!this.damageStat) return;
+            const oldValue = parseFloat(this.damageStat.textContent || '0');
+            const isIncrease = value > oldValue;
+
+            this.utility.animateTextInElement({
+                element: this.damageStat,
+                oldValue: oldValue,
+                newValue: Math.round(value),
+                decimals: uiDecimals,
+                animTime: animTime,
+                steps: steps,
+                color: isIncrease ? increaseColor : decreaseColor,
+                timeout: timeout
+            });
         });
 
         // Speed
         this.playerState.onStatChange('stats.speed', (value) => {
-            if (this.speedStat) this.speedStat.textContent = value.toFixed(uiDecimals);
+            if (!this.speedStat) return;
+            const oldValue = parseFloat(this.speedStat.textContent || '0');
+            const isIncrease = value > oldValue;
+
+            this.utility.animateTextInElement({
+                element: this.speedStat,
+                oldValue: oldValue,
+                newValue: value,
+                decimals: uiDecimals,
+                animTime: animTime,
+                steps: steps,
+                color: isIncrease ? increaseColor : decreaseColor,
+                timeout: timeout
+            });
         });
 
         // Range
         this.playerState.onStatChange('actions.primary.projectile.range', (value) => {
-            if (this.rangeStat) this.rangeStat.textContent = value.toFixed(uiDecimals);
+            if (!this.rangeStat) return;
+            const oldValue = parseFloat(this.rangeStat.textContent || '0');
+            const isIncrease = value > oldValue;
+
+            this.utility.animateTextInElement({
+                element: this.rangeStat,
+                oldValue: oldValue,
+                newValue: value,
+                decimals: uiDecimals,
+                animTime: animTime,
+                steps: steps,
+                color: isIncrease ? increaseColor : decreaseColor,
+                timeout: timeout
+            });
         });
 
         // Shot Speed
         this.playerState.onStatChange('actions.primary.projectile.speed', (value) => {
-            if (this.shotSpeedStat) this.shotSpeedStat.textContent = value.toFixed(uiDecimals);
+            if (!this.shotSpeedStat) return;
+            const oldValue = parseFloat(this.shotSpeedStat.textContent || '0');
+            const isIncrease = value > oldValue;
+
+            this.utility.animateTextInElement({
+                element: this.shotSpeedStat,
+                oldValue: oldValue,
+                newValue: value,
+                decimals: uiDecimals,
+                animTime: animTime,
+                steps: steps,
+                color: isIncrease ? increaseColor : decreaseColor,
+                timeout: timeout
+            });
         });
 
         // Luck
         this.playerState.onStatChange('stats.luck', (value) => {
-            if (this.luckStat) this.luckStat.textContent = value.toFixed(uiDecimals);
+            if (!this.luckStat) return;
+            const oldValue = parseFloat(this.luckStat.textContent || '0');
+            const isIncrease = value > oldValue;
+
+            this.utility.animateTextInElement({
+                element: this.luckStat,
+                oldValue: oldValue,
+                newValue: value,
+                decimals: uiDecimals,
+                animTime: animTime,
+                steps: steps,
+                color: isIncrease ? increaseColor : decreaseColor,
+                timeout: timeout
+            });
         });
     }
     //

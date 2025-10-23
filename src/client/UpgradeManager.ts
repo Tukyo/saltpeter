@@ -240,7 +240,13 @@ export class UpgradeManager {
  while sprinting, luck doubled
  bullet trails
  projectile with padding on sides = projectiles that are detonated on reload
- on death respawn as 1hp ghost who can melee with .25s invuln
+ on death respawn as 1hp ghost who can melee with .25s invul
+ chemistry system
+ volatile upgrades
+
+ on hit, chance to instakill player, destroy one of your equipment, only trigger if enemies damage would kill you
+ - one time use, destroys itself and another upgrade
+ 
  > [ Stats ]
   - Size -- / Speed ++
   - Damage ++ / Buffer ++

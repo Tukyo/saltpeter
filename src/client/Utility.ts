@@ -1,4 +1,4 @@
-import { Direction, RandomColorParams, SetInputParams, SetSliderParams, SetSpanParams, SetToggleParams, Vec2 } from './Types';
+import { Direction, RandomColorParams, SetInputParams, SetSliderParams, SetSpanParams, SetToggleParams, TextAnimParams, Vec2 } from './Types';
 
 export class Utility {
     private lastFrameTime: number;
@@ -72,9 +72,21 @@ export class Utility {
     // #endregion
     //
     // #region [ Math ]
-    public getRandomNum(min: number, max: number): number {
-        return Math.random() * (max - min) + min;
+    /**
+     * Returns a random number.
+     * 
+     * Optionally pass the decimals if you want the returned value trimmed.
+     */
+    public getRandomNum(min: number, max: number, decimals?: number): number {
+        const value = Math.random() * (max - min) + min;
+
+        if (decimals !== undefined) {
+            return parseFloat(value.toFixed(decimals));
+        }
+
+        return value;
     }
+
     /**
      * Returns a random int between the passed min/max values.
      */
@@ -340,7 +352,7 @@ export class Utility {
             inputElement.value = params.value.toString();
         }
     }
-    
+
     /**
      * Sets a specific slider to a specific value.
      * 
@@ -420,6 +432,43 @@ export class Utility {
                 toggle.setAttribute('aria-checked', 'false');
             }
         }
+    }
+    //
+    // #endregion
+
+    // #region [ Animation ]
+    //
+    /**
+     * Can be used to animate most elements with text on the page.
+     * 
+     * Element must have '.style.color' and '.textContent'.
+     */
+    public animateTextInElement(params: TextAnimParams): void {
+        const increment = (params.newValue - params.oldValue) / params.steps;
+        const stepTime = params.animTime / params.steps;
+
+        let currentStep = 0;
+        let currentValue = params.oldValue;
+
+        // Set color
+        params.element.style.color = params.color;
+
+        const interval = setInterval(() => {
+            currentStep++;
+            currentValue += increment;
+
+            if (currentStep >= params.steps) {
+                params.element.textContent = params.newValue.toFixed(params.decimals);
+                clearInterval(interval);
+
+                // Reset color after animation
+                setTimeout(() => {
+                    params.element.style.color = '';
+                }, params.timeout);
+            } else {
+                params.element.textContent = currentValue.toFixed(params.decimals);
+            }
+        }, stepTime);
     }
     //
     // #endregion

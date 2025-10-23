@@ -76,7 +76,7 @@
     --chat-height: 400px;
 }
 
-* {
+*:not(html):not(head) {
     display: flex;
     justify-content: center;
     align-content: center;
@@ -1033,6 +1033,32 @@ toggle[checked]::before {
 
 .chat_messages::-webkit-scrollbar-thumb:hover {
     background: var(--secondary-color);
+}
+
+/**/
+/* #endregion */
+
+/* #region [ Char Customizer ] */
+/**/
+#charCustomizeContainer {
+    position: fixed;
+    top: 1rem;
+    left: 1rem;
+    padding: 1rem;
+    background: var(--black-60);
+    border: 2px solid var(--primary-color);
+    border-radius: var(--primary-radius);
+    backdrop-filter: blur(2px);
+    z-index: var(--z-hud);
+}
+
+.char_customize_arrows>* {
+    flex: 1;
+}
+
+.charCustomizeArrow:hover {
+    scale: 1.1;
+    cursor: pointer;
 }
 
 /**/

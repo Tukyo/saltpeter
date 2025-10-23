@@ -1,5 +1,5 @@
-import { CANVAS, DECALS, OBJECT_DEFAULTS, PARTICLES, SFX, SHRAPNEL } from "../Config";
-import { AttackType, PlayerHitParams, Projectile, ProjectileOverrides, Shrapnel, Vec2 } from "../Types";
+import { CANVAS, OBJECT_DEFAULTS, SFX, SHRAPNEL } from "../Config";
+import { AttackType, AudioParams, CreateParticleParams, DecalParams, PlayerHitParams, Projectile, ProjectileOverrides, Shrapnel, Vec2 } from "../Types";
 
 import { Animator } from "../Animator";
 import { AudioManager } from "../AudioManager";
@@ -11,7 +11,7 @@ import { ParticlesManager } from "../ParticlesManager";
 import { PlayerState } from "./PlayerState";
 import { RoomManager } from "../RoomManager";
 import { Utility } from "../Utility";
-import { PlayerController,  } from "./PlayerController";
+import { PlayerController, } from "./PlayerController";
 import { UserInterface } from "../UserInterface";
 
 export class CombatController {
@@ -329,37 +329,47 @@ export class CombatController {
         const projectileSpread = overrides?.spread ?? this.playerState.myPlayer.actions.primary.projectile.spread;
 
         // Calculate spawn offset
+        const baseAngle = Math.atan2(dirY, dirX);
         const spawnOffset = this.collisionsManager.getPlayerCollider(this.playerState.myPlayer) + projectileSize + this.playerState.myPlayer.actions.primary.offset;
-        const bulletSpawnX = this.playerState.myPlayer.transform.pos.x + dirX * spawnOffset;
-        const bulletSpawnY = this.playerState.myPlayer.transform.pos.y + dirY * spawnOffset;
+        const bulletSpawnX = this.playerState.myPlayer.transform.pos.x + Math.cos(baseAngle) * spawnOffset;
+        const bulletSpawnY = this.playerState.myPlayer.transform.pos.y + Math.sin(baseAngle) * spawnOffset;
         const rightX = -dirY;
         const rightY = dirX;
 
         // TODO: Wrap all of these particles in some sort of defined type that contains this in one message
 
-        this.particlesManager.createParticles( // Muzzle flash
-            bulletSpawnX,
-            bulletSpawnY,
-            `muzzle_${Date.now()}`,
-            PARTICLES.MUZZLE_FLASH,
-            { x: dirX, y: dirY }
-        );
+        const muzzleParams: CreateParticleParams = {
+            id: `muzzle_${Date.now()}`,
+            pos: {
+                x: bulletSpawnX,
+                y: bulletSpawnY
+            },
+            particleParams: this.particlesManager.particlesConfig.particles.glock.muzzle.flash, // TODO: Get current weapon
+            direction: { x: dirX, y: dirY }
+        }
+        this.particlesManager.createParticles(muzzleParams);
 
-        this.particlesManager.createParticles( // Muzzle smoke
-            bulletSpawnX,
-            bulletSpawnY,
-            `smoke_${Date.now()}`,
-            PARTICLES.SMOKE,
-            { x: dirX * 0.3, y: dirY * 0.3 }
-        );
+        const smokeParams: CreateParticleParams = {
+            id: `smoke_${Date.now()}`,
+            pos: {
+                x: bulletSpawnX,
+                y: bulletSpawnY
+            },
+            particleParams: this.particlesManager.particlesConfig.particles.glock.muzzle.smoke, // TODO: Get current weapon
+            direction: { x: dirX * 0.3, y: dirY * 0.3 }
+        }
+        this.particlesManager.createParticles(smokeParams);
 
-        this.particlesManager.createParticles( // Shell casing
-            bulletSpawnX - 5,
-            bulletSpawnY - 5,
-            `shell_${Date.now()}`,
-            PARTICLES.SHELL_CASING,
-            { x: rightX * 0.8 + dirX * -0.2, y: rightY * 0.8 + dirY * -0.2 } // Right + slightly back
-        );
+        const shellParams: CreateParticleParams = {
+            id: `shell_${Date.now()}`,
+            pos: {
+                x: bulletSpawnX - 5,
+                y: bulletSpawnY - 5
+            },
+            particleParams: this.particlesManager.particlesConfig.particles.glock.projectile.shell, // TODO: Get current weapon
+            direction: { x: rightX * 0.8 + dirX * -0.2, y: rightY * 0.8 + dirY * -0.2 } // Right + slightly back
+        }
+        this.particlesManager.createParticles(shellParams);
 
         this.audioManager.playAudioNetwork({
             src: this.utility.getRandomInArray(SFX.WEAPON.GLOCK.ATTACK), // TODO: Use current weapon
@@ -418,8 +428,8 @@ export class CombatController {
                 id: this.utility.generateUID(OBJECT_DEFAULTS.DATA.ID_LENGTH),
                 transform: {
                     pos: {
-                        x: this.playerState.myPlayer.transform.pos.x + Math.cos(angle) * spawnOffset,
-                        y: this.playerState.myPlayer.transform.pos.y + Math.sin(angle) * spawnOffset,
+                        x: bulletSpawnX,
+                        y: bulletSpawnY,
                     },
                     rot: angle
                 },
@@ -591,13 +601,29 @@ export class CombatController {
                     // TODO: Catch the triggered uniques, and use that string array, might be a bouncing bullet or something that makes it not get destroyed yet
 
                     if (projectile.distanceTraveled >= projectile.range) {
-                        this.decalsManager.createDecal(projectile.transform.pos.x, projectile.transform.pos.y, `impact_${id}`, DECALS.PROJECTILE);
+                        const decalParams: DecalParams = {
+                            id: `impact_${id}`,
+                            pos: {
+                                x: projectile.transform.pos.x,
+                                y: projectile.transform.pos.y
+                            },
+                            type: 'parametric',
+                            parametric: this.decalsManager.decalsConfig.decals.projectile
+                        };
+                        this.decalsManager.createDecal(decalParams);
                     }
 
-                    this.particlesManager.createParticles(projectile.transform.pos.x, projectile.transform.pos.y, `sparks_${id}`, PARTICLES.SPARKS);
+                    const sparksParams: CreateParticleParams = {
+                        id: `sparks_${id}`,
+                        pos: {
+                            x: projectile.transform.pos.x,
+                            y: projectile.transform.pos.y
+                        },
+                        particleParams: this.particlesManager.particlesConfig.particles.glock.projectile.sparks  // TODO: Use current projectile hit effect
+                    }
+                    this.particlesManager.createParticles(sparksParams);
 
-
-                    this.audioManager.playAudioNetwork({
+                    const sfxParams: AudioParams = {
                         src: this.utility.getRandomInArray(SFX.IMPACT.METAL.BULLET), // TODO: Use current projectile type
                         listener: {
                             x: this.playerState.myPlayer.transform.pos.x,
@@ -610,7 +636,8 @@ export class CombatController {
                             pos: { x: projectile.transform.pos.x, y: projectile.transform.pos.y }
                         },
                         volume: { min: 0.965, max: 1 }
-                    });
+                    }
+                    this.audioManager.playAudioNetwork(sfxParams);
 
                     // Notify others to remove projectile
                     this.roomManager.sendMessage(JSON.stringify({
@@ -795,6 +822,8 @@ export class CombatController {
         // Cancel any ongoing burst
         this.playerState.isBurstActive = false;
         this.playerState.currentBurstShot = 0;
+
+        this.particlesManager.spawnMagazineDecal();
 
         this.animator.animateCharacterPart({
             playerId: this.userId,

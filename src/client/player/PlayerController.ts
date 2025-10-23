@@ -1,17 +1,18 @@
-import { DECALS, NETWORK, PARTICLES, SFX } from "../Config";
-import { DeathDecal, EmitterParams, PlayerHitParams, SetSliderParams } from "../Types";
+import { NETWORK, SFX } from "../Config";
+import { AudioParams, CreateParticleParams, DeathDecal, DecalParams, EmitterParams, PlayerHitParams, SetSliderParams, Vec2 } from "../Types";
 
-import { AudioManager } from "../AudioManager";
-import { GameState } from "../GameState";
 import { LuckController } from "./LuckController";
 import { MoveController } from "./MoveController";
+import { PlayerState } from "./PlayerState";
+
+import { AudioManager } from "../AudioManager";
+import { DecalsManager } from "../DecalsManager";
+import { GameState } from "../GameState";
 import { ObjectsManager } from "../ObjectsManager";
 import { ParticlesManager } from "../ParticlesManager";
-import { PlayerState } from "./PlayerState";
 import { RoomManager } from "../RoomManager";
-import { Utility } from "../Utility";
-import { DecalsManager } from "../DecalsManager";
 import { UserInterface } from "../UserInterface";
+import { Utility } from "../Utility";
 
 
 export class PlayerController {
@@ -63,15 +64,17 @@ export class PlayerController {
         }
         //
 
-        const targetVelocityX = inputX * currentSpeed;
-        const targetVelocityY = inputY * currentSpeed;
+        // CHANGED: Apply friction always, before calculating acceleration
+        this.playerState.playerVelocityX *= Math.pow(this.playerState.myPlayer.physics.friction, delta);
+        this.playerState.playerVelocityY *= Math.pow(this.playerState.myPlayer.physics.friction, delta);
 
-        this.playerState.playerVelocityX += (targetVelocityX - this.playerState.playerVelocityX) * this.playerState.myPlayer.physics.acceleration * delta;
-        this.playerState.playerVelocityY += (targetVelocityY - this.playerState.playerVelocityY) * this.playerState.myPlayer.physics.acceleration * delta;
+        // CHANGED: Only apply acceleration when there's input
+        if (this.moveController.isMoving()) {
+            const targetVelocityX = inputX * currentSpeed;
+            const targetVelocityY = inputY * currentSpeed;
 
-        if (!this.moveController.isMoving()) {
-            this.playerState.playerVelocityX *= Math.pow(this.playerState.myPlayer.physics.friction, delta);
-            this.playerState.playerVelocityY *= Math.pow(this.playerState.myPlayer.physics.friction, delta);
+            this.playerState.playerVelocityX += (targetVelocityX - this.playerState.playerVelocityX) * this.playerState.myPlayer.physics.acceleration * delta;
+            this.playerState.playerVelocityY += (targetVelocityY - this.playerState.playerVelocityY) * this.playerState.myPlayer.physics.acceleration * delta;
         }
 
         let newX = this.playerState.myPlayer.transform.pos.x + this.playerState.playerVelocityX * delta;
@@ -123,7 +126,7 @@ export class PlayerController {
 
         if (params.target.id === this.userId) { // Random chance to play grunt when I'm hit
             if (this.utility.getRandomNum(0, 1) < 0.2) { // 20%
-                this.audioManager.playAudioNetwork({
+                const gruntParams: AudioParams = {
                     src: this.utility.getRandomInArray(SFX.PLAYER.MALE.GRUNT), // TODO: Allow player to define gender
                     listener: {
                         x: this.playerState.myPlayer.transform.pos.x,
@@ -136,10 +139,11 @@ export class PlayerController {
                         pos: { x: this.playerState.myPlayer.transform.pos.x, y: this.playerState.myPlayer.transform.pos.y }
                     },
                     volume: { min: 0.9, max: 1 }
-                });
+                }
+                this.audioManager.playAudioNetwork(gruntParams);
             }
         } else { // The player hit was not me
-            this.audioManager.playAudioNetwork({ // Play hit sound
+            const sfxParams: AudioParams = {
                 src: this.utility.getRandomInArray(SFX.IMPACT.FLESH.BULLET), // TODO: User current body material
                 listener: {
                     x: this.playerState.myPlayer.transform.pos.x,
@@ -152,15 +156,35 @@ export class PlayerController {
                     pos: { x: params.source.transform.pos.x, y: params.source.transform.pos.y }
                 },
                 volume: { min: 0.95, max: 1 }
-            });
+            }
+            this.audioManager.playAudioNetwork(sfxParams);
 
-            const bloodDirection = {
+            const decalParams: DecalParams = {
+                id: `blood_${params.source.id}`,
+                pos: {
+                    x: params.source.transform.pos.x,
+                    y: params.source.transform.pos.y
+                },
+                type: 'parametric',
+                parametric: this.decalsManager.decalsConfig.decals.blood // TODO: Get current blood type
+            };
+            this.decalsManager.createDecal(decalParams);
+
+            const bloodDirection: Vec2 = {
                 x: -params.source.velocity.x / Math.sqrt(params.source.velocity.x ** 2 + params.source.velocity.y ** 2),
                 y: -params.source.velocity.y / Math.sqrt(params.source.velocity.x ** 2 + params.source.velocity.y ** 2)
             };
 
-            this.decalsManager.createDecal(params.source.transform.pos.x, params.source.transform.pos.y, `blood_${params.source.id}`, DECALS.BLOOD);
-            this.particlesManager.createParticles(params.source.transform.pos.x, params.source.transform.pos.y, `blood_${params.source.id}`, PARTICLES.BLOOD_SPRAY, bloodDirection);
+            const particleParams: CreateParticleParams = {
+                id: `blood_${params.source.id}`,
+                pos: {
+                    x: params.source.transform.pos.x,
+                    y: params.source.transform.pos.y
+                },
+                particleParams: this.particlesManager.particlesConfig.particles.blood.spray, // TODO: Get current blood type
+                direction: bloodDirection
+            }
+            this.particlesManager.createParticles(particleParams);
 
             const emission: EmitterParams = {
                 id: `particle_emitter_${params.target.id}_${Date.now()}`,
@@ -170,7 +194,7 @@ export class PlayerController {
                     x: params.target.transform.pos.x,
                     y: params.target.transform.pos.y
                 },
-                particleType: PARTICLES.BLOOD_DRIP,
+                particleType: this.particlesManager.particlesConfig.particles.blood.drip, // TODO: Get current blood type
                 playerId: params.target.id,
                 pos: {
                     x: params.source.transform.pos.x,
@@ -201,7 +225,6 @@ export class PlayerController {
             projectileId: params.source.id,
             wasKill: params.wasKill
         }
-
         this.roomManager.sendMessage(JSON.stringify(message));
     }
 

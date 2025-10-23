@@ -1,4 +1,4 @@
-import { AnimationParams, CharacterAnimation, Vec2 } from "./Types";
+import { PlayerPartAnimParams, CharacterAnimation, Vec2 } from "./Types";
 
 import { RoomManager } from "./RoomManager";
 
@@ -15,7 +15,7 @@ export class Animator {
     /**
      * Animates a specific character part locally with generateCharacterAnimation and broadcasts for other clients to sync animations.
      */
-    public animateCharacterPart(params: AnimationParams): void {
+    public animateCharacterPart(params: PlayerPartAnimParams): void {
         this.generateCharacterAnimation(params);
 
         this.roomManager.sendMessage(JSON.stringify({
@@ -54,14 +54,14 @@ export class Animator {
     /**
      * Responds to a network request to process a character animation.
      */
-    public animateCharacterPartNetwork(params: AnimationParams): void {
+    public animateCharacterPartNetwork(params: PlayerPartAnimParams): void {
         this.generateCharacterAnimation(params);
     }
 
     /**
      * Assembles the character animation and adds it to the characterAnimations mapping for playback during update processing.
      */
-    private generateCharacterAnimation(params: AnimationParams): void {
+    private generateCharacterAnimation(params: PlayerPartAnimParams): void {
         const { playerId, part, frames, duration, partIndex } = params;
         const animationId = `${playerId}_${part}_${partIndex || 0}`;
 

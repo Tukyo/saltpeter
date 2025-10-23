@@ -32,11 +32,14 @@
   <link rel="icon" type="image/png" href="favicon.ico" />
 
   <link rel="stylesheet" type="text/css" href="style.css" />
-
-  <h1 style="display: none;">Saltpeter: top-down multiplayer roguelike. Tukyo</h1>
 </head>
 
 <body>
+  <div id="landingPage" onclick="this.remove();"
+    style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:99999;display:flex;justify-content:center;align-items:center;font-family:monospace;color:#b3b3b3;font-size:2rem;text-align:center;user-select:none;">
+    <div style="opacity:0.8;animation:pulse 2s infinite;">Click to access Neural Interface</div>
+  </div>
+
   <div id="fg"></div>
   <div id="background"></div>
 
@@ -44,6 +47,7 @@
   <canvas class='hacker hacker_bars'></canvas>
 
   <div id="saltpeterTitle"><img src="/assets/img/header.png" alt="Saltpeter" loading="lazy"></img></div>
+  <h1 style="display: none;">Saltpeter: top-down multiplayer roguelike. Tukyo</h1>
 
   <div class="user_info">
     <strong>Neural ID:</strong> <span id="userId"></span>
@@ -233,6 +237,20 @@
     <div class="chat_input_row">
       <input type="text" id="chatInput" class="chat_input" placeholder="Type a message..." maxlength="200">
       <button id="chatSendBtn" class="chat_send_btn">Send</button>
+    </div>
+  </div>
+
+  <div id="charCustomizeContainer" class="container row" style="display: none;">
+    <div class="char_customize_arrows container">
+      <div id="headwearArrowLeft" class="charCustomizeArrow"><img src="/assets/img/icon/elements/arrows/arrow_left.png" alt="Left Arrow" loading="lazy"></img></div>
+      <div id="headArrowLeft" class="charCustomizeArrow"><img src="/assets/img/icon/elements/arrows/arrow_left.png" alt="Left Arrow" loading="lazy"></img></div>
+      <div id="bodyArrowLeft" class="charCustomizeArrow"><img src="/assets/img/icon/elements/arrows/arrow_left.png" alt="Left Arrow" loading="lazy"></img></div>
+    </div>
+    <canvas id="charCustomizeCanvas"></canvas>
+    <div class="char_customize_arrows container">
+      <div id="headwearArrowRight" class="charCustomizeArrow"><img src="/assets/img/icon/elements/arrows/arrow_right.png" alt="Left Arrow" loading="lazy"></img></div>
+      <div id="headArrowRight" class="charCustomizeArrow"><img src="/assets/img/icon/elements/arrows/arrow_right.png" alt="Left Arrow" loading="lazy"></img></div>
+      <div id="bodyArrowRight" class="charCustomizeArrow"><img src="/assets/img/icon/elements/arrows/arrow_right.png" alt="Left Arrow" loading="lazy"></img></div>
     </div>
   </div>
 

@@ -1,8 +1,8 @@
-import { CANVAS, DECALS, OBJECT_DEFAULTS, PARTICLES } from "./Config";
+import { CANVAS, OBJECT_DEFAULTS } from "./Config";
+import { CreateParticleParams, DeathDecal, DeathStamp, DecalParams, Emitter, EmitterParams, Particle, ParticleParams, PlayerHitParams, Shrapnel, ShrapnelPiece } from "./Types";
 
 import { CharacterConfig } from "./CharacterConfig";
 import { DecalsManager } from "./DecalsManager";
-import { DeathDecal, DeathStamp, Emitter, EmitterParams, Particle, PlayerHitParams, Shrapnel, ShrapnelPiece, Vec2 } from "./Types";
 import { RenderingManager } from "./RenderingManager";
 import { RoomManager } from "./RoomManager";
 import { UserInterface } from "./UserInterface";
@@ -10,9 +10,11 @@ import { Utility } from "./Utility";
 
 import { PlayerState } from "./player/PlayerState";
 import { CollisionsManager } from "./CollisionsManager";
-
+import { ParticlesConfig } from "./ParticlesConfig";
 
 export class ParticlesManager {
+    public particlesConfig: ParticlesConfig;
+
     public particles: Map<string, Particle> = new Map();
     public emitters: Map<string, Emitter> = new Map();
     public shrapnel: Map<string, ShrapnelPiece> = new Map();
@@ -27,7 +29,9 @@ export class ParticlesManager {
         private ui: UserInterface,
         private userId: string,
         private utility: Utility
-    ) { }
+    ) {
+        this.particlesConfig = new ParticlesConfig();
+    }
 
     // #region [ Particles ]
     //
@@ -36,64 +40,73 @@ export class ParticlesManager {
     /**
      * Creates particles with params. Entrypoint for all particle creations.
      */
-    public createParticles(x: number, y: number, particleId: string, params: typeof PARTICLES[keyof typeof PARTICLES], direction?: Vec2): void {
-        this.generateParticles(x, y, particleId, params, direction);
+    public createParticles(params: CreateParticleParams): void {
+        this.generateParticles(params);
 
         this.roomManager.sendMessage(JSON.stringify({
             type: 'add-particles',
-            particleId: particleId,
-            x: x,
-            y: y,
-            params: params,
-            direction: direction
+            params: params
         }));
     }
 
     /**
+     * Create a particles locally when receiving an 'add-particles' network message.
+     */
+    public createParticlesNetwork(params: CreateParticleParams): void {
+        if (this.particles.has(params.id)) return; // Don't create duplicate particles
+
+        this.generateParticles(params);
+    }
+    /**
      * Responsible for actual generation of particles locally.
      */
-    public generateParticles(x: number, y: number, particleId: string, params: typeof PARTICLES[keyof typeof PARTICLES], direction?: Vec2): void {
-        const count = Math.floor(params.COUNT.MIN + Math.random() * (params.COUNT.MAX - params.COUNT.MIN));
+    public generateParticles(params: CreateParticleParams): void {
+        const particleParams: ParticleParams = params.particleParams;
+
+        const count = Math.floor(this.utility.getRandomNum(particleParams.count.min, particleParams.count.max));
 
         for (let i = 0; i < count; i++) {
-            const lifetime = params.LIFETIME.MIN + Math.random() * (params.LIFETIME.MAX - params.LIFETIME.MIN);
-            const speed = params.SPEED.MIN + Math.random() * (params.SPEED.MAX - params.SPEED.MIN);
-            const size = params.SIZE.MIN + Math.random() * (params.SIZE.MAX - params.SIZE.MIN);
-            const opacity = params.OPACITY.MIN + Math.random() * (params.OPACITY.MAX - params.OPACITY.MIN);
-            const torque = params.TORQUE.MIN + Math.random() * (params.TORQUE.MAX - params.TORQUE.MIN);
-            const noiseStrength = params.NOISE ? (params.NOISE.STRENGTH.MIN + Math.random() * (params.NOISE.STRENGTH.MAX - params.NOISE.STRENGTH.MIN)) : 0;
-            const noiseScale = params.NOISE ? (params.NOISE.SCALE.MIN + Math.random() * (params.NOISE.SCALE.MAX - params.NOISE.SCALE.MIN)) : 0;
-            const sizeOverLifetime = params.SIZE_OVER_LIFETIME ? (params.SIZE_OVER_LIFETIME.MIN + Math.random() * (params.SIZE_OVER_LIFETIME.MAX - params.SIZE_OVER_LIFETIME.MIN)) : 0;
+            const lifetime = this.utility.getRandomNum(particleParams.lifetime.min, particleParams.lifetime.max);
+            const speed = this.utility.getRandomNum(particleParams.speed.min, particleParams.speed.max);
+            const size = this.utility.getRandomNum(particleParams.size.min, particleParams.size.max);
+            const opacity = this.utility.getRandomNum(particleParams.opacity.min, particleParams.opacity.max);
+            const torque = this.utility.getRandomNum(particleParams.torque.min, particleParams.torque.max);
+            const noiseStrength = this.utility.getRandomNum(particleParams.noise.strength.min, particleParams.noise.strength.max);
+            const noiseScale = this.utility.getRandomNum(particleParams.noise.scale.min, particleParams.noise.scale.max);
+            const sizeOverLifetime = this.utility.getRandomNum(particleParams.sizeOverLifetime.min, particleParams.sizeOverLifetime.max);
+
+            // Pick random color from array
+            const chosenColor = this.utility.getRandomInArray(particleParams.colors);
 
             let angle;
-            if (direction) {
-                angle = Math.atan2(direction.y, direction.x) + (Math.random() - 0.5) * params.SPREAD;
+            if (params.direction) {
+                angle = Math.atan2(params.direction.y, params.direction.x) + (this.utility.getRandomNum(0, 1) - 0.5) * particleParams.spread;
             } else {
-                angle = Math.random() * Math.PI * 2;
+                angle = this.utility.getRandomNum(0, Math.PI * 2);
             }
 
-            const particle = {
+            const particle: Particle = {
                 age: 0,
-                collide: params.COLLIDE,
-                color: params.COLOR,
-                fade: params.FADE,
+                collide: particleParams.collide,
+                color: chosenColor,
+                fade: particleParams.fade,
                 hasCollided: false,
-                id: `${particleId}_${i}`,
+                id: `${params.id}_${i}`,
                 initialSize: size,
                 lifetime: lifetime,
                 maxOpacity: opacity,
                 noiseScale: noiseScale,
                 noiseStrength: noiseStrength,
                 opacity: opacity,
-                paint: params.PAINT,
+                paint: particleParams.paint,
                 pos: {
-                    x: x,
-                    y: y
+                    x: params.pos.x,
+                    y: params.pos.y
                 },
                 size: size,
-                stain: params.STAIN,
+                stain: particleParams.stain,
                 torque: torque,
-                rotation: Math.random() * Math.PI * 2,
+                rotation: this.utility.getRandomNum(0, Math.PI * 2),
                 sizeOverLifetime: sizeOverLifetime,
                 velocity: {
                     x: Math.cos(angle) * speed,
@@ -256,7 +269,7 @@ export class ParticlesManager {
 
         const id = `stamp_${Date.now()}`;
 
-        this.decalsManager.decals.set(id, {
+        this.decalsManager.dynamicDecals.set(id, {
             params: null,
             pos: {
                 x: particle.pos.x,
@@ -273,8 +286,7 @@ export class ParticlesManager {
      * Creates a particle emitter in the game, and syncs this action via websocket message "particle-emitter".
      */
     public createEmitter(params: EmitterParams): void {
-        // Create an emitter locally
-        this.generateEmitter(params);
+        this.generateEmitter(params); // Create an emitter locally
 
         // Broadcast to other clients
         const message: EmitterParams = {
@@ -353,16 +365,19 @@ export class ParticlesManager {
                 const speedVariation = (Math.random() - 0.5) * 4; // -2 to +2
                 const finalSpeed = Math.max(0.5, baseSpeed + speedVariation);
 
-                this.generateParticles( // Create particles locally
-                    worldX + (Math.random() - 0.5) * 8,
-                    worldY + (Math.random() - 0.5) * 8,
-                    `emitter_particles_${emitterId}_${emitter.age}`,
-                    emitter.particleType,
-                    {
+                const particleParams: CreateParticleParams = {
+                    id: `emitter_particles_${emitterId}_${emitter.age}`,
+                    pos: {
+                        x: worldX + (Math.random() - 0.5) * 8,
+                        y: worldY + (Math.random() - 0.5) * 8
+                    },
+                    particleParams: emitter.particleType,
+                    direction: {
                         x: Math.cos(angle) * finalSpeed,
                         y: Math.sin(angle) * finalSpeed
                     }
-                );
+                }
+                this.generateParticles(particleParams);
 
                 emitter.lastEmission = emitter.age;
                 emitter.emissionInterval = 120 + Math.random() * 180; // More consistent timing
@@ -370,7 +385,17 @@ export class ParticlesManager {
 
             // Remove expired emitters
             if (emitter.age >= emitter.lifetime) {
-                this.decalsManager.generateDecal(worldX, worldY, `emitter_decal_${emitterId}`, DECALS.BLOOD);
+                const decalParams: DecalParams = {
+                    id: `emitter_decal_${emitterId}`,
+                    pos: {
+                        x: worldX,
+                        y: worldY
+                    },
+                    type: "parametric",
+                    parametric: this.decalsManager.decalsConfig.decals.blood
+                };
+                this.decalsManager.generateDecal(decalParams);
+
                 emittersToRemove.push(emitterId);
             }
         });
@@ -408,7 +433,7 @@ export class ParticlesManager {
 
             const decalId = `death_gore_${params.ownerId}_${Date.now()}_${i}`;
             this.stampGore(goreDecal);
-            this.decalsManager.decals.set(decalId, {
+            this.decalsManager.dynamicDecals.set(decalId, {
                 params: null,
                 pos: {
                     x: goreDecal.transform.pos.x,
@@ -439,7 +464,7 @@ export class ParticlesManager {
 
             const decalId = `death_blood_${params.ownerId}_${Date.now()}_${i}`;
             this.stampGore(bloodDecal);
-            this.decalsManager.decals.set(decalId, {
+            this.decalsManager.dynamicDecals.set(decalId, {
                 params: null,
                 pos: {
                     x: bloodDecal.transform.pos.x,
@@ -599,7 +624,7 @@ export class ParticlesManager {
                                 source: piece,
                                 wasKill: newHealth <= 0
                             }
-                            window.dispatchEvent(new CustomEvent("customEvent_playerHitRelay", { detail: { params }}));
+                            window.dispatchEvent(new CustomEvent("customEvent_playerHitRelay", { detail: { params } }));
                         }
                     }
                 });
@@ -685,7 +710,7 @@ export class ParticlesManager {
         this.ui.decalCtx.restore();
 
         // Register decal
-        this.decalsManager.decals.set(`shrapnel_${params.id}`, {
+        this.decalsManager.dynamicDecals.set(`shrapnel_${params.id}`, {
             params: null,
             pos: {
                 x: params.transform.pos.x,
@@ -695,4 +720,40 @@ export class ParticlesManager {
     }
     //
     // #endregion
+
+    public spawnMagazineDecal(): void {
+        setTimeout(() => {
+            const currentAmmo = this.playerState.myPlayer.actions.primary.magazine.currentAmmo;
+
+            // Choose magazine sprite: empty if 0 ammo, full if > 0
+            const magazineSrc = currentAmmo > 0 // TODO: Get current ranged weapon
+                ? this.charConfig.MAGAZINE.GLOCK.FULL
+                : this.charConfig.MAGAZINE.GLOCK.EMPTY;
+
+            // Random position in small radius around player
+            const angle = this.utility.getRandomNum(0, Math.PI * 2);
+            const distance = this.utility.getRandomNum(8, 24);
+
+            const x = this.playerState.myPlayer.transform.pos.x + Math.cos(angle) * distance;
+            const y = this.playerState.myPlayer.transform.pos.y + Math.sin(angle) * distance;
+            const rotation = this.utility.getRandomNum(0, Math.PI * 2);
+            const scale = this.utility.getRandomNum(0.65, 0.75);
+
+            const decalId = `magazine_${this.userId}_${Date.now()}`;
+
+            const decalParams: DecalParams = {
+                id: decalId,
+                pos: { x, y },
+                type: 'image',
+                image: {
+                    src: magazineSrc,
+                    scale: scale,
+                    rotation: rotation
+                }
+            };
+            this.decalsManager.createDecal(decalParams);
+
+            console.log(`Spawned ${currentAmmo > 0 ? 'full' : 'empty'} magazine at reload`);
+        }, 150);
+    }
 }

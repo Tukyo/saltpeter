@@ -100,7 +100,7 @@ class Client {
         );
 
         this.roomManager = new RoomManager(this.userId, this.utility);
-        this.lobbyManager = new LobbyManager(this.utility, this.ui, this.roomManager);
+        this.lobbyManager = new LobbyManager(this.charManager, this.playerState, this.roomManager, this.ui, this.utility);
         this.wsManager = new WebsocketManager(this.gameState, this.roomManager, this.utility);
         this.chatManager = new ChatManager(this.roomManager, this.ui);
 
@@ -321,14 +321,26 @@ class Client {
                 // Send my lobby info
                 this.roomManager.sendMessage(JSON.stringify({
                     type: 'lobby-join',
-                    color: this.playerState.myPlayer.color
+                    color: this.playerState.myPlayer.color,
+                    rig: {
+                        body: PLAYER_DEFAULTS.RIG.BODY,
+                        head: PLAYER_DEFAULTS.RIG.HEAD,
+                        headwear: PLAYER_DEFAULTS.RIG.HEADWEAR,
+                        weapon: PLAYER_DEFAULTS.RIG.WEAPON
+                    }
                 }));
 
                 // Add myself to lobby
                 this.lobbyManager.lobbyPlayers.set(this.userId, {
                     id: this.userId,
                     color: this.playerState.myPlayer.color,
-                    isHost: this.playerState.isHost
+                    isHost: this.playerState.isHost,
+                    rig: {
+                        body: PLAYER_DEFAULTS.RIG.BODY,
+                        head: PLAYER_DEFAULTS.RIG.HEAD,
+                        headwear: PLAYER_DEFAULTS.RIG.HEADWEAR,
+                        weapon: PLAYER_DEFAULTS.RIG.WEAPON
+                    }
                 });
                 this.ui.displayLobbyPlayers(this.playerState.isHost, this.lobbyManager, this.userId);
                 this.ui.updateHostDisplay(this.playerState.isHost, this.lobbyManager);
@@ -381,7 +393,8 @@ class Client {
                     this.lobbyManager.lobbyPlayers.set(message.userId, {
                         id: message.userId,
                         color: gameData.color,
-                        isHost: false
+                        isHost: false,
+                        rig: gameData.rig
                     });
                     this.ui.displayLobbyPlayers(this.playerState.isHost, this.lobbyManager, this.userId);
 
@@ -869,18 +882,12 @@ class Client {
                 //
                 case 'add-decal':
                     if (message.userId !== this.userId) {
-                        this.decalsManager.createDecalNetwork(gameData.x, gameData.y, gameData.decalId, gameData.params);
+                        this.decalsManager.createDecalNetwork(gameData.params);
                     }
                     break;
                 case 'add-particles':
                     if (message.userId !== this.userId) {
-                        this.particlesManager.generateParticles(
-                            gameData.x,
-                            gameData.y,
-                            gameData.particleId,
-                            gameData.params,
-                            gameData.direction
-                        );
+                        this.particlesManager.createParticlesNetwork(gameData.params);
                     }
                     break;
                 case 'particle-emitter':
@@ -1180,6 +1187,17 @@ class Client {
 
         this.upgradeManager.resetUpgrades(this.playerState.myPlayer);
 
+        // Transfer rig from lobby to game player
+        const myLobbyPlayer = this.lobbyManager.lobbyPlayers.get(this.userId);
+        if (myLobbyPlayer) {
+            console.log("Found lobby rig for my player: ", myLobbyPlayer.rig);
+
+            this.playerState.myPlayer.rig.body = myLobbyPlayer.rig.body;
+            this.playerState.myPlayer.rig.head = myLobbyPlayer.rig.head;
+            this.playerState.myPlayer.rig.headwear = myLobbyPlayer.rig.headwear;
+            this.playerState.myPlayer.rig.weapon = myLobbyPlayer.rig.weapon;
+        }
+
         // Send my player data
         // TODO: You can maybe just call this.initializePlayer and use the returned player object, unsure yet.
         // [ IMPORTANT ] Keep full track of Player object here
@@ -1408,7 +1426,7 @@ class Client {
         this.playerState.players.clear();
         this.combatController.projectiles.clear();
         this.objectsManager.ammoBoxes.clear();
-        this.decalsManager.decals.clear();
+        this.decalsManager.dynamicDecals.clear();
         this.particlesManager.particles.clear();
         this.particlesManager.emitters.clear();
         this.particlesManager.shrapnel.clear();

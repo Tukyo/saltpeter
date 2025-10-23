@@ -1,5 +1,3 @@
-import { DECALS, PARTICLES } from "./Config";
-
 import { LobbyManager } from "./LobbyManager";
 import { UserInterface } from "./UserInterface";
 import { Utility } from "./Utility";
@@ -179,12 +177,23 @@ export interface SpawnObjectParams {
 
 // #region [ Animation ]
 //
-export interface AnimationParams {
+export interface PlayerPartAnimParams {
   playerId: string;
   part: string;
   frames: { [key: number]: { x: number, y: number } };
   duration: number;
   partIndex?: number;
+}
+
+export type TextAnimParams = {
+  element: HTMLElement;
+  oldValue: number;
+  newValue: number;
+  decimals: number;
+  animTime: number;
+  steps: number;
+  color: string;
+  timeout: number;
 }
 //
 // #endregion
@@ -239,6 +248,12 @@ export interface LobbyPlayer {
   id: string;
   color: string;
   isHost: boolean;
+  rig: {
+    body: string;
+    head: string;
+    headwear: string;
+    weapon: string;
+  }
 }
 
 export type LobbyControlsParams = {
@@ -258,9 +273,9 @@ export type LobbyOptionsParams = {
 }
 
 export type ChatMessage = {
-    senderId: string;
-    message: string;
-    isOwn?: boolean;
+  senderId: string;
+  message: string;
+  isOwn?: boolean;
 };
 //
 // #endregion
@@ -340,12 +355,12 @@ export type SetToggleParams = {
 }
 
 export type PlayerHitParams = {
-    target: Player;
-    shooterId: string;
-    damage: number;
-    newHealth: number;
-    source: Projectile | ShrapnelPiece;
-    wasKill: boolean;
+  target: Player;
+  shooterId: string;
+  damage: number;
+  newHealth: number;
+  source: Projectile | ShrapnelPiece;
+  wasKill: boolean;
 }
 //
 // #endregion
@@ -381,6 +396,60 @@ export type CharacterAnimation = Map<string, {
   originalOffset: { x: number, y: number };
 }>
 
+export type CreateParticleParams = {
+  id: string;
+  pos: Vec2;
+  particleParams: ParticleParams;
+  direction?: Vec2;
+}
+
+export type ParticleParams = {
+  count: {
+    min: number;
+    max: number;
+  };
+  lifetime: {
+    min: number;
+    max: number;
+  };
+  noise: {
+    strength: {
+      min: number;
+      max: number;
+    };
+    scale: {
+      min: number;
+      max: number;
+    };
+  };
+  opacity: {
+    min: number;
+    max: number;
+  };
+  speed: {
+    min: number;
+    max: number;
+  };
+  sizeOverLifetime: {
+    min: number;
+    max: number;
+  };
+  size: {
+    min: number;
+    max: number;
+  };
+  torque: {
+    min: number;
+    max: number;
+  };
+  collide: boolean;
+  fade: boolean;
+  paint: boolean;
+  spread: number;
+  stain: boolean;
+  colors: string[];
+};
+
 export type Particle = {
   age: number;
   collide: boolean;
@@ -412,7 +481,7 @@ export type EmitterParams = {
   offset: Vec2;
   playerId: string;
   pos: Vec2;
-  particleType: typeof PARTICLES[keyof typeof PARTICLES];
+  particleType: ParticleParams;
 }
 
 export type Emitter = {
@@ -423,13 +492,49 @@ export type Emitter = {
   lifetime: number;
   offset: Vec2;
   playerId: string;
-  particleType: typeof PARTICLES[keyof typeof PARTICLES];
+  particleType: ParticleParams;
 }
 
 export type Decal = {
-  params: typeof DECALS[keyof typeof DECALS] | null;
+  params: DecalParams | null;
   pos: Vec2;
-}
+};
+
+export type DecalParams = {
+  id: string;
+  pos: Vec2;
+  type: 'parametric' | 'image';
+  parametric?: ParametricDecalParams;
+  image?: ImageDecalParams;
+};
+
+export type ParametricDecalParams = {
+  radius: {
+    min: number;
+    max: number;
+  };
+  density: {
+    min: number;
+    max: number;
+  };
+  opacity: {
+    min: number;
+    max: number;
+  };
+  variation: number;
+  colors: string[];
+};
+
+export type ImageDecalParams = {
+  src: string;
+  scale: number;
+  rotation: number;
+};
+
+
+
+
+
 
 export type Shrapnel = {
   amount: number;

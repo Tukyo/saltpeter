@@ -9,16 +9,27 @@ export class CharacterConfig {
         ]
     };
 
+    public MAGAZINE = {
+        GLOCK: {
+            EMPTY: '/assets/img/object/weapons/glock/magazine_empty.png',
+            FULL: '/assets/img/object/weapons/glock/magazine_full.png'
+        }
+    }
+
     public BODY = {
-        DEFAULT: '/assets/img/char/default/body.png'
+        DEFAULT: '/assets/img/char/body/default.png'
     };
 
     public HEAD = {
-        DEFAULT: '/assets/img/char/default/head.png'
+        DEFAULT: '/assets/img/char/head/default.png',
+        BLONDE_AFRO: '/assets/img/char/head/blonde_afro.png'
     };
 
     public HEADWEAR = {
-        DEFAULT: '/assets/img/char/default/headwear.png'
+        DEFAULT: '/assets/img/char/headwear/default.png',
+        FEZ: '/assets/img/char/headwear/fez.png',
+        STRAW_HAT: '/assets/img/char/headwear/straw_hat.png',
+        TRUCKER: '/assets/img/char/headwear/trucker.png'
     };
 
     public UPGRADES = {
