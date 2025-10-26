@@ -6,15 +6,15 @@ export class CharacterManager {
 
     public getCharacterAsset(layer: CharacterLayer, variant: string): string | string[] {
         switch (layer) {
-            case 'BODY':
+            case 'body':
                 return this.charConfig.body[variant as keyof typeof this.charConfig.body] || this.charConfig.body.default;
-            case 'WEAPON':
+            case 'weapon':
                 return this.charConfig.weapon[variant as keyof typeof this.charConfig.weapon] || this.charConfig.weapon.glock;
-            case 'HEAD':
+            case 'head':
                 return this.charConfig.head[variant as keyof typeof this.charConfig.head] || this.charConfig.head.default;
-            case 'HEADWEAR':
+            case 'headwear':
                 return this.charConfig.headwear[variant as keyof typeof this.charConfig.headwear] || this.charConfig.headwear.default;
-            case 'UPGRADES':
+            case 'upgrades':
                 return variant;
             default:
                 throw new Error(`Unknown character layer: ${layer}`);

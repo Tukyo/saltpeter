@@ -1,4 +1,4 @@
-import { CANVAS, GAMEPAD_MAP } from "./Config";
+import { CANVAS, GAMEPAD_MAP, WORLD } from "./Config";
 import { GameSettings, Leaderboard, Players } from "./Types";
 
 import { LobbyManager } from "./LobbyManager";
@@ -284,8 +284,8 @@ export class UserInterface {
 
         this.canvas.width = CANVAS.WIDTH;
         this.canvas.height = CANVAS.HEIGHT;
-        this.decalCanvas.width = CANVAS.WIDTH;
-        this.decalCanvas.height = CANVAS.HEIGHT;
+        this.decalCanvas.width = WORLD.WIDTH;
+        this.decalCanvas.height = WORLD.HEIGHT;
         this.ammoReservesCanvas.width = 100;
         this.ammoReservesCanvas.height = 64;
         this.charCustomizeCanvas.width = 200;

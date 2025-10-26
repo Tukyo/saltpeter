@@ -9,10 +9,12 @@ import { SettingsManager } from "./SettingsManager";
 import { UserInterface } from "./UserInterface";
 
 import { PlayerState } from "./player/PlayerState";
+import { Camera } from "./Camera";
 
 export class EventsManager {
     constructor(
         private animator: Animator,
+        private camera: Camera,
         private chatManager: ChatManager,
         private controlsManager: ControlsManager,
         private gameState: GameState,
@@ -206,13 +208,35 @@ export class EventsManager {
         this.updateMouse(e);
         const mousePos = this.controlsManager.getMousePos();
 
-        // Calculate rotation based on mouse position
-        const dx = mousePos.x - this.playerState.myPlayer.transform.pos.x;
-        const dy = mousePos.y - this.playerState.myPlayer.transform.pos.y;
-        const rotation = Math.atan2(dy, dx) + Math.PI / 2;
+        // Convert mouse screen position to world position
+        const worldMousePos = this.camera.screenToWorld(mousePos);
+
+        // Calculate distance from player
+        const dx = worldMousePos.x - this.playerState.myPlayer.transform.pos.x;
+        const dy = worldMousePos.y - this.playerState.myPlayer.transform.pos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Calculate target rotation
+        const targetRotation = Math.atan2(dy, dx) + Math.PI / 2;
+
+        // Apply distance-based dampening
+        const falloffRadius = 100; // Distance where dampening starts (make this the camera.offset)
+        const minIntensity = 0.1; // Minimum rotation speed (10% at player center)
+
+        let intensity = 1.0;
+        if (distance < falloffRadius) {
+            // Smooth falloff: 100% at edge → 15% at center
+            intensity = minIntensity + (1 - minIntensity) * (distance / falloffRadius);
+        }
+
+        // Get current rotation
+        const currentRotation = this.playerState.myPlayer.transform.rot;
+
+        // Lerp between current and target based on intensity
+        const newRotation = currentRotation + (targetRotation - currentRotation) * intensity;
 
         // Rotate my character
-        this.animator.rotateCharacterPart(this.userId, rotation);
+        this.animator.rotateCharacterPart(this.userId, newRotation);
     }
 
     /**

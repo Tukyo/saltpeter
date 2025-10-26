@@ -21,12 +21,15 @@ export const AMMO_BOX = {
     LID: '/assets/img/object/ammobox/lid.png',
 }
 
+export const WORLD = {
+    WIDTH: 3200,   // 4x canvas width
+    HEIGHT: 2400,  // 4x canvas height
+    BORDER_MARGIN: 15
+};
+
 export const CANVAS = {
     WIDTH: 800,
-    HEIGHT: 600,
-    BORDER_COLOR: '#333',
-    BORDER_WIDTH: 2,
-    BORDER_MARGIN: 15,
+    HEIGHT: 600
 };
 
 export const GAMEPAD_MAP = {

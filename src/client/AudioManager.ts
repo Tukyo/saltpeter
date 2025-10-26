@@ -1,4 +1,4 @@
-import { CANVAS } from "./Config";
+import { WORLD } from "./Config";
 
 import { AudioPool } from "./AudioPool";
 import { AudioParams } from "./Types";
@@ -70,7 +70,7 @@ export class AudioManager {
                 }
             } else {
                 // Default: simple linear falloff using canvas dimensions as fallback
-                const maxDistance = Math.max(CANVAS.WIDTH, CANVAS.HEIGHT); //TODO: Remove reliance on config
+                const maxDistance = Math.max(WORLD.WIDTH, WORLD.HEIGHT); //TODO: Remove reliance on config
                 distanceVolume = Math.max(0, 1 - (distance / maxDistance));
             }
 

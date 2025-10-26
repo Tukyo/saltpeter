@@ -1,4 +1,4 @@
-import { CANVAS } from "./Config";
+import { WORLD } from "./Config";
 import { Decal, DecalParams, ImageDecalParams, ParametricDecalParams, Vec2 } from "./Types";
 
 import { RoomManager } from "./RoomManager";
@@ -7,6 +7,7 @@ import { Utility } from "./Utility";
 import { DecalsConfig } from "./DecalsConfig";
 import { PlayerState } from "./player/PlayerState";
 import { CharacterConfig } from "./CharacterConfig";
+import { Camera } from "./Camera";
 
 export class DecalsManager {
     public decalsConfig: DecalsConfig;
@@ -15,6 +16,7 @@ export class DecalsManager {
     public staticDecalData: ImageData | null = null;
 
     constructor(
+        private camera: Camera,
         private charConfig: CharacterConfig,
         private playerState: PlayerState,
         private roomManager: RoomManager,
@@ -53,18 +55,20 @@ export class DecalsManager {
      */
     public generateDecal(params: DecalParams): void {
         if (!this.ui.decalCtx) return;
-        
-        const { x, y } = params.pos; // Don't create decals outside canvas bounds
-        if (x < 0 || x > CANVAS.WIDTH || y < 0 || y > CANVAS.HEIGHT) return;
 
-        // Handle different decal types
+        const { x, y } = params.pos;
+
+        // Check WORLD bounds
+        if (x < 0 || x > WORLD.WIDTH || y < 0 || y > WORLD.HEIGHT) return;
+
+        // Stamp decal at WORLD coordinates (no camera conversion needed)
         if (params.type === 'parametric' && params.parametric) {
             this.generateParametricDecal(params.pos, params.parametric);
         } else if (params.type === 'image' && params.image) {
             this.generateImageDecal(params.pos, params.image);
         }
 
-        // Store decal
+        // Store decal with WORLD position
         this.dynamicDecals.set(params.id, { params, pos: { x, y } });
     }
 
@@ -91,7 +95,8 @@ export class DecalsManager {
             const pixelX = pos.x + Math.cos(angle) * distance;
             const pixelY = pos.y + Math.sin(angle) * distance;
 
-            if (pixelX < 0 || pixelX >= CANVAS.WIDTH || pixelY < 0 || pixelY >= CANVAS.HEIGHT) continue;
+            // Check WORLD bounds (decal canvas is world-sized)
+            if (pixelX < 0 || pixelX >= WORLD.WIDTH || pixelY < 0 || pixelY >= WORLD.HEIGHT) continue;
 
             // Pick random color from array
             const chosenColor = params.colors[Math.floor(Math.random() * params.colors.length)];
@@ -102,6 +107,7 @@ export class DecalsManager {
             const clampedOpacity = Math.max(0.05, Math.min(0.6, pixelOpacity));
 
             this.ui.decalCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${clampedOpacity})`;
+            // Draw at world coordinates
             this.ui.decalCtx.fillRect(Math.floor(pixelX), Math.floor(pixelY), 1, 1);
         }
 
@@ -157,7 +163,7 @@ export class DecalsManager {
         if (!this.ui.decalCtx) return;
 
         // Capture current decal canvas state as ImageData
-        const currentBaked = this.ui.decalCtx.getImageData(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+        const currentBaked = this.ui.decalCtx.getImageData(0, 0, WORLD.WIDTH, WORLD.HEIGHT);
 
         if (!this.staticDecalData) {
             // First bake - just store it
@@ -181,7 +187,7 @@ export class DecalsManager {
 
         // Clear dynamic decals
         this.dynamicDecals.clear();
-        this.ui.decalCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+        this.ui.decalCtx.clearRect(0, 0, WORLD.WIDTH, WORLD.HEIGHT);
     }
 
     /**
@@ -208,7 +214,7 @@ export class DecalsManager {
                 ? this.charConfig.magazine.glock.full
                 : this.charConfig.magazine.glock.empty;
 
-            // Random position in small radius around player
+            // Random position in small radius around player (WORLD coordinates)
             const angle = this.utility.getRandomNum(0, Math.PI * 2);
             const distance = this.utility.getRandomNum(8, 24);
 
@@ -221,7 +227,7 @@ export class DecalsManager {
 
             const decalParams: DecalParams = {
                 id: decalId,
-                pos: { x, y },
+                pos: { x, y }, // World coordinates
                 type: 'image',
                 image: {
                     src: magazineSrc,

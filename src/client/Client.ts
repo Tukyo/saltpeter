@@ -1,5 +1,5 @@
 
-import { CANVAS, GAME } from './Config';
+import { CANVAS, GAME, WORLD } from './Config';
 
 import { Player, RoomMessage, LobbyPlayer, LeaderboardEntry, ResetType, SetSliderParams, SetSpanParams, DeathDecal, EmitterParams, GameSettings, RenderCharacterParams } from './Types';
 
@@ -36,6 +36,8 @@ import { PlayerState } from './player/PlayerState';
 import { StaminaController } from './player/StaminaController';
 import { PlayerConfig } from './player/PlayerConfig';
 import { AudioConfig } from './AudioConfig';
+import { Camera } from './Camera';
+import { World } from './World';
 
 class Client {
     private userId: string;
@@ -50,6 +52,7 @@ class Client {
     private audioConfig: AudioConfig;
     private audioManager: AudioManager;
     private cacheManager: CacheManager;
+    private camera: Camera;
     private charConfig: CharacterConfig;
     private charManager: CharacterManager;
     private chatManager: ChatManager;
@@ -77,6 +80,7 @@ class Client {
     private ui: UserInterface;
     private utility: Utility;
     private wsManager: WebsocketManager;
+    private world: World;
 
     // #region [ Initialization ]
     //
@@ -98,9 +102,13 @@ class Client {
         this.userId = this.utility.generateUID(this.playerConfig.default.data.idLength);
         this.playerState = new PlayerState(this.playerConfig, this.userId, this.utility);
 
+        this.camera = new Camera(this.playerState, this.utility);
+
         this.ui = new UserInterface(this.playerState, this.settingsManager, this.utility);
 
         this.admin = new Admin(this.cacheManager, this.ui);
+
+        this.world = new World(this.camera, this.controlsManager, this.ui);
 
         this.objectsManager = new ObjectsManager(
             this.playerState,
@@ -148,6 +156,7 @@ class Client {
 
         this.renderingManager = new RenderingManager(
             this.animator,
+            this.camera,
             this.charManager,
             this.lobbyManager,
             this.objectsManager,
@@ -157,6 +166,7 @@ class Client {
         );
 
         this.decalsManager = new DecalsManager(
+            this.camera,
             this.charConfig,
             this.playerState,
             this.roomManager,
@@ -166,6 +176,7 @@ class Client {
         );
 
         this.particlesManager = new ParticlesManager(
+            this.camera,
             this.charConfig,
             this.collisionsManager,
             this.decalsManager,
@@ -222,6 +233,7 @@ class Client {
 
         this.eventsManager = new EventsManager(
             this.animator,
+            this.camera,
             this.chatManager,
             this.controlsManager,
             this.gameState,
@@ -583,7 +595,7 @@ class Client {
                                         range: gameData.actions?.primary.projectile.range || this.playerConfig.default.actions.primary.projectile.range,
                                         size: gameData.actions?.primary.projectile.size || this.playerConfig.default.actions.primary.projectile.size,
                                         speed: gameData.actions?.primary.projectile.speed || this.playerConfig.default.actions.primary.projectile.speed,
-                                        spread: gameData.actions?.primary.projectile.spread ||this.playerConfig.default.actions.primary.projectile.spread
+                                        spread: gameData.actions?.primary.projectile.spread || this.playerConfig.default.actions.primary.projectile.spread
                                     },
                                     reload: {
                                         time: gameData.actions?.primary.reload.time || this.playerConfig.default.actions.primary.reload.time
@@ -808,6 +820,10 @@ class Client {
                                 console.log(`Player ${id} spawn:`, gameData.spawnMap[id].x, gameData.spawnMap[id].y)
                             }
                         });
+                    }
+
+                    if (gameData.worldData) {
+                        this.world.generateWorldNetwork(gameData.worldData);
                     }
 
                     this.showGameControls(this.roomManager.getCurrentRoom() || '');
@@ -1139,8 +1155,8 @@ class Client {
         this.roomManager.sendMessage(JSON.stringify({
             type: 'new-round',
             reservedSpawn: {
-                x: Math.random() * (CANVAS.WIDTH - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN,
-                y: Math.random() * (CANVAS.HEIGHT - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN
+                x: Math.random() * (WORLD.WIDTH - WORLD.BORDER_MARGIN * 2) + WORLD.BORDER_MARGIN,
+                y: Math.random() * (WORLD.HEIGHT - WORLD.BORDER_MARGIN * 2) + WORLD.BORDER_MARGIN
             }
         }));
     }
@@ -1182,14 +1198,17 @@ class Client {
     /**
      * Executes the beginning of a game and broadcasts the start to all lobbyplayers.
      */
-    private executeStartGame(): void {
+    private async executeStartGame(): Promise<void> {
+        const worldData = await this.world.generateWorld();
+
         // Send start game message to other players
         this.roomManager.sendMessage(JSON.stringify({
             type: 'start-game',
             reservedSpawn: {
                 x: this.playerState.myPlayer.transform.pos.x,
                 y: this.playerState.myPlayer.transform.pos.y
-            }
+            },
+            worldData: worldData
         }));
 
         // Also start the game for myself as the host
@@ -1361,6 +1380,8 @@ class Client {
 
         const dt = this.utility.deltaTime();
 
+        this.camera.update(dt);
+
         // Update
         this.playerController.updatePlayerPosition(dt);
         this.combatController.updateAttack(dt);
@@ -1383,18 +1404,31 @@ class Client {
         }
         this.utility.setSlider(staminaSliderParams);
 
+        // === RENDERING ===
+
+        // Clear main canvas
         this.renderingManager.clearCtx(this.ui.ctx);
 
-        this.ui.ctx.drawImage(this.ui.decalCanvas, 0, 0)
+        this.world.drawWorld();
+        this.world.drawGrid();
 
+        this.ui.ctx.drawImage(
+            this.ui.decalCanvas,
+            this.camera.x, this.camera.y,           // Source x, y (camera position in world)
+            CANVAS.WIDTH, CANVAS.HEIGHT,            // Source width, height (viewport size)
+            0, 0,                                   // Dest x, y (draw at canvas origin)
+            CANVAS.WIDTH, CANVAS.HEIGHT             // Dest width, height
+        );
+
+        // Draw objects (with camera offset)
         this.renderingManager.drawObjects();
 
-        // Draw projectiles
+        // Draw projectiles (with camera offset)
         this.combatController.projectiles.forEach(projectile => {
             this.renderingManager.drawProjectile(projectile);
         });
 
-        // Draw other players
+        // Draw other players (with camera offset)
         this.playerState.players.forEach((player: Player) => {
             if (!this.ui.ctx) return;
 
@@ -1402,9 +1436,11 @@ class Client {
             this.renderingManager.drawCharacter(charRenderParams);
         });
 
+        // Draw my player (with camera offset)
         const myRenderParams: RenderCharacterParams = { player: this.playerState.myPlayer, context: this.ui.ctx };
         this.renderingManager.drawCharacter(myRenderParams);
 
+        // Draw particles and shrapnel (with camera offset)
         this.particlesManager.drawParticles();
         this.particlesManager.drawShrapnel();
 

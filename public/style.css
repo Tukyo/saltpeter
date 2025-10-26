@@ -273,8 +273,7 @@ toggle[checked]::before {
 #gameCanvas {
     border: 3px solid var(--secondary-color);
     border-radius: 8px;
-    background-image: url('./assets/img/bg4.jpg');
-    background-size: 25%;
+    background: #3e3e3e;
     margin: 15px auto;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }

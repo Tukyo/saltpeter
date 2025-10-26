@@ -1,4 +1,4 @@
-import { CANVAS, OBJECT_DEFAULTS, SHRAPNEL } from "../Config";
+import { OBJECT_DEFAULTS, SHRAPNEL, WORLD } from "../Config";
 import { AttackType, AudioParams, CreateParticleParams, DecalParams, PlayerHitParams, Projectile, ProjectileOverrides, Shrapnel, Vec2 } from "../Types";
 
 import { Animator } from "../Animator";
@@ -214,7 +214,7 @@ export class CombatController {
 
             this.animator.animateCharacterPart({
                 playerId: this.userId,
-                part: 'WEAPON',
+                part: 'weapon',
                 frames: {
                     0: { x: 0, y: 8 } // Slide held back
                 },
@@ -283,7 +283,7 @@ export class CombatController {
             if (this.playerState.myPlayer.actions.primary.magazine.currentAmmo === 0) {
                 this.animator.animateCharacterPart({
                     playerId: this.userId,
-                    part: 'WEAPON',
+                    part: 'weapon',
                     frames: {
                         0: { x: 0, y: 8 } // Slide held back
                     },
@@ -307,10 +307,10 @@ export class CombatController {
         const dirX = dir.x / distance;
         const dirY = dir.y / distance;
 
-        // Animate weapon slide (glock_slide.png is index 1 in the WEAPON.GLOCK array)
+        // Animate weapon slide (glock_slide.png is index 1 in the weapon.glock array)
         this.animator.animateCharacterPart({
             playerId: this.userId,
-            part: 'WEAPON',
+            part: 'weapon',
             frames: {
                 0: { x: 0, y: 0 },    // Start position
                 0.5: { x: 0, y: 20 }, // Pull back slide
@@ -385,7 +385,7 @@ export class CombatController {
                 blend: 1.0,
                 pos: { x: this.playerState.myPlayer.transform.pos.x, y: this.playerState.myPlayer.transform.pos.y },
                 rolloff: {
-                    distance: Math.max(CANVAS.WIDTH, CANVAS.HEIGHT) * 2,
+                    distance: Math.max(WORLD.WIDTH, WORLD.HEIGHT) / 2, // TODO: Make more reliable distance attenuation, right now, just half of the world size
                     factor: 0.5,
                     type: 'logarithmic'
                 }
@@ -591,8 +591,8 @@ export class CombatController {
 
             // Check if projectile should be removed (range/bounds)
             if (projectile.distanceTraveled >= projectile.range ||
-                projectile.transform.pos.x < 0 || projectile.transform.pos.x > CANVAS.WIDTH ||
-                projectile.transform.pos.y < 0 || projectile.transform.pos.y > CANVAS.HEIGHT) {
+                projectile.transform.pos.x < 0 || projectile.transform.pos.x > WORLD.WIDTH ||
+                projectile.transform.pos.y < 0 || projectile.transform.pos.y > WORLD.HEIGHT) {
 
                 projectilesToRemove.push(id);
 
@@ -829,7 +829,7 @@ export class CombatController {
 
         this.animator.animateCharacterPart({
             playerId: this.userId,
-            part: 'WEAPON',
+            part: 'weapon',
             frames: {
                 0: { x: 0, y: 8 } // Slide held back
             },
@@ -868,7 +868,7 @@ export class CombatController {
 
         this.animator.animateCharacterPart({
             playerId: this.userId,
-            part: 'WEAPON',
+            part: 'weapon',
             frames: {
                 0: { x: 0, y: 20 }, // Start with slide back
                 1: { x: 0, y: 0 } // Return to start

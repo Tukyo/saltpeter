@@ -134,7 +134,7 @@ export class PlayerController {
                         x: this.playerState.myPlayer.transform.pos.x,
                         y: this.playerState.myPlayer.transform.pos.y
                     },
-                    output: 'sfx',
+                    output: 'voice',
                     pitch: { min: 0.95, max: 1.075 },
                     spatial: {
                         blend: 1.0,

@@ -1,4 +1,4 @@
-import { CANVAS, OBJECT_DEFAULTS } from "./Config";
+import { OBJECT_DEFAULTS, WORLD } from "./Config";
 import { CreateParticleParams, DeathDecal, DeathStamp, DecalParams, Emitter, EmitterParams, Particle, ParticleParams, PlayerHitParams, Shrapnel, ShrapnelPiece } from "./Types";
 
 import { CharacterConfig } from "./CharacterConfig";
@@ -11,6 +11,7 @@ import { Utility } from "./Utility";
 import { PlayerState } from "./player/PlayerState";
 import { CollisionsManager } from "./CollisionsManager";
 import { ParticlesConfig } from "./ParticlesConfig";
+import { Camera } from "./Camera";
 
 export class ParticlesManager {
     public particlesConfig: ParticlesConfig;
@@ -20,6 +21,7 @@ export class ParticlesManager {
     public shrapnel: Map<string, ShrapnelPiece> = new Map();
 
     constructor(
+        private camera: Camera,
         private charConfig: CharacterConfig,
         private collisionsManager: CollisionsManager,
         private decalsManager: DecalsManager,
@@ -168,14 +170,14 @@ export class ParticlesManager {
             }
 
             const shouldRemove = particle.age >= particle.lifetime ||
-                particle.pos.x < -10 || particle.pos.x > CANVAS.WIDTH + 10 ||
-                particle.pos.y < -10 || particle.pos.y > CANVAS.HEIGHT + 10;
+                particle.pos.x < -10 || particle.pos.x > WORLD.WIDTH + 10 ||
+                particle.pos.y < -10 || particle.pos.y > WORLD.HEIGHT + 10;
 
             if (shouldRemove) {
                 // Handle collision for particles with COLLIDE property
                 if (particle.collide && particle.age >= particle.lifetime &&
-                    particle.pos.x >= 0 && particle.pos.x <= CANVAS.WIDTH &&
-                    particle.pos.y >= 0 && particle.pos.y <= CANVAS.HEIGHT &&
+                    particle.pos.x >= 0 && particle.pos.x <= WORLD.WIDTH &&
+                    particle.pos.y >= 0 && particle.pos.y <= WORLD.HEIGHT &&
                     !particle.hasCollided) {
 
                     // Simulate collision with ground/surface
@@ -196,8 +198,8 @@ export class ParticlesManager {
 
                 // Handle painting before removal (only for non-staining particles)
                 if (particle.paint && !particle.stain && particle.age >= particle.lifetime &&
-                    particle.pos.x >= 0 && particle.pos.x <= CANVAS.WIDTH &&
-                    particle.pos.y >= 0 && particle.pos.y <= CANVAS.HEIGHT) {
+                    particle.pos.x >= 0 && particle.pos.x <= WORLD.WIDTH &&
+                    particle.pos.y >= 0 && particle.pos.y <= WORLD.HEIGHT) {
 
                     this.stampParticle(particle);
                 }
@@ -216,6 +218,11 @@ export class ParticlesManager {
         if (!this.ui.ctx) return;
 
         this.particles.forEach(particle => {
+            if (!this.camera.isVisible(particle.pos)) return;
+
+            // Convert to screen space
+            const screenPos = this.camera.worldToScreen(particle.pos);
+
             const rgb = this.utility.hexToRgb(particle.color);
             if (!rgb) return;
 
@@ -223,15 +230,14 @@ export class ParticlesManager {
             this.ui.ctx.save();
             this.ui.ctx.globalAlpha = particle.opacity;
 
-            // Apply rotation if torque exists
             if (particle.torque !== 0) {
-                this.ui.ctx.translate(particle.pos.x + particle.size / 2, particle.pos.y + particle.size / 2);
+                this.ui.ctx.translate(screenPos.x + particle.size / 2, screenPos.y + particle.size / 2);
                 this.ui.ctx.rotate(particle.rotation);
                 this.ui.ctx.fillStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
                 this.ui.ctx.fillRect(-particle.size / 2, -particle.size / 2, particle.size, particle.size);
             } else {
                 this.ui.ctx.fillStyle = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-                this.ui.ctx.fillRect(Math.floor(particle.pos.x), Math.floor(particle.pos.y), particle.size, particle.size);
+                this.ui.ctx.fillRect(Math.floor(screenPos.x), Math.floor(screenPos.y), particle.size, particle.size);
             }
 
             this.ui.ctx.restore();
@@ -248,14 +254,17 @@ export class ParticlesManager {
     private stampParticle(particle: Particle): void {
         if (!this.ui.decalCtx) return;
 
+        // DON'T convert to screen space - decal canvas is world-sized!
+        // Just use world coordinates directly
+
         const rgb = this.utility.hexToRgb(particle.color);
         if (!rgb) return;
 
         this.ui.decalCtx.save();
         this.ui.decalCtx.globalCompositeOperation = 'source-over';
 
-        // Paint with rotation if particle had torque
         if (particle.torque !== 0) {
+            // Use particle.pos directly (world coordinates)
             this.ui.decalCtx.translate(particle.pos.x + particle.size / 2, particle.pos.y + particle.size / 2);
             this.ui.decalCtx.rotate(particle.rotation);
             this.ui.decalCtx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${particle.opacity})`;
@@ -272,7 +281,7 @@ export class ParticlesManager {
         this.decalsManager.dynamicDecals.set(id, {
             params: null,
             pos: {
-                x: particle.pos.x,
+                x: particle.pos.x, // World coordinates
                 y: particle.pos.y
             }
         });
@@ -479,6 +488,9 @@ export class ParticlesManager {
      */
     private stampGore(params: DeathStamp): void {
         if (!this.ui.decalCtx) return;
+        if (!this.camera.isVisible(params.transform.pos)) return;
+
+        const screenPos = this.camera.worldToScreen(params.transform.pos);
 
         let image = this.renderingManager.characterImages.get(params.src);
 
@@ -498,7 +510,7 @@ export class ParticlesManager {
         if (!image.complete || image.naturalWidth === 0) return;
 
         this.ui.decalCtx.save();
-        this.ui.decalCtx.translate(params.transform.pos.x, params.transform.pos.y);
+        this.ui.decalCtx.translate(screenPos.x, screenPos.y);
         this.ui.decalCtx.rotate(params.transform.rot);
 
         const drawSize = 32 * params.scale;
@@ -632,12 +644,12 @@ export class ParticlesManager {
 
             // Remove if lifetime expired or out of bounds
             if (piece.age >= piece.lifetime ||
-                piece.transform.pos.x < 0 || piece.transform.pos.x > CANVAS.WIDTH ||
-                piece.transform.pos.y < 0 || piece.transform.pos.y > CANVAS.HEIGHT) {
+                piece.transform.pos.x < 0 || piece.transform.pos.x > WORLD.WIDTH ||
+                piece.transform.pos.y < 0 || piece.transform.pos.y > WORLD.HEIGHT) {
 
                 // Stamp as decal if died in bounds
-                if (piece.transform.pos.x >= 0 && piece.transform.pos.x <= CANVAS.WIDTH &&
-                    piece.transform.pos.y >= 0 && piece.transform.pos.y <= CANVAS.HEIGHT) {
+                if (piece.transform.pos.x >= 0 && piece.transform.pos.x <= WORLD.WIDTH &&
+                    piece.transform.pos.y >= 0 && piece.transform.pos.y <= WORLD.HEIGHT) {
                     this.stampShrapnel(piece);
                 }
 
@@ -657,6 +669,9 @@ export class ParticlesManager {
 
         this.shrapnel.forEach(piece => {
             if (!this.ui.ctx) return;
+            if (!this.camera.isVisible(piece.transform.pos)) return;
+
+            const screenPos = this.camera.worldToScreen(piece.transform.pos);
 
             let image = this.renderingManager.characterImages.get(piece.image);
 
@@ -671,7 +686,7 @@ export class ParticlesManager {
             if (!image.complete || image.naturalWidth === 0) return;
 
             this.ui.ctx.save();
-            this.ui.ctx.translate(piece.transform.pos.x, piece.transform.pos.y);
+            this.ui.ctx.translate(screenPos.x, screenPos.y);
             this.ui.ctx.rotate(piece.transform.rot);
 
             this.ui.ctx.drawImage(
@@ -691,12 +706,15 @@ export class ParticlesManager {
      */
     private stampShrapnel(params: ShrapnelPiece): void {
         if (!this.ui.decalCtx) return;
+        if (!this.camera.isVisible(params.transform.pos)) return;
+
+        const screenPos = this.camera.worldToScreen(params.transform.pos);
 
         let image = this.renderingManager.characterImages.get(params.image);
         if (!image || !image.complete || image.naturalWidth === 0) return;
 
         this.ui.decalCtx.save();
-        this.ui.decalCtx.translate(params.transform.pos.x, params.transform.pos.y);
+        this.ui.decalCtx.translate(screenPos.x, screenPos.y);
         this.ui.decalCtx.rotate(params.transform.rot);
 
         this.ui.decalCtx.drawImage(
@@ -709,15 +727,16 @@ export class ParticlesManager {
 
         this.ui.decalCtx.restore();
 
-        // Register decal
+        // Register decal with WORLD position
         this.decalsManager.dynamicDecals.set(`shrapnel_${params.id}`, {
             params: null,
             pos: {
-                x: params.transform.pos.x,
+                x: params.transform.pos.x, // World coordinates
                 y: params.transform.pos.y
             }
         });
     }
+
     //
     // #endregion
 }

@@ -1,4 +1,4 @@
-import { CANVAS } from "../Config";
+import { WORLD } from "../Config";
 
 import { Player, Players } from "../Types";
 import { Utility } from "../Utility";
@@ -55,8 +55,8 @@ export class PlayerState {
             id: userId,
             transform: {
                 pos: {
-                    x: Math.random() * (CANVAS.WIDTH - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN,
-                    y: Math.random() * (CANVAS.HEIGHT - CANVAS.BORDER_MARGIN * 2) + CANVAS.BORDER_MARGIN
+                    x: Math.random() * (WORLD.WIDTH - WORLD.BORDER_MARGIN * 2) + WORLD.BORDER_MARGIN,
+                    y: Math.random() * (WORLD.HEIGHT - WORLD.BORDER_MARGIN * 2) + WORLD.BORDER_MARGIN
                 },
                 rot: 0
             },
@@ -186,10 +186,16 @@ export class PlayerState {
     // #region [ Events ]
     //
 
+    /**
+     * Event callback for when stats change, informing all stat listeners.
+     */
     public onStatChange(statPath: string, callback: (value: any) => void): void {
         this.statListeners.set(statPath, callback);
     }
 
+    /**
+     * Routing process to notify each listener that is subscribed to a stat change.
+     */
     private notifyChange(statPath: string, value: any): void {
         const listener = this.statListeners.get(statPath);
         if (listener) {
@@ -197,6 +203,9 @@ export class PlayerState {
         }
     }
 
+    /**
+     * Directly updates the stat, triggering an 'onStatChange' event for all listeners.
+     */
     public updateStat(statPath: string, value: any): void {
         // Navigate to the property and set it
         const pathParts = statPath.split('.');

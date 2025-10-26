@@ -1,4 +1,4 @@
-import { AMMO_BOX, CANVAS, GAME, UI } from "./Config";
+import { AMMO_BOX, CANVAS, GAME, UI, WORLD } from "./Config";
 import { CharacterLayer, Projectile, RenderCharacterParams } from "./Types";
 
 import { Animator } from "./Animator";
@@ -7,6 +7,7 @@ import { ObjectsManager } from "./ObjectsManager";
 import { UserInterface } from "./UserInterface";
 import { LobbyManager } from "./LobbyManager";
 import { PlayerConfig } from "./player/PlayerConfig";
+import { Camera } from "./Camera";
 
 export class RenderingManager {
     public characterImages: Map<string, HTMLImageElement> = new Map();
@@ -14,6 +15,7 @@ export class RenderingManager {
 
     constructor(
         private animator: Animator,
+        private camera: Camera,
         private charManager: CharacterManager,
         private lobbyManager: LobbyManager,
         private objectsManager: ObjectsManager,
@@ -42,7 +44,7 @@ export class RenderingManager {
         if (!this.ui.decalCtx || !this.ui.ctx) return;
 
         this.ui.ctx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
-        this.ui.decalCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+        this.ui.decalCtx.clearRect(0, 0, WORLD.WIDTH, WORLD.HEIGHT);
     }
     //
     // #endregion
@@ -61,6 +63,9 @@ export class RenderingManager {
             this.renderUniqueEffects(params);
             if (player.flags.hidden) return;
 
+            if (!this.camera.isVisible(player.transform.pos)) return;
+            const screenPos = this.camera.worldToScreen(player.transform.pos);
+
             context.fillStyle = UI.TEXT_COLOR;
             context.font = UI.FONT;
             context.textAlign = 'center';
@@ -68,14 +73,15 @@ export class RenderingManager {
             const displayName = player.id === this.userId ? 'You' : player.id.substring(0, 6);
             context.fillText(
                 displayName,
-                player.transform.pos.x,
-                player.transform.pos.y - this.playerConfig.default.data.idOffset
+                screenPos.x,
+                screenPos.y - this.playerConfig.default.data.idOffset
             );
         }
 
         // Main player
         this.drawCharacterLayers(params);
     }
+    
     /**
      * Entrypoint for rendering of all character layers.
      */
@@ -83,10 +89,10 @@ export class RenderingManager {
         const player = params.player;
         if (!player) return;
 
-        this.drawCharacterLayer(params, 'BODY', player.rig.body);
-        this.drawCharacterLayer(params, 'WEAPON', player.rig.weapon);
-        this.drawCharacterLayer(params, 'HEAD', player.rig.head);
-        this.drawCharacterLayer(params, 'HEADWEAR', player.rig.headwear);
+        this.drawCharacterLayer(params, 'body', player.rig.body);
+        this.drawCharacterLayer(params, 'weapon', player.rig.weapon);
+        this.drawCharacterLayer(params, 'head', player.rig.head);
+        this.drawCharacterLayer(params, 'headwear', player.rig.headwear);
 
         if ('stats' in player) { this.drawUpgradeLayers(params); }
     }
@@ -135,14 +141,20 @@ export class RenderingManager {
             ? GAME.CHARACTER_SIZE * (player.stats.size / GAME.CHARACTER_SIZE)
             : GAME.CHARACTER_SIZE * 0.35;
 
-        // Get position - lobby players might not have transform
-        const posX = player.transform?.pos?.x ?? 0;
-        const posY = player.transform?.pos?.y ?? 0;
+        // UPDATED: Get world position and convert to screen
+        const worldX = player.transform?.pos?.x ?? 0;
+        const worldY = player.transform?.pos?.y ?? 0;
+
+        // Only apply camera offset for full players (not lobby)
+        const shouldApplyCamera = 'stats' in player && player.transform.rot !== undefined;
+
+        const posX = shouldApplyCamera ? this.camera.worldToScreen({ x: worldX, y: worldY }).x : worldX;
+        const posY = shouldApplyCamera ? this.camera.worldToScreen({ x: worldX, y: worldY }).y : worldY;
 
         context.save();
 
         // Only apply rotation and animation for full players
-        if ('stats' in player && player.transform.rot !== undefined) {
+        if (shouldApplyCamera) {
             const animationId = `${player.id}_${partType}_${partIndex || 0}`;
             const animationOffset = this.animator.characterOffsets?.get(animationId) || { x: 0, y: 0 };
 
@@ -186,7 +198,7 @@ export class RenderingManager {
             player.unique.forEach(uniqueName => {
                 const assetPath = this.charManager.getUpgradeVisual(uniqueName);
                 if (assetPath) {
-                    this.drawCharacterPart(params, assetPath, 'UPGRADES');
+                    this.drawCharacterPart(params, assetPath, 'upgrades');
                 }
             });
 
@@ -194,7 +206,7 @@ export class RenderingManager {
             player.equipment.forEach(equipmentName => {
                 const assetPath = this.charManager.getUpgradeVisual(equipmentName);
                 if (assetPath) {
-                    this.drawCharacterPart(params, assetPath, 'UPGRADES');
+                    this.drawCharacterPart(params, assetPath, 'upgrades');
                 }
             });
         }
@@ -267,6 +279,9 @@ export class RenderingManager {
             const age = now - ghost.t;
             if (age > player.actions.dash.time) continue;
 
+            // Convert ghost world position to screen position
+            const screenPos = this.camera.worldToScreen({ x: ghost.x, y: ghost.y });
+
             const alpha = ghost.type === 'start'
                 ? 1 - (age / player.actions.dash.time)
                 : (age / player.actions.dash.time);
@@ -282,7 +297,7 @@ export class RenderingManager {
                 ...player,
                 transform: {
                     ...player.transform,
-                    pos: { x: ghost.x, y: ghost.y }
+                    pos: { x: screenPos.x, y: screenPos.y } // Screen coordinates for rendering
                 }
             };
 
@@ -333,6 +348,7 @@ export class RenderingManager {
         // Ammo Boxes
         this.objectsManager.ammoBoxes.forEach(ammoBox => {
             if (!this.ui.ctx) return;
+            if (!this.camera.isVisible(ammoBox.transform.pos)) return;
 
             // Load and cache images
             if (!this.ammoBoxImages) this.ammoBoxImages = {};
@@ -348,8 +364,7 @@ export class RenderingManager {
             if (!layers.every(layer => this.ammoBoxImages[layer]?.complete && this.ammoBoxImages[layer]?.naturalWidth > 0)) return;
 
             const scale = 35;
-            const x = ammoBox.transform.pos.x;
-            const y = ammoBox.transform.pos.y;
+            const screenPos = this.camera.worldToScreen(ammoBox.transform.pos);
 
             // Update lid physics if open
             if (ammoBox.isOpen) {
@@ -363,7 +378,7 @@ export class RenderingManager {
             }
 
             this.ui.ctx.save();
-            this.ui.ctx.translate(x, y);
+            this.ui.ctx.translate(screenPos.x, screenPos.y);
             this.ui.ctx.rotate(ammoBox.transform.rot || 0);
 
             // Draw body
@@ -381,7 +396,7 @@ export class RenderingManager {
             // Draw flying lid separately if open
             if (ammoBox.isOpen) {
                 this.ui.ctx.save();
-                this.ui.ctx.translate(x + ammoBox.lid.pos.x, y + ammoBox.lid.pos.y);
+                this.ui.ctx.translate(screenPos.x + ammoBox.lid.pos.x, screenPos.y + ammoBox.lid.pos.y);
                 this.ui.ctx.rotate((ammoBox.transform.rot || 0) + ammoBox.lid.rot);
                 this.ui.ctx.drawImage(this.ammoBoxImages['LID'], -scale / 2, -scale / 2, scale, scale);
                 this.ui.ctx.restore();
@@ -394,17 +409,21 @@ export class RenderingManager {
      */
     public drawProjectile(projectile: Projectile): void {
         if (!this.ui.ctx) return;
+        if (!this.camera.isVisible(projectile.transform.pos)) return;
+
+        // Convert world position to screen position
+        const screenPos = this.camera.worldToScreen(projectile.transform.pos);
 
         // Calculate projectile direction
         const speed = Math.sqrt(projectile.velocity.x * projectile.velocity.x + projectile.velocity.y * projectile.velocity.y);
         const dirX = projectile.velocity.x / speed;
         const dirY = projectile.velocity.y / speed;
 
-        // Calculate front and back points
-        const frontX = projectile.transform.pos.x + dirX * (projectile.length / 2);
-        const frontY = projectile.transform.pos.y + dirY * (projectile.length / 2);
-        const backX = projectile.transform.pos.x - dirX * (projectile.length / 2);
-        const backY = projectile.transform.pos.y - dirY * (projectile.length / 2);
+        // Calculate front and back points (in screen space)
+        const frontX = screenPos.x + dirX * (projectile.length / 2);
+        const frontY = screenPos.y + dirY * (projectile.length / 2);
+        const backX = screenPos.x - dirX * (projectile.length / 2);
+        const backY = screenPos.y - dirY * (projectile.length / 2);
 
         // Draw the capsule body (rectangle)
         this.ui.ctx.fillStyle = projectile.color;

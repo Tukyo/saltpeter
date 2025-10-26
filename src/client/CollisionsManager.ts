@@ -1,4 +1,4 @@
-import { CANVAS } from "./Config";
+import { WORLD } from "./Config";
 import { Player } from "./Types";
 
 import { ObjectsManager } from "./ObjectsManager";
@@ -21,10 +21,10 @@ export class CollisionsManager {
      * Responsible for handling all collisions in the game. Routes to other collision functions.
      */
     public checkCollisions(delta: number): void {
-        const minX = CANVAS.BORDER_MARGIN;
-        const maxX = CANVAS.WIDTH - CANVAS.BORDER_MARGIN;
-        const minY = CANVAS.BORDER_MARGIN;
-        const maxY = CANVAS.HEIGHT - CANVAS.BORDER_MARGIN;
+        const minX = WORLD.BORDER_MARGIN;
+        const maxX = WORLD.WIDTH - WORLD.BORDER_MARGIN;
+        const minY = WORLD.BORDER_MARGIN;
+        const maxY = WORLD.HEIGHT - WORLD.BORDER_MARGIN;
 
         this.playerState.myPlayer.transform.pos.x = Math.max(minX, Math.min(maxX, this.playerState.myPlayer.transform.pos.x));
         this.playerState.myPlayer.transform.pos.y = Math.max(minY, Math.min(maxY, this.playerState.myPlayer.transform.pos.y));

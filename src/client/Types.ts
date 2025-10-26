@@ -594,7 +594,7 @@ export type CharacterAnimation = Map<string, {
   originalOffset: { x: number, y: number };
 }>
 
-export type CharacterLayer = 'BODY' | 'WEAPON' | 'HEAD' | 'HEADWEAR' | 'UPGRADES';
+export type CharacterLayer = 'body' | 'weapon' | 'head' | 'headwear' | 'upgrades';
 //
 // #endregion
 
