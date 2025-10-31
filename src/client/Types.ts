@@ -23,6 +23,13 @@ export type Transform = {
  * Represents a directional relationship between two points in 2D space.
  */
 export type Direction = { rootPos: Vec2; targetPos: Vec2; };
+
+export enum NoiseType {
+  Perlin = "perlin",
+  Worley = "worley",
+  Voronoi = "voronoi",
+  Ridged = "ridged"
+}
 //
 // #endregion
 
@@ -635,6 +642,149 @@ export type UpgradeParams = {
   playerState: PlayerState;
   ui: UserInterface;
   utility: Utility;
+}
+//
+// #endregion
+
+// #region [ World ]
+//
+export type WorldData = {
+  params: WorldParams;
+  seed: number;
+}
+
+export type WorldParams = {
+  general: {
+    chunk: { size: number };
+    cell: { size: number };
+    options: { island: boolean; valley: boolean; }
+    seed: number;
+  }
+  terrain: {
+    noiseType: NoiseType;
+    intensity: number;
+    octaves: number;
+    scale: number;
+    persistence: number;
+    heightCurve: number;
+    seaLevel: number;
+    lowestDepth: number;
+  }
+  material: {
+    noiseType: NoiseType;
+    scale: number;
+    detail: {
+      noiseType: NoiseType;
+      scale: number;
+    }
+    colorVariation: number;
+  }
+  degen: {
+    noiseType: NoiseType;
+    scale: number;
+    intensity: number;
+    minHeight: number;
+    threshold: number;
+    hardness: number;
+    detail: {
+      noiseType: NoiseType;
+      scale: number;
+    }
+  }
+  hydration: {
+    noiseType: NoiseType;
+    intensity: number;
+    scale: number;
+    multiplier: number;
+  }
+  render: {
+    water: {
+      opacityBase: number;
+      opacityMultiplier: number;
+      foamIntensity: number;
+      foamScale: number;
+      noiseScale: number;
+      shoreBlend: number;
+      shimmerStrength: number;
+      depthDarkness: number;
+    }
+    grid: {
+      enabled: boolean;
+      lineWidth: number;
+      chunkBorderColor: string;
+      worldBorderColor: string;
+      layerBorderColor: string;
+      borderWidth: number;
+    }
+  }
+}
+
+export type WorldLayer = {
+  name: string;
+  height: number;
+  materials: {
+    material: string;
+    weight: number;
+    blend: number;
+  }[];
+}
+
+export interface NetworkChunk {
+  pos: Vec2;
+  version: number;
+  size: number;
+  cellData: CellData;
+  layer: string;
+}
+
+export type CellData = {
+  worldPixelData: Uint8Array;
+  worldHeightData: Uint8Array;
+  worldWaterData?: Uint8Array;
+  cellLayerGrid?: number[][];
+}
+
+export type PixelData = {
+  layer: WorldLayer
+  material: Material;
+  materialColorIndex: number;
+}
+
+export type PixelWaterData = {
+  hasWater: boolean;
+  waterLevel: number;
+  depth: number;
+  material: Material;
+}
+
+export type Material = {
+  name: string;
+  type: 'terrain' | 'mineral' | 'surface' | 'liquid';
+  colors: string[];
+  physics: Liquid | Solid | Gas;
+}
+
+export enum PhysicsMaterialTypes { Liquid, Solid, Gas }
+
+interface PhysicsMaterial {
+  type: PhysicsMaterialTypes;
+  simulate: boolean;
+}
+
+interface Liquid extends PhysicsMaterial {
+  type: PhysicsMaterialTypes.Liquid;
+  viscosity: number; // how fast it flows / spreads
+}
+
+interface Solid extends PhysicsMaterial {
+  type: PhysicsMaterialTypes.Solid;
+  durability: number;
+  friction: number;
+  density: number;
+}
+
+interface Gas extends PhysicsMaterial {
+  type: PhysicsMaterialTypes.Gas;
 }
 //
 // #endregion

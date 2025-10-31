@@ -14,6 +14,7 @@ import { Utility } from "../Utility";
 import { PlayerController, } from "./PlayerController";
 import { UserInterface } from "../UserInterface";
 import { AudioConfig } from "../AudioConfig";
+import { World } from "../world/World";
 
 export class CombatController {
     public projectiles: Map<string, Projectile> = new Map();
@@ -32,7 +33,8 @@ export class CombatController {
         private roomManager: RoomManager,
         private ui: UserInterface,
         private userId: string,
-        private utility: Utility
+        private utility: Utility,
+        private world: World
     ) { }
 
     // #region [ Attack ]
@@ -598,48 +600,59 @@ export class CombatController {
 
                 // Create burn mark where projectile expired (only for my projectiles)
                 if (projectile.ownerId === this.userId) {
+                    const impactX = projectile.transform.pos.x;
+                    const impactY = projectile.transform.pos.y;
+
                     const triggeredUniques = this.triggerCollisionUniques(projectile.transform.pos);
 
                     // TODO: Catch the triggered uniques, and use that string array, might be a bouncing bullet or something that makes it not get destroyed yet
 
-                    if (projectile.distanceTraveled >= projectile.range) {
-                        const decalParams: DecalParams = {
-                            id: `impact_${id}`,
+                    const inBounds =
+                        impactX >= 0 && impactX <= WORLD.WIDTH &&
+                        impactY >= 0 && impactY <= WORLD.HEIGHT;
+
+                    if (inBounds) {
+                        if (projectile.distanceTraveled >= projectile.range) {
+                            const decalParams: DecalParams = {
+                                id: `impact_${id}`,
+                                pos: {
+                                    x: projectile.transform.pos.x,
+                                    y: projectile.transform.pos.y
+                                },
+                                type: 'parametric',
+                                parametric: this.decalsManager.decalsConfig.decals.projectile
+                            };
+                            this.decalsManager.createDecal(decalParams);
+                        }
+
+                        const sparksParams: CreateParticleParams = {
+                            id: `sparks_${id}`,
                             pos: {
                                 x: projectile.transform.pos.x,
                                 y: projectile.transform.pos.y
                             },
-                            type: 'parametric',
-                            parametric: this.decalsManager.decalsConfig.decals.projectile
-                        };
-                        this.decalsManager.createDecal(decalParams);
-                    }
+                            particleParams: this.particlesManager.particlesConfig.particles.glock.projectile.sparks  // TODO: Use current projectile hit effect
+                        }
+                        this.particlesManager.createParticles(sparksParams);
 
-                    const sparksParams: CreateParticleParams = {
-                        id: `sparks_${id}`,
-                        pos: {
-                            x: projectile.transform.pos.x,
-                            y: projectile.transform.pos.y
-                        },
-                        particleParams: this.particlesManager.particlesConfig.particles.glock.projectile.sparks  // TODO: Use current projectile hit effect
-                    }
-                    this.particlesManager.createParticles(sparksParams);
+                        const sfxParams: AudioParams = {
+                            src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.impact.metal.bullet), // TODO: Use current projectile type
+                            listener: {
+                                x: this.playerState.myPlayer.transform.pos.x,
+                                y: this.playerState.myPlayer.transform.pos.y
+                            },
+                            output: 'sfx',
+                            pitch: { min: 0.95, max: 1.125 },
+                            spatial: {
+                                blend: 1.0,
+                                pos: { x: projectile.transform.pos.x, y: projectile.transform.pos.y }
+                            },
+                            volume: { min: 0.965, max: 1 }
+                        }
+                        this.audioManager.playAudioNetwork(sfxParams);
 
-                    const sfxParams: AudioParams = {
-                        src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.impact.metal.bullet), // TODO: Use current projectile type
-                        listener: {
-                            x: this.playerState.myPlayer.transform.pos.x,
-                            y: this.playerState.myPlayer.transform.pos.y
-                        },
-                        output: 'sfx',
-                        pitch: { min: 0.95, max: 1.125 },
-                        spatial: {
-                            blend: 1.0,
-                            pos: { x: projectile.transform.pos.x, y: projectile.transform.pos.y }
-                        },
-                        volume: { min: 0.965, max: 1 }
+                        this.world.worldEdit.requestCraterAt(projectile.transform.pos);
                     }
-                    this.audioManager.playAudioNetwork(sfxParams);
 
                     // Notify others to remove projectile
                     this.roomManager.sendMessage(JSON.stringify({

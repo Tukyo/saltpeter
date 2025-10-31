@@ -19,6 +19,8 @@ export class UserInterface {
     public ctx: CanvasRenderingContext2D | null = null;
     public decalCanvas: HTMLCanvasElement | null = null;
     public decalCtx: CanvasRenderingContext2D | null = null;
+    public worldCanvas: HTMLCanvasElement | null = null;
+    public worldCtx: CanvasRenderingContext2D | null = null;
     //
     //
     // [ Containers ]
@@ -164,6 +166,7 @@ export class UserInterface {
     public initInterface() {
         this.canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
         this.decalCanvas = document.createElement('canvas') as HTMLCanvasElement;
+        this.worldCanvas = document.createElement('canvas') as HTMLCanvasElement;
         this.ammoReservesCanvas = document.getElementById('ammoReservesCanvas') as HTMLCanvasElement;
         this.charCustomizeCanvas = document.getElementById('charCustomizeCanvas') as HTMLCanvasElement;
 
@@ -260,23 +263,23 @@ export class UserInterface {
         this.speedStat = document.getElementById('speedValue') as HTMLSpanElement;
 
         if (!this.canvas || !this.decalCanvas || !this.ammoReservesCanvas || !this.charCustomizeCanvas ||
-            !this.roomControls || !this.gameContainer || !this.lobbyContainer || !this.userIdDisplay ||
-            !this.roomIdDisplay || !this.gameRoomIdDisplay || !this.lobbyPlayersList || !this.startGameBtn ||
-            !this.gameOptionsContainer || !this.chatContainer || !this.chatMessages || !this.chatInput ||
-            !this.chatSendBtn || !this.privateToggle || !this.upgradesToggle || !this.winsInput ||
-            !this.playersInput || !this.upgradeContainer || !this.leaderboardContainer ||
-            !this.leaderboardBody || !this.hostButton || !this.joinButton || !this.quickplayButton ||
-            !this.lobbyLeaveButton || !this.lobbyCodeButton || !this.gameLeaveButton || !this.gameCodeButton ||
-            !this.settingsButton || !this.settingsCloseButton || !this.settingsContainer || !this.controlsTab ||
-            !this.graphicsTab || !this.soundTab || !this.controlsBody || !this.graphicsBody || !this.soundBody ||
-            !this.masterSlider || !this.masterFill || !this.interfaceSlider || !this.interfaceFill ||
-            !this.musicSlider || !this.musicFill || !this.sfxSlider || !this.sfxFill || !this.voiceSlider ||
-            !this.voiceFill || !this.masterValue || !this.interfaceValue || !this.musicValue || !this.sfxValue ||
-            !this.voiceValue || !this.accuracyStat || !this.damageStat || !this.luckStat || !this.rangeStat ||
-            !this.shotSpeedStat || !this.speedStat || !this.deadzoneInput || !this.particleJSToggle ||
-            !this.staticVfxToggle || !this.ammoReservesPhysicsToggle || !this.charCustomizeContainer ||
-            !this.headwearArrowLeft || !this.headArrowLeft || !this.bodyArrowLeft || !this.headwearArrowRight ||
-            !this.headArrowRight || !this.bodyArrowRight
+            !this.worldCanvas || !this.roomControls || !this.gameContainer || !this.lobbyContainer ||
+            !this.userIdDisplay || !this.roomIdDisplay || !this.gameRoomIdDisplay ||
+            !this.lobbyPlayersList || !this.startGameBtn || !this.gameOptionsContainer || !this.chatContainer ||
+            !this.chatMessages || !this.chatInput || !this.chatSendBtn || !this.privateToggle ||
+            !this.upgradesToggle || !this.winsInput || !this.playersInput || !this.upgradeContainer ||
+            !this.leaderboardContainer || !this.leaderboardBody || !this.hostButton || !this.joinButton ||
+            !this.quickplayButton || !this.lobbyLeaveButton || !this.lobbyCodeButton || !this.gameLeaveButton ||
+            !this.gameCodeButton || !this.settingsButton || !this.settingsCloseButton || !this.settingsContainer ||
+            !this.controlsTab || !this.graphicsTab || !this.soundTab || !this.controlsBody || !this.graphicsBody ||
+            !this.soundBody || !this.masterSlider || !this.masterFill || !this.interfaceSlider ||
+            !this.interfaceFill || !this.musicSlider || !this.musicFill || !this.sfxSlider || !this.sfxFill ||
+            !this.voiceSlider || !this.voiceFill || !this.masterValue || !this.interfaceValue || !this.musicValue ||
+            !this.sfxValue || !this.voiceValue || !this.accuracyStat || !this.damageStat ||
+            !this.luckStat || !this.rangeStat || !this.shotSpeedStat || !this.speedStat || !this.deadzoneInput ||
+            !this.particleJSToggle || !this.staticVfxToggle || !this.ammoReservesPhysicsToggle ||
+            !this.charCustomizeContainer || !this.headwearArrowLeft || !this.headArrowLeft || !this.bodyArrowLeft ||
+            !this.headwearArrowRight || !this.headArrowRight || !this.bodyArrowRight
         ) {
             alert('Failed to load game. Please refresh the page.');
             throw new Error('Critical error: Required DOM elements are missing.');
@@ -286,6 +289,9 @@ export class UserInterface {
         this.canvas.height = CANVAS.HEIGHT;
         this.decalCanvas.width = WORLD.WIDTH;
         this.decalCanvas.height = WORLD.HEIGHT;
+        this.worldCanvas.width = WORLD.WIDTH;
+        this.worldCanvas.height = WORLD.HEIGHT;
+
         this.ammoReservesCanvas.width = 100;
         this.ammoReservesCanvas.height = 64;
         this.charCustomizeCanvas.width = 200;
@@ -293,10 +299,11 @@ export class UserInterface {
 
         this.ctx = this.canvas.getContext('2d');
         this.decalCtx = this.decalCanvas.getContext('2d');
+        this.worldCtx = this.worldCanvas.getContext('2d');
         this.ammoReservesCtx = this.ammoReservesCanvas.getContext('2d');
         this.charCustomizeCtx = this.charCustomizeCanvas.getContext('2d')
 
-        if (!this.ctx || !this.decalCtx || !this.ammoReservesCtx || !this.charCustomizeCtx) {
+        if (!this.ctx || !this.decalCtx || !this.worldCtx || !this.ammoReservesCtx || !this.charCustomizeCtx) {
             alert('Failed to load game. Please refresh the page.');
             throw new Error('Could not get canvas context');
         }

@@ -1,4 +1,4 @@
-import { Direction, RandomColorParams, SetInputParams, SetSliderParams, SetSpanParams, SetToggleParams, TextAnimParams, Vec2 } from './Types';
+import { Direction, NoiseType, RandomColorParams, SetInputParams, SetSliderParams, SetSpanParams, SetToggleParams, TextAnimParams, Vec2 } from './Types';
 
 export class Utility {
     private lastFrameTime: number;
@@ -13,6 +13,7 @@ export class Utility {
 
     // #region [ General ]
     //
+
     public deepMerge(target: any, source: any): void {
         for (const key in source) {
             if (
@@ -27,6 +28,20 @@ export class Utility {
             }
         }
     }
+
+    /** Yields to next animation frame (~16ms) allowing UI updates and optional progress message. */
+    public async yield(message?: string): Promise<void> {
+        console.log(`[Yield] ${message ?? "(no message)"}`);
+        
+        if (message) {
+            document.dispatchEvent(new CustomEvent("yieldMessage", { detail: { message } }));
+        } else {
+            document.dispatchEvent(new CustomEvent("yieldProgress"));
+        }
+
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    }
+
     //
     // #endregion
 
@@ -229,6 +244,30 @@ export class Utility {
     }
 
     /**
+     * Returns the lightest color from a hex color array.
+     */
+    public getLightestColor(colors: string[]): string {
+        let lightestColor = colors[0];
+        let maxBrightness = 0;
+
+        for (const color of colors) {
+            const r = parseInt(color.slice(1, 3), 16);
+            const g = parseInt(color.slice(3, 5), 16);
+            const b = parseInt(color.slice(5, 7), 16);
+
+            // Calculate perceived brightness
+            const brightness = (r * 0.299 + g * 0.587 + b * 0.114);
+
+            if (brightness > maxBrightness) {
+                maxBrightness = brightness;
+                lightestColor = color;
+            }
+        }
+
+        return lightestColor;
+    }
+
+    /**
      * Converts hex color code to RGB.
      */
     public hexToRgb(hex: string): { r: number, g: number, b: number } | null {
@@ -239,7 +278,12 @@ export class Utility {
             b: parseInt(result[3], 16)
         } : null;
     }
-
+    //
+    // #endregion
+    //
+    // #region [ Noise ]
+    //
+    // - Simplex
     /**
      * Generates the permutation table for simplex noise.
      */
@@ -309,9 +353,148 @@ export class Utility {
 
         return 70.0 * (n0 + n1 + n2);
     }
+
+    // - Seeded
+    //
+    /**
+     * Helper function to switch between noise types
+     */
+    public getNoise(noiseType: NoiseType, x: number, y: number, seed: number, options?: any): number {
+        switch (noiseType) {
+            case NoiseType.Perlin:
+                return this.perlinNoise(
+                    x,
+                    y,
+                    seed,
+                    options?.octaves ?? 1,
+                    options?.persistence ?? 0.5
+                );
+            case NoiseType.Ridged:
+                return this.ridgedNoise(x, y, seed, options?.octaves ?? 1, options?.persistence ?? 0.5);
+            case NoiseType.Worley:
+                return this.worleyNoise(
+                    x,
+                    y,
+                    seed,
+                    Math.max(1, Math.floor(options?.octaves ?? 1))
+                );
+            case NoiseType.Voronoi:
+                return this.voronoiNoise(x, y, seed);
+            default:
+                return this.perlinNoise(x, y, seed);
+        }
+    }
+
+    /**
+     * Creates a noise pattern deterministically with a seed.
+     * 
+     * Optionally pass the octaves and persistence to effect the noise outcome.
+     */
+    private perlinNoise(x: number, y: number, seed: number, octaves: number = 1, persistence: number = 1): number {
+        let total = 0, frequency = 1, amplitude = 1, maxValue = 0;
+        for (let i = 0; i < octaves; i++) {
+            total += this.interpolateNoise(x * frequency, y * frequency, seed + i * 1000) * amplitude;
+            maxValue += amplitude;
+            amplitude *= persistence;
+            frequency *= 2;
+        }
+        return total / maxValue;
+    }
+
+    private ridgedNoise(x: number, y: number, seed: number, octaves: number = 1, persistence: number = 0.5): number {
+        let total = 0;
+        let frequency = 1;
+        let amplitude = 1;
+        let maxValue = 0;
+
+        for (let i = 0; i < octaves; i++) {
+            let noise = this.interpolateNoise(x * frequency, y * frequency, seed + i * 1000);
+            noise = 1 - Math.abs(noise); // Invert to create ridges
+            total += noise * amplitude;
+            maxValue += amplitude;
+            amplitude *= persistence;
+            frequency *= 2;
+        }
+
+        return total / maxValue; // Already [0,1] because of the inversion
+    }
+
+    private worleyNoise(x: number, y: number, seed: number, pointsPerCell: number = 1): number {
+        const cellX = Math.floor(x);
+        const cellY = Math.floor(y);
+        let minDist = Infinity;
+
+        // Check 3x3 neighborhood
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                const cx = cellX + dx;
+                const cy = cellY + dy;
+
+                for (let p = 0; p < pointsPerCell; p++) {
+                    // Use hash to get pseudo-random point in cell [0,1)
+                    const px = cx + this.hash2D(cx, cy, seed + p * 10000);
+                    const py = cy + this.hash2D(cx, cy, seed + p * 10000 + 1);
+                    const dx = x - px;
+                    const dy = y - py;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < minDist) minDist = dist;
+                }
+            }
+        }
+
+        // Normalize: max distance in unit grid is ~1.5
+        return this.normalize(minDist / 1.5);
+    }
+
+    private voronoiNoise(x: number, y: number, seed: number): number {
+        return this.worleyNoise(x, y, seed, 1);
+    }
+    // - Noise Helpers
+    //
+    /**
+     * Generates a deterministic pseudo-random value from integer coordinates and a seed.
+     * 
+     * Uses a fast 2D hash function to produce a normalized float in [0, 1].
+     */
+    public hash2D(x: number, y: number, seed: number): number {
+        const n = x * 374761393 + y * 668265263 + seed;
+        const hash = (n ^ (n >> 13)) * 1274126177;
+        return ((hash ^ (hash >> 16)) & 0x7fffffff) / 0x7fffffff;
+    }
+
+    /**
+     * Helper function to interpolate the seededNoise function.
+     * 
+     * Performs bilinear interpolation with smoothstep weighting between four hashed grid points.
+     */
+    private interpolateNoise(x: number, y: number, seed: number): number {
+        const ix = Math.floor(x), fx = x - ix;
+        const iy = Math.floor(y), fy = y - iy;
+
+        const v1 = this.hash2D(ix, iy, seed);
+        const v2 = this.hash2D(ix + 1, iy, seed);
+        const v3 = this.hash2D(ix, iy + 1, seed);
+        const v4 = this.hash2D(ix + 1, iy + 1, seed);
+
+        const sx = this.smoothstep(fx);
+        const sy = this.smoothstep(fy);
+
+        const i1 = this.lerp(v1, v2, sx);
+        const i2 = this.lerp(v3, v4, sx);
+        return this.lerp(i1, i2, sy);
+    }
+
+    /** Smoothly blends from 0 to 1. */
+    public smoothstep(t: number): number { return t * t * (3 - 2 * t); }
+
+    /** Linear blend between a and b. */
+    public lerp(a: number, b: number, t: number): number { return a + (b - a) * t; }
+
+    /** Normalizes a value. */
+    public normalize(value: number): number { return Math.max(0, Math.min(1, value)); }
     //
     // #endregion
-    //
+
     // #region [ Generation ]
     //
     /**
@@ -340,7 +523,7 @@ export class Utility {
     }
     //
     // #endregion
-    //
+
     // #region [ DOM ]
     //
     /**

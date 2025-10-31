@@ -1,6 +1,5 @@
 
 import { CANVAS, GAME, WORLD } from './Config';
-
 import { Player, RoomMessage, LobbyPlayer, LeaderboardEntry, ResetType, SetSliderParams, SetSpanParams, DeathDecal, EmitterParams, GameSettings, RenderCharacterParams } from './Types';
 
 import { Admin } from './Admin';
@@ -37,7 +36,7 @@ import { StaminaController } from './player/StaminaController';
 import { PlayerConfig } from './player/PlayerConfig';
 import { AudioConfig } from './AudioConfig';
 import { Camera } from './Camera';
-import { World } from './World';
+import { World } from './world/World';
 
 class Client {
     private userId: string;
@@ -108,8 +107,6 @@ class Client {
 
         this.admin = new Admin(this.cacheManager, this.ui);
 
-        this.world = new World(this.camera, this.controlsManager, this.ui);
-
         this.objectsManager = new ObjectsManager(
             this.playerState,
             this.utility
@@ -119,6 +116,8 @@ class Client {
         this.lobbyManager = new LobbyManager(this.charManager, this.playerConfig, this.playerState, this.roomManager, this.ui, this.utility);
         this.wsManager = new WebsocketManager(this.gameState, this.roomManager, this.utility);
         this.chatManager = new ChatManager(this.roomManager, this.ui);
+
+        this.world = new World(this.camera, this.controlsManager, this.playerState, this.roomManager, this.ui, this.utility);
 
         this.upgradeManager = new UpgradeManager(
             this.playerConfig,
@@ -218,7 +217,8 @@ class Client {
             this.roomManager,
             this.ui,
             this.userId,
-            this.utility
+            this.utility,
+            this.world
         );
 
         this.dashController = new DashController(
@@ -415,7 +415,7 @@ class Client {
         }
     }
 
-    private handleGameMessage(message: RoomMessage): void {
+    private async handleGameMessage(message: RoomMessage): Promise<void> {
         if (!message.message) return;
 
         try {
@@ -548,104 +548,102 @@ class Client {
                 case 'player-state':
                     console.log('Player State for player', gameData.id, ':', gameData);
 
-                    if (!this.lobbyManager.inLobby) {
-                        this.playerState.players.set(message.userId, {
-                            id: message.userId,
-                            transform: {
-                                pos: {
-                                    x: gameData.transform?.pos.x,
-                                    y: gameData.transform?.pos.y
-                                },
-                                rot: gameData.transform?.rot
+                    this.playerState.players.set(message.userId, {
+                        id: message.userId,
+                        transform: {
+                            pos: {
+                                x: gameData.transform?.pos.x,
+                                y: gameData.transform?.pos.y
                             },
-                            timestamp: gameData.timestamp,
-                            color: gameData.color,
-                            actions: {
-                                dash: {
-                                    cooldown: gameData.actions?.dash.cooldown || this.playerConfig.default.actions.dash.cooldown,
-                                    drain: gameData.actions?.dash.drain || this.playerConfig.default.actions.dash.drain,
-                                    multiplier: gameData.actions?.dash.multiplier || this.playerConfig.default.actions.dash.multiplier,
-                                    time: gameData.actions?.dash.time || this.playerConfig.default.actions.dash.time
+                            rot: gameData.transform?.rot
+                        },
+                        timestamp: gameData.timestamp,
+                        color: gameData.color,
+                        actions: {
+                            dash: {
+                                cooldown: gameData.actions?.dash.cooldown || this.playerConfig.default.actions.dash.cooldown,
+                                drain: gameData.actions?.dash.drain || this.playerConfig.default.actions.dash.drain,
+                                multiplier: gameData.actions?.dash.multiplier || this.playerConfig.default.actions.dash.multiplier,
+                                time: gameData.actions?.dash.time || this.playerConfig.default.actions.dash.time
+                            },
+                            melee: {
+                                cooldown: gameData.actions?.melee.cooldown || this.playerConfig.default.actions.melee.cooldown,
+                                damage: gameData.actions?.melee.damage || this.playerConfig.default.actions.melee.damage,
+                                duration: gameData.actions?.melee.duration || this.playerConfig.default.actions.melee.duration,
+                                range: gameData.actions?.melee.range || this.playerConfig.default.actions.melee.range,
+                                size: gameData.actions?.melee.size || this.playerConfig.default.actions.melee.size
+                            },
+                            primary: {
+                                buffer: gameData.actions?.primary.buffer || this.playerConfig.default.actions.primary.buffer,
+                                burst: {
+                                    amount: gameData.actions?.primary.burst.amount || this.playerConfig.default.actions.primary.burst.amount,
+                                    delay: gameData.actions?.primary.burst.delay || this.playerConfig.default.actions.primary.burst.delay
                                 },
-                                melee: {
-                                    cooldown: gameData.actions?.melee.cooldown || this.playerConfig.default.actions.melee.cooldown,
-                                    damage: gameData.actions?.melee.damage || this.playerConfig.default.actions.melee.damage,
-                                    duration: gameData.actions?.melee.duration || this.playerConfig.default.actions.melee.duration,
-                                    range: gameData.actions?.melee.range || this.playerConfig.default.actions.melee.range,
-                                    size: gameData.actions?.melee.size || this.playerConfig.default.actions.melee.size
+                                magazine: {
+                                    currentAmmo: gameData.actions?.primary.magazine.currentAmmo,
+                                    currentReserve: gameData.actions?.primary.magazine.currentReserve,
+                                    maxReserve: gameData.actions?.primary.magazine.maxReserve,
+                                    size: gameData.actions?.primary.magazine.size || this.playerConfig.default.actions.primary.magazine.size
                                 },
-                                primary: {
-                                    buffer: gameData.actions?.primary.buffer || this.playerConfig.default.actions.primary.buffer,
-                                    burst: {
-                                        amount: gameData.actions?.primary.burst.amount || this.playerConfig.default.actions.primary.burst.amount,
-                                        delay: gameData.actions?.primary.burst.delay || this.playerConfig.default.actions.primary.burst.delay
-                                    },
-                                    magazine: {
-                                        currentAmmo: gameData.actions?.primary.magazine.currentAmmo,
-                                        currentReserve: gameData.actions?.primary.magazine.currentReserve,
-                                        maxReserve: gameData.actions?.primary.magazine.maxReserve,
-                                        size: gameData.actions?.primary.magazine.size || this.playerConfig.default.actions.primary.magazine.size
-                                    },
-                                    offset: gameData.actions?.primary.offset || this.playerConfig.default.actions.primary.offset,
-                                    projectile: {
-                                        amount: gameData.actions?.primary.projectile.amount || this.playerConfig.default.actions.primary.projectile.amount,
-                                        color: gameData.actions?.primary.projectile.color || this.playerConfig.default.actions.primary.projectile.color,
-                                        damage: gameData.actions?.primary.projectile.damage || this.playerConfig.default.actions.primary.projectile.damage,
-                                        length: gameData.actions?.primary.projectile.length || this.playerConfig.default.actions.primary.projectile.length,
-                                        range: gameData.actions?.primary.projectile.range || this.playerConfig.default.actions.primary.projectile.range,
-                                        size: gameData.actions?.primary.projectile.size || this.playerConfig.default.actions.primary.projectile.size,
-                                        speed: gameData.actions?.primary.projectile.speed || this.playerConfig.default.actions.primary.projectile.speed,
-                                        spread: gameData.actions?.primary.projectile.spread || this.playerConfig.default.actions.primary.projectile.spread
-                                    },
-                                    reload: {
-                                        time: gameData.actions?.primary.reload.time || this.playerConfig.default.actions.primary.reload.time
-                                    }
+                                offset: gameData.actions?.primary.offset || this.playerConfig.default.actions.primary.offset,
+                                projectile: {
+                                    amount: gameData.actions?.primary.projectile.amount || this.playerConfig.default.actions.primary.projectile.amount,
+                                    color: gameData.actions?.primary.projectile.color || this.playerConfig.default.actions.primary.projectile.color,
+                                    damage: gameData.actions?.primary.projectile.damage || this.playerConfig.default.actions.primary.projectile.damage,
+                                    length: gameData.actions?.primary.projectile.length || this.playerConfig.default.actions.primary.projectile.length,
+                                    range: gameData.actions?.primary.projectile.range || this.playerConfig.default.actions.primary.projectile.range,
+                                    size: gameData.actions?.primary.projectile.size || this.playerConfig.default.actions.primary.projectile.size,
+                                    speed: gameData.actions?.primary.projectile.speed || this.playerConfig.default.actions.primary.projectile.speed,
+                                    spread: gameData.actions?.primary.projectile.spread || this.playerConfig.default.actions.primary.projectile.spread
                                 },
-                                sprint: {
-                                    drain: gameData.actions?.sprint.drain || this.playerConfig.default.actions.sprint.drain,
-                                    multiplier: gameData.actions?.sprint.multiplier || this.playerConfig.default.actions.sprint.multiplier
+                                reload: {
+                                    time: gameData.actions?.primary.reload.time || this.playerConfig.default.actions.primary.reload.time
                                 }
                             },
-                            equipment: gameData.equipment || this.playerConfig.default.equipment,
-                            flags: {
-                                hidden: gameData.flags?.hidden || this.playerConfig.default.flags.hidden,
-                                invulnerable: gameData.flags?.invulnerable || this.playerConfig.default.flags.invulnerable
+                            sprint: {
+                                drain: gameData.actions?.sprint.drain || this.playerConfig.default.actions.sprint.drain,
+                                multiplier: gameData.actions?.sprint.multiplier || this.playerConfig.default.actions.sprint.multiplier
+                            }
+                        },
+                        equipment: gameData.equipment || this.playerConfig.default.equipment,
+                        flags: {
+                            hidden: gameData.flags?.hidden || this.playerConfig.default.flags.hidden,
+                            invulnerable: gameData.flags?.invulnerable || this.playerConfig.default.flags.invulnerable
+                        },
+                        inventory: {
+                            primary: gameData.inventory?.primary || this.playerConfig.default.inventory.primary,
+                            melee: gameData.inventory?.melee || this.playerConfig.default.inventory.melee
+                        },
+                        physics: {
+                            acceleration: gameData.physics?.acceleration || this.playerConfig.default.physics.acceleration,
+                            friction: gameData.physics?.friction || this.playerConfig.default.physics.friction
+                        },
+                        rig: {
+                            body: gameData.rig?.body || this.playerConfig.default.rig.body,
+                            head: gameData.rig?.head || this.playerConfig.default.rig.head,
+                            headwear: gameData.rig?.headwear || this.playerConfig.default.rig.headwear,
+                            weapon: gameData.rig?.weapon || this.playerConfig.default.rig.weapon
+                        },
+                        stats: {
+                            defense: gameData.stats?.defense || this.playerConfig.default.stats.defense,
+                            health: {
+                                max: gameData.stats?.health.max || this.playerConfig.default.stats.health.max,
+                                value: gameData.stats?.health.value || this.playerConfig.default.stats.health.max
                             },
-                            inventory: {
-                                primary: gameData.inventory?.primary || this.playerConfig.default.inventory.primary,
-                                melee: gameData.inventory?.melee || this.playerConfig.default.inventory.melee
-                            },
-                            physics: {
-                                acceleration: gameData.physics?.acceleration || this.playerConfig.default.physics.acceleration,
-                                friction: gameData.physics?.friction || this.playerConfig.default.physics.friction
-                            },
-                            rig: {
-                                body: gameData.rig?.body || this.playerConfig.default.rig.body,
-                                head: gameData.rig?.head || this.playerConfig.default.rig.head,
-                                headwear: gameData.rig?.headwear || this.playerConfig.default.rig.headwear,
-                                weapon: gameData.rig?.weapon || this.playerConfig.default.rig.weapon
-                            },
-                            stats: {
-                                defense: gameData.stats?.defense || this.playerConfig.default.stats.defense,
-                                health: {
-                                    max: gameData.stats?.health.max || this.playerConfig.default.stats.health.max,
-                                    value: gameData.stats?.health.value || this.playerConfig.default.stats.health.max
+                            luck: gameData.stats?.luck || this.playerConfig.default.stats.luck,
+                            size: gameData.stats?.size || this.playerConfig.default.stats.size,
+                            speed: gameData.stats?.speed || this.playerConfig.default.stats.speed,
+                            stamina: {
+                                max: gameData.stats?.stamina.max || this.playerConfig.default.stats.stamina.max,
+                                recovery: {
+                                    delay: gameData.stats?.stamina.recovery.delay || this.playerConfig.default.stats.stamina.recovery.delay,
+                                    rate: gameData.stats?.stamina.recovery.rate || this.playerConfig.default.stats.stamina.recovery.rate
                                 },
-                                luck: gameData.stats?.luck || this.playerConfig.default.stats.luck,
-                                size: gameData.stats?.size || this.playerConfig.default.stats.size,
-                                speed: gameData.stats?.speed || this.playerConfig.default.stats.speed,
-                                stamina: {
-                                    max: gameData.stats?.stamina.max || this.playerConfig.default.stats.stamina.max,
-                                    recovery: {
-                                        delay: gameData.stats?.stamina.recovery.delay || this.playerConfig.default.stats.stamina.recovery.delay,
-                                        rate: gameData.stats?.stamina.recovery.rate || this.playerConfig.default.stats.stamina.recovery.rate
-                                    },
-                                    value: gameData.stats?.stamina.value || this.playerConfig.default.stats.stamina.max,
-                                },
+                                value: gameData.stats?.stamina.value || this.playerConfig.default.stats.stamina.max,
                             },
-                            unique: gameData.unique || this.playerConfig.default.unique
-                        });
-                    }
+                        },
+                        unique: gameData.unique || this.playerConfig.default.unique
+                    });
 
                     if (gameData.leaderboard) {
                         gameData.leaderboard.forEach(([playerId, entry]: [string, LeaderboardEntry]) => {
@@ -823,7 +821,7 @@ class Client {
                     }
 
                     if (gameData.worldData) {
-                        this.world.generateWorldNetwork(gameData.worldData);
+                        await this.world.generateWorld(gameData.worldData);
                     }
 
                     this.showGameControls(this.roomManager.getCurrentRoom() || '');
@@ -963,6 +961,13 @@ class Client {
                     break;
                 //
                 //
+                // [ World ]
+                //
+                case 'chunk-update':
+                    if (gameData.chunk) {
+                        this.world.handleChunkUpdate(gameData.chunk);
+                    }
+                    break;
             }
         } catch (error) {
             console.error('Error parsing game message:', error);
@@ -1199,7 +1204,7 @@ class Client {
      * Executes the beginning of a game and broadcasts the start to all lobbyplayers.
      */
     private async executeStartGame(): Promise<void> {
-        const worldData = await this.world.generateWorld();
+        const worldData = await this.world.showGenerationMenu(); // Show the worldgen menu for the host, and use params for all clients
 
         // Send start game message to other players
         this.roomManager.sendMessage(JSON.stringify({
@@ -1210,6 +1215,8 @@ class Client {
             },
             worldData: worldData
         }));
+
+        await this.world.generateWorld(worldData); // Host worldgen
 
         // Also start the game for myself as the host
         this.showGameControls(this.roomManager.getCurrentRoom() || '');
@@ -1410,14 +1417,14 @@ class Client {
         this.renderingManager.clearCtx(this.ui.ctx);
 
         this.world.drawWorld();
-        this.world.drawGrid();
+        this.world.worldDebug.drawDebug();
 
         this.ui.ctx.drawImage(
             this.ui.decalCanvas,
-            this.camera.x, this.camera.y,           // Source x, y (camera position in world)
-            CANVAS.WIDTH, CANVAS.HEIGHT,            // Source width, height (viewport size)
-            0, 0,                                   // Dest x, y (draw at canvas origin)
-            CANVAS.WIDTH, CANVAS.HEIGHT             // Dest width, height
+            this.camera.pos.x, this.camera.pos.y,
+            CANVAS.WIDTH, CANVAS.HEIGHT,
+            0, 0,
+            CANVAS.WIDTH, CANVAS.HEIGHT
         );
 
         // Draw objects (with camera offset)
@@ -1446,6 +1453,8 @@ class Client {
 
         // Continue game loop
         requestAnimationFrame(() => this.gameLoop());
+
+        this.world.streamUnloadedChunks(); // Finish loading the world if it isn't yet
     }
 
     /**

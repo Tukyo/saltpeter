@@ -22,8 +22,8 @@ export const AMMO_BOX = {
 }
 
 export const WORLD = {
-    WIDTH: 3200,   // 4x canvas width
-    HEIGHT: 2400,  // 4x canvas height
+    WIDTH: 3200,
+    HEIGHT: 2400,
     BORDER_MARGIN: 15
 };
 

@@ -59,6 +59,7 @@ export class ParticlesManager {
 
         this.generateParticles(params);
     }
+    
     /**
      * Responsible for actual generation of particles locally.
      */

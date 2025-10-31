@@ -125,6 +125,11 @@ button:hover {
 
 }
 
+form {
+    flex-direction: column;
+    gap: 1rem;
+}
+
 toggle {
     position: relative;
     width: 52px;
@@ -583,7 +588,7 @@ toggle[checked]::before {
     font-size: 5rem;
     font-weight: bold;
     color: var(--grey);
-    z-index: var(--z-minus-one);
+    z-index: calc(var(--z-foreground) + 1);
 }
 
 #saltpeterTitle img {
@@ -1735,6 +1740,194 @@ toggle[checked]::before {
 /**/
 /* #endregion */
 
+/* #region [ Worldgen Config Menu ] */
+/**/
+.config_popup_container {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0px;
+    left: 0px;
+    align-content: flex-start;
+    background: var(--black-60);
+    backdrop-filter: blur(5px);
+    z-index: var(--z-foreground);
+}
+
+.config_popup {
+    color: var(--primary-color);
+    padding: 2.5rem 1rem;
+    border: 1px solid #ddd;
+    border-radius: var(--primary-radius);
+    max-width: 50%;
+    transform: translateY(5%);
+    background-image: var(--bg);
+}
+
+.config_popup_container h3 {
+    position: absolute;
+    color: var(--tertiary-color);
+    z-index: inherit;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    background-image: url(./assets/img/bg3.jpg);
+    background-size: 75%;
+    width: fit-content;
+    height: 3rem;
+    padding: .25rem 1rem;
+    margin: 0;
+}
+
+.config_popup fieldset {
+    border: 1px solid;
+    border-color: inherit;
+    border-radius: var(--secondary-radius);
+    padding: 1rem 1.5rem;
+    background: var(--black-60);
+    backdrop-filter: blur(5px);
+}
+
+.config_popup legend {
+    color: inherit;
+    padding: 0 0.5rem;
+    font-size: calc(var(--secondary-font-size) + 1);
+}
+
+.config_popup h4 {
+    color: black;
+    margin: 12px 0 8px;
+    font-size: 14px;
+}
+
+.config_popup .form_grid {
+    display: flex;
+    gap: 1rem;
+    max-width: 80%;
+}
+
+.config_popup .form_grid_detail {
+    padding-left: 12px;
+}
+
+.form_grid_detail {
+    margin-top: 1rem;
+    background-color: currentColor;
+    padding: 0rem 2rem;
+}
+
+.form_grid_detail span {
+    color: black;
+}
+
+.config_popup label {
+    display: flex;
+}
+
+.config_popup input {
+    max-width: 4rem;
+}
+
+.config_popup input,
+.config_popup select {
+    font-family: monospace;
+    background: #2a2a2a;
+    color: inherit;
+    border: 1px solid #444;
+    padding: 4px 6px;
+    border-radius: 3px;
+}
+
+.config_popup input:focus,
+.config_popup select:focus {
+    outline: 1px solid;
+    outline-color: inherit;
+}
+
+.config_popup .form_submit {
+    margin-top: 8px;
+}
+
+.config_popup button:hover {
+    background: var(--black-20);
+    animation: artifactColor 6s ease-in-out infinite;
+}
+
+.config_popup span {
+    flex: 1;
+    font-size: var(--secondary-font-size);
+}
+
+#generalFieldset {
+    color: var(--primary-color);
+}
+
+#terrainFieldset {
+    color: #02d63d;
+}
+
+#materialsFieldset {
+    color: #4acbfe;
+}
+
+#degenerationFieldset {
+    color: #f44343;
+}
+
+input[name="general.seed"] {
+    flex: 0.9;
+    min-width: 50%;
+}
+
+#seedLabel {
+    width: 100%;
+    flex-direction: row;
+}
+
+#seedLabel span {
+    flex: 0.1;
+}
+
+#generalFormDiv {
+    flex-direction: row;
+    gap: 1rem;
+}
+
+#worldLoadingMenu {
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    background: var(--black);
+    z-index: var(--z-foreground);
+}
+
+.loading_wrapper {
+    width: 60%;
+}
+
+#loadingMessage {
+    margin-bottom: 10px;
+    font-size: var(--primary-font-size);
+    color: white;
+    animation: artifactColor 10s ease-in-out infinite;
+}
+
+.loading_bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    justify-content: flex-start;
+}
+
+#loadingBarFill {
+    height: 100%;
+    width: 0%;
+    background: white;
+    animation: artifactBackground 7s ease-in-out infinite;
+}
+
+/**/
+/* #endregion */
+
 /* #region [ Animations ] */
 /**/
 @keyframes rotate-background {
@@ -1873,6 +2066,98 @@ toggle[checked]::before {
 
     to {
         transform: rotate3d(3, 5, 3, 360deg);
+    }
+}
+
+@keyframes artifactColor {
+    0% {
+        color: var(--rarity-0);
+    }
+
+    10% {
+        color: var(--rarity-1);
+    }
+
+    20% {
+        color: var(--rarity-2);
+    }
+
+    30% {
+        color: var(--rarity-3);
+    }
+
+    40% {
+        color: var(--rarity-4);
+    }
+
+    50% {
+        color: var(--rarity-5);
+    }
+
+    60% {
+        color: var(--rarity-6);
+    }
+
+    70% {
+        color: var(--rarity-7);
+    }
+
+    80% {
+        color: var(--rarity-8);
+    }
+
+    90% {
+        color: var(--rarity-9);
+    }
+
+    100% {
+        color: var(--rarity-0);
+    }
+}
+
+@keyframes artifactBackground {
+    0% {
+        background-color: var(--rarity-0);
+    }
+
+    10% {
+        background-color: var(--rarity-1);
+    }
+
+    20% {
+        background-color: var(--rarity-2);
+    }
+
+    30% {
+        background-color: var(--rarity-3);
+    }
+
+    40% {
+        background-color: var(--rarity-4);
+    }
+
+    50% {
+        background-color: var(--rarity-5);
+    }
+
+    60% {
+        background-color: var(--rarity-6);
+    }
+
+    70% {
+        background-color: var(--rarity-7);
+    }
+
+    80% {
+        background-color: var(--rarity-8);
+    }
+
+    90% {
+        background-color: var(--rarity-9);
+    }
+
+    100% {
+        background-color: var(--rarity-0);
     }
 }
 
