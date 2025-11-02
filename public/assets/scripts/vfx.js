@@ -196,7 +196,9 @@ window.addEventListener('resize', function () {
 // Main Menu animations
 const atomJoin = document.getElementById('atomJoin');
 const atomHost = document.getElementById('atomHost');
+const atomQuickplay = document.getElementById('atomQuickplay');
 const rootConnectorLeft = document.getElementById('rootLeftConnectorEffector');
+const rootConnectorRight = document.getElementById('rootRightConnectorEffector');
 const rootConnectorTop = document.getElementById('rootTopConnectorEffector');
 
 atomJoin.addEventListener('mouseenter', () => {
@@ -217,4 +219,14 @@ atomHost.addEventListener('mouseenter', () => {
 atomHost.addEventListener('mouseleave', () => {
     rootConnectorTop.style.filter = '';
     rootConnectorTop.style.animation = '';
+});
+
+atomQuickplay.addEventListener('mouseenter', () => {
+    rootConnectorRight.style.filter = 'saturate(500%) brightness(80%) hue-rotate(0deg)';
+    rootConnectorRight.style.animation = 'rgb-strobe 0.15s linear infinite';
+});
+
+atomQuickplay.addEventListener('mouseleave', () => {
+    rootConnectorRight.style.filter = '';
+    rootConnectorRight.style.animation = '';
 });

@@ -24,8 +24,6 @@ export class World {
     public worldDebug: WorldDebug;
     public worldEdit: WorldEdit;
 
-    private waterMaterialIndex: number = -1;
-
     private erosionTemplate: { name: string; index: number }[] | null = null;
     private chunkBuffer: { cx: number; cy: number; loaded: boolean }[] = [];
     private worldBuffer: CellData | null = null;
@@ -47,7 +45,6 @@ export class World {
         this.worldDebug = new WorldDebug(this.camera, this.controlsManager, this.ui, this.utility, this);
         this.worldEdit = new WorldEdit(this, this.roomManager, this.ui, this.utility);
 
-        this.waterMaterialIndex = this.worldConfig.materials.findIndex(m => m.name === "water");
         this.initLoadingProgressEvents();
     }
 
@@ -101,7 +98,7 @@ export class World {
         this.chunks.set(key, newChunk);
         this.chunkLayers.set(
             key,
-            this.worldConfig.layers.find(l => l.name === remoteChunk.layer) || this.worldConfig.layers[0]
+            this.worldConfig.worldLayers[remoteChunk.layer] || Object.values(this.worldConfig.worldLayers)[0]
         );
 
         console.log(`📦 Synced chunk ${key} (v${remoteChunk.version})`);
@@ -122,7 +119,7 @@ export class World {
     public async showGenerationMenu(): Promise<WorldData> {
         await this.worldgenMenu();
 
-        const params = this.worldConfig.params;
+        const params = this.worldConfig.worldgenParams;
         const seed = params.general.seed || Date.now();
 
         params.general.seed = seed;
@@ -142,7 +139,7 @@ export class World {
     public async generateWorld(worldData: WorldData): Promise<void> {
         this.showLoadingMenu();
 
-        this.worldConfig.params = worldData.params;
+        this.worldConfig.worldgenParams = worldData.params;
         this.currentSeed = worldData.seed;
 
         this.clear(); // Full refresh just in case
@@ -163,8 +160,11 @@ export class World {
      * Creates and returns the CellData which is used to bake the cells into chunks.
      */
     private async generateCells(seed: number): Promise<CellData> {
-        const cellSize = this.worldConfig.params.general.cell.size; // Get the cell size from the configuration
-        const lowestDepth = this.worldConfig.params.terrain.lowestDepth; // World bottom
+        const cellSize = this.worldConfig.worldgenParams.general.cell.size; // Get the cell size from the configuration
+        const lowestDepth = this.worldConfig.worldgenParams.terrain.lowestDepth; // World bottom
+
+        const allLayerKeys = Object.keys(this.worldConfig.worldLayers);
+        const allMaterialKeys = Object.keys(this.worldConfig.materials);
 
         // Determine how many cells needed to fill world
         const cellsX = Math.ceil(WORLD.WIDTH / cellSize);
@@ -194,13 +194,13 @@ export class World {
 
                 // Sample height from noise
                 let adjustedHeight = this.utility.getNoise(
-                    this.worldConfig.params.terrain.noiseType,
-                    (cellX + 0.5) * this.worldConfig.params.terrain.scale,
-                    (cellY + 0.5) * this.worldConfig.params.terrain.scale,
+                    this.worldConfig.worldgenParams.terrain.noiseType,
+                    (cellX + 0.5) * this.worldConfig.worldgenParams.terrain.scale,
+                    (cellY + 0.5) * this.worldConfig.worldgenParams.terrain.scale,
                     seed,
                     {
-                        octaves: this.worldConfig.params.terrain.octaves,
-                        persistence: this.worldConfig.params.terrain.persistence
+                        octaves: this.worldConfig.worldgenParams.terrain.octaves,
+                        persistence: this.worldConfig.worldgenParams.terrain.persistence
                     }
                 );
 
@@ -208,19 +208,19 @@ export class World {
                 else if (adjustedHeight > 1) adjustedHeight = 1; // Clamp [0..1]
 
                 const mid: number = 0.5; // Push contrast around midpoint
-                adjustedHeight = mid + (adjustedHeight - mid) * this.worldConfig.params.terrain.intensity;
+                adjustedHeight = mid + (adjustedHeight - mid) * this.worldConfig.worldgenParams.terrain.intensity;
                 if (adjustedHeight < 0) adjustedHeight = 0;
                 else if (adjustedHeight > 1) adjustedHeight = 1; // Clamp [0..1]
 
-                adjustedHeight = Math.pow(adjustedHeight, this.worldConfig.params.terrain.heightCurve); // Bias curve
+                adjustedHeight = Math.pow(adjustedHeight, this.worldConfig.worldgenParams.terrain.heightCurve); // Bias curve
                 if (adjustedHeight < 0) adjustedHeight = 0;
                 else if (adjustedHeight > 1) adjustedHeight = 1; // Clamp [0..1]
 
                 // === Island / Valley shaping (exclusive) ===
-                const opts = this.worldConfig.params.general.options;
+                const opts = this.worldConfig.worldgenParams.general.options;
                 if (opts.island || opts.valley) {
-                    const seaLevel = this.worldConfig.params.terrain.seaLevel;
-                    const lowestDepth = this.worldConfig.params.terrain.lowestDepth;
+                    const seaLevel = this.worldConfig.worldgenParams.terrain.seaLevel;
+                    const lowestDepth = this.worldConfig.worldgenParams.terrain.lowestDepth;
 
                     // Distance from nearest world edge
                     const distToEdgeX = Math.min(cellX * cellSize, WORLD.WIDTH - (cellX * cellSize + cellSize));
@@ -236,7 +236,7 @@ export class World {
 
                     // Optional subtle noise for organic variation
                     const edgeNoise = this.utility.getNoise(
-                        this.worldConfig.params.terrain.noiseType,
+                        this.worldConfig.worldgenParams.terrain.noiseType,
                         cellX * 0.002,
                         cellY * 0.002,
                         seed + 9100,
@@ -246,7 +246,7 @@ export class World {
                     // === ISLAND MODE ===
                     if (opts.island) {
                         // Hard ocean edge (height → 0) fading toward normal terrain
-                        const fade = Math.pow(1 - t, this.worldConfig.params.terrain.heightCurve * 1.5);
+                        const fade = Math.pow(1 - t, this.worldConfig.worldgenParams.terrain.heightCurve * 1.5);
                         const target = seaLevel * 0.5; // deep ocean floor baseline
                         adjustedHeight = this.utility.lerp(target, adjustedHeight, t + edgeNoise);
 
@@ -257,7 +257,7 @@ export class World {
                     // === VALLEY MODE ===
                     else if (opts.valley) {
                         // Hard mountain edge (height → 1) fading toward valley
-                        const fade = Math.pow(1 - t, this.worldConfig.params.terrain.heightCurve * 1.5);
+                        const fade = Math.pow(1 - t, this.worldConfig.worldgenParams.terrain.heightCurve * 1.5);
                         const target = 1.0; // mountain peak height
                         adjustedHeight = this.utility.lerp(adjustedHeight, target, fade + edgeNoise);
 
@@ -270,8 +270,7 @@ export class World {
                 if (adjustedHeight < lowestDepth) { adjustedHeight = lowestDepth; } // Clamp water floor to lowestDepth
 
                 const layerForCell = this.pickLayerForHeight(adjustedHeight);
-
-                const layerIndex = this.worldConfig.layers.indexOf(layerForCell);
+                const layerIndex = allLayerKeys.indexOf(layerForCell.name);
                 cellLayerGrid[cellY][cellX] = layerIndex;
 
                 // Calculate pixel coordinates in this cell
@@ -288,13 +287,8 @@ export class World {
                         if (worldPos.x >= WORLD.WIDTH || worldPos.y >= WORLD.HEIGHT) continue; // Skip cells outside the world
 
                         const pixelInfo = this.samplePixelData(worldPos, seed, layerForCell);
-
-                        let landMatIndex = this.worldConfig.materials.findIndex(
-                            m => m.name === pixelInfo.material.name
-                        );
-                        if (landMatIndex < 0) landMatIndex = 0;
-
-                        const outMaterialIndex = landMatIndex;
+                        const landMatIndex = allMaterialKeys.indexOf(pixelInfo.material.name);
+                        const outMaterialIndex = landMatIndex >= 0 ? landMatIndex : 0;
                         const outColorIndex = pixelInfo.materialColorIndex;
 
                         // Pack material index + color variant into single byte
@@ -325,26 +319,29 @@ export class World {
         // Sample broad-scale material noise for this pixel
         // (used to pick WHICH material from the layer we get here)
         const materialNoise = this.utility.getNoise(
-            this.worldConfig.params.material.noiseType,
-            worldPos.x * this.worldConfig.params.material.scale,
-            worldPos.y * this.worldConfig.params.material.scale,
+            this.worldConfig.worldgenParams.material.noiseType,
+            worldPos.x * this.worldConfig.worldgenParams.material.scale,
+            worldPos.y * this.worldConfig.worldgenParams.material.scale,
             seed + 1000,
             {
-                octaves: this.worldConfig.params.terrain.octaves,
-                persistence: this.worldConfig.params.terrain.persistence
+                octaves: this.worldConfig.worldgenParams.terrain.octaves,
+                persistence: this.worldConfig.worldgenParams.terrain.persistence
             }
         );
 
         // Roll weighted choice from the layer's material list
         // { material: "dirt", weight: 3 }
-        let selectedMaterial: Material = this.worldConfig.materials[0];
-        const totalWeight = layer.materials.reduce((s, m) => s + m.weight, 0);
+        const entries = layer.materials;
+        const totalWeight = entries.reduce((s, m) => s + m.weight, 0);
         let target = materialNoise * totalWeight;
 
-        for (const entry of layer.materials) {
+        let selectedMaterial: Material = this.worldConfig.materials.stone; // fallback
+
+        for (const entry of entries) {
             target -= entry.weight;
-            if (target <= 0) { // Find the actual Material object in worldConfig by name
-                selectedMaterial = this.worldConfig.materials.find(m => m.name === entry.material) || this.worldConfig.materials[0];
+            if (target <= 0) {
+                const mat = this.worldConfig.materials[entry.material];
+                if (mat) selectedMaterial = mat;
                 break;
             }
         }
@@ -352,13 +349,13 @@ export class World {
         // Sample higher-frequency noise to pick which color index of chosen material to use
         // (this breaks up flat color tiling so it doesn't look copy/paste everywhere)
         const detailNoise = this.utility.getNoise(
-            this.worldConfig.params.material.detail.noiseType,
-            worldPos.x * this.worldConfig.params.material.detail.scale,
-            worldPos.y * this.worldConfig.params.material.detail.scale,
+            this.worldConfig.worldgenParams.material.detail.noiseType,
+            worldPos.x * this.worldConfig.worldgenParams.material.detail.scale,
+            worldPos.y * this.worldConfig.worldgenParams.material.detail.scale,
             seed + 3000,
             {
-                octaves: this.worldConfig.params.terrain.octaves,
-                persistence: this.worldConfig.params.terrain.persistence
+                octaves: this.worldConfig.worldgenParams.terrain.octaves,
+                persistence: this.worldConfig.worldgenParams.terrain.persistence
             }
         );
         const colorIdx = Math.floor(detailNoise * selectedMaterial.colors.length); // Pick color index from material's palette
@@ -370,14 +367,18 @@ export class World {
      * Processes a normalized height value, and picks the closest layer.
      */
     private pickLayerForHeight(h: number): WorldLayer {
-        // Start with first layer as "best match"
-        let best = this.worldConfig.layers[0];
+        const layers = Object.values(this.worldConfig.worldLayers);
+
+        let best = layers[0]; // Start with first layer as "best match"
         let bestDist = Math.abs(h - best.height);
 
         // Check all other layer and find correct best match
-        for (let i = 1; i < this.worldConfig.layers.length; i++) {
-            const d = Math.abs(h - this.worldConfig.layers[i].height);
-            if (d < bestDist) { best = this.worldConfig.layers[i]; bestDist = d; }
+        for (let i = 1; i < layers.length; i++) {
+            const d = Math.abs(h - layers[i].height);
+            if (d < bestDist) {
+                best = layers[i];
+                bestDist = d;
+            }
         }
         return best;
     }
@@ -401,7 +402,7 @@ export class World {
         const newPixelData = new Uint8Array(worldPixelData);
         const newHeightData = new Uint8Array(worldHeightData);
 
-        const degenConfig = this.worldConfig.params.degen;
+        const degenConfig = this.worldConfig.worldgenParams.degen;
 
         const erosionMaterials = this.getErosionTemplate();
 
@@ -439,8 +440,8 @@ export class World {
                     wy * degenConfig.scale,
                     seed + 6000,
                     {
-                        octaves: this.worldConfig.params.degen.scale,
-                        persistence: this.worldConfig.params.degen.hardness
+                        octaves: this.worldConfig.worldgenParams.degen.scale,
+                        persistence: this.worldConfig.worldgenParams.degen.hardness
                     }
                 );
 
@@ -450,8 +451,8 @@ export class World {
                     wy * degenConfig.detail.scale,
                     seed + 7000,
                     {
-                        octaves: this.worldConfig.params.degen.detail.scale,
-                        persistence: this.worldConfig.params.degen.hardness
+                        octaves: this.worldConfig.worldgenParams.degen.detail.scale,
+                        persistence: this.worldConfig.worldgenParams.degen.hardness
                     }
                 );
 
@@ -472,7 +473,7 @@ export class World {
                 // Get current material's durability (check if solid first!)
                 const currentPacked = worldPixelData[gi];
                 const currentMatIndex = currentPacked >> 2;
-                const currentMat = this.worldConfig.materials[currentMatIndex];
+                const currentMat = Object.values(this.worldConfig.materials)[currentMatIndex];
 
                 let durability = 0.5;
                 if (currentMat.physics.type === PhysicsMaterialTypes.Solid) {
@@ -500,11 +501,17 @@ export class World {
                     : 0.5;
 
                 // Filter erosion materials to only those HARDER than current material
+                const allMaterials = Object.values(this.worldConfig.materials);
+
                 const harderMaterials = erosionMaterials.filter(m => {
-                    const mat = this.worldConfig.materials[m.index];
-                    const matDurability = mat.physics.type === PhysicsMaterialTypes.Solid
-                        ? mat.physics.durability
-                        : 0.5;
+                    const mat = allMaterials[m.index];
+                    if (!mat) return false;
+
+                    const matDurability =
+                        mat.physics.type === PhysicsMaterialTypes.Solid
+                            ? mat.physics.durability
+                            : 0.5;
+
                     return matDurability >= originalDurability;
                 });
 
@@ -526,17 +533,17 @@ export class World {
 
                     // Pick random color variant for the new material
                     const detailForColor = this.utility.getNoise(
-                        this.worldConfig.params.material.detail.noiseType,
-                        wx * this.worldConfig.params.material.detail.scale,
-                        wy * this.worldConfig.params.material.detail.scale,
+                        this.worldConfig.worldgenParams.material.detail.noiseType,
+                        wx * this.worldConfig.worldgenParams.material.detail.scale,
+                        wy * this.worldConfig.worldgenParams.material.detail.scale,
                         seed + 8000,
                         {
-                            octaves: this.worldConfig.params.degen.detail.scale,
-                            persistence: this.worldConfig.params.degen.hardness
+                            octaves: this.worldConfig.worldgenParams.degen.detail.scale,
+                            persistence: this.worldConfig.worldgenParams.degen.hardness
                         }
                     );
 
-                    const selectedMat = this.worldConfig.materials[newMatIndex];
+                    const selectedMat = Object.values(this.worldConfig.materials)[newMatIndex];
                     const numColors = selectedMat.colors.length;
                     newColorVariantIndex = Math.floor(detailForColor * numColors) % numColors;
                 }
@@ -576,9 +583,10 @@ export class World {
             "bedrock"
         ]; // These materials will be possibly exposed during erosion
 
+        const allKeys = Object.keys(this.worldConfig.materials);
         const cached: { name: string; index: number }[] = erosionMaterialNames
             .map((name: string) => {
-                const index: number = this.worldConfig.materials.findIndex(m => m.name === name);
+                const index: number = allKeys.indexOf(name);
                 return { name, index };
             })
             .filter(m => m.index >= 0);
@@ -601,8 +609,8 @@ export class World {
         const { worldPixelData, worldHeightData, cellLayerGrid } = cellData;
         const newWaterData = new Uint8Array(worldPixelData.length);
 
-        const seaLevel = this.worldConfig.params.terrain.seaLevel;
-        const lowestDepth = this.worldConfig.params.terrain.lowestDepth;
+        const seaLevel = this.worldConfig.worldgenParams.terrain.seaLevel;
+        const lowestDepth = this.worldConfig.worldgenParams.terrain.lowestDepth;
         const depthRange = seaLevel - lowestDepth;
 
         const phaseMessages = ["hydrating terrain...", "filling water basins...", "flooding valleys...", "hydrating cells...", "hydrating pixels...", "creating water..."];
@@ -644,7 +652,7 @@ export class World {
      * This contains the amount of water in a cell and the current water material.
      */
     public getWaterData(worldPos: Vec2): PixelWaterData | null {
-        const chunkSize = this.worldConfig.params.general.chunk.size;
+        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
         const cx = Math.floor(worldPos.x / chunkSize);
         const cy = Math.floor(worldPos.y / chunkSize);
         const key = `${cx},${cy}`;
@@ -659,11 +667,10 @@ export class World {
         if (waterLevel <= 0) return null;
 
         const height = chunk.getHeightAt(localX, localY, chunkSize);
-        const seaLevel = this.worldConfig.params.terrain.seaLevel;
+        const seaLevel = this.worldConfig.worldgenParams.terrain.seaLevel;
         const depth = seaLevel - height;
 
-        const waterMatIndex = this.worldConfig.materials.findIndex(m => m.name === "water");
-        const waterMaterial = this.worldConfig.materials[waterMatIndex];
+        const waterMaterial = this.worldConfig.materials.water;
 
         const pxWaterData: PixelWaterData = {
             hasWater: true,
@@ -685,7 +692,8 @@ export class World {
      * Bakes all generated cells into chunks.
      */
     private async bakeChunksFromCells(params: CellData): Promise<void> {
-        const chunkSize = this.worldConfig.params.general.chunk.size; // Get the chunk size from the config
+        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size; // Get the chunk size from the config
+        const allWorldLayers = Object.values(this.worldConfig.worldLayers);
 
         this.worldBuffer = params; // Save worldData for streaming
 
@@ -696,7 +704,7 @@ export class World {
         const chunksY = Math.ceil(WORLD.HEIGHT / chunkSize);
         const totalChunks = chunksX * chunksY;
 
-        const cellSize = this.worldConfig.params.general.cell.size; // Get cell size from config
+        const cellSize = this.worldConfig.worldgenParams.general.cell.size; // Get cell size from config
 
         // Check how many cells there are filling the world
         const cellsX = Math.ceil(WORLD.WIDTH / cellSize);
@@ -793,7 +801,8 @@ export class World {
                 const c = layerCounts[k as any];
                 if (c > max) { max = c; dominantIdx = parseInt(k, 10); }
             }
-            const dominantLayer = this.worldConfig.layers[dominantIdx] || this.worldConfig.layers[0];
+            
+            const dominantLayer = allWorldLayers[dominantIdx] || allWorldLayers[0];
 
             const worldChunk = new WorldChunk(
                 dominantLayer.name,
@@ -840,7 +849,7 @@ export class World {
     public renderChunk(cx: number, cy: number, chunk: WorldChunk): void {
         if (!this.ui.worldCtx) return;
 
-        const chunkSize = this.worldConfig.params.general.chunk.size;
+        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
         const startX = cx * chunkSize, startY = cy * chunkSize;
 
         for (let y = 0; y < chunkSize; y++) {
@@ -850,13 +859,13 @@ export class World {
 
                 const baseColor = chunk.getColorAt(x, y, chunkSize);
                 const detailNoise = this.utility.getNoise( // Sample noise to slightly vary brightness/saturation
-                    this.worldConfig.params.material.detail.noiseType,
-                    worldX * this.worldConfig.params.material.detail.scale,
-                    worldY * this.worldConfig.params.material.detail.scale,
+                    this.worldConfig.worldgenParams.material.detail.noiseType,
+                    worldX * this.worldConfig.worldgenParams.material.detail.scale,
+                    worldY * this.worldConfig.worldgenParams.material.detail.scale,
                     this.currentSeed + 3000,
                     {
-                        octaves: this.worldConfig.params.terrain.octaves,
-                        persistence: this.worldConfig.params.terrain.persistence
+                        octaves: this.worldConfig.worldgenParams.terrain.octaves,
+                        persistence: this.worldConfig.worldgenParams.terrain.persistence
                     }
                 );
                 const finalColor = this.adjustPixelColor(baseColor, detailNoise);
@@ -878,14 +887,13 @@ export class World {
         if (!this.ui.worldCtx) return;
 
         const ctx = this.ui.worldCtx;
-        const chunkSize = this.worldConfig.params.general.chunk.size;
+        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
         const startX = cx * chunkSize;
         const startY = cy * chunkSize;
-        const seaLevel = this.worldConfig.params.terrain.seaLevel;
+        const seaLevel = this.worldConfig.worldgenParams.terrain.seaLevel;
 
-        const w = this.worldConfig.params.render.water; // hydration config reference
-        const waterMatIndex = this.waterMaterialIndex >= 0 ? this.waterMaterialIndex : 0;
-        const waterMat = this.worldConfig.materials[waterMatIndex];
+        const w = this.worldConfig.worldgenParams.render.water; // hydration config reference
+        const waterMat = this.worldConfig.materials.water;
         const palette = waterMat.colors;
 
         const seed = this.currentSeed + 9100;
@@ -963,7 +971,7 @@ export class World {
      * Uses the colorVariation from the config to adjust the brightness.
      */
     private adjustPixelColor(hexColor: string, noise: number): string {
-        const variation = this.worldConfig.params.material.colorVariation;
+        const variation = this.worldConfig.worldgenParams.material.colorVariation;
 
         // Brightness multiplier:
         // noise = 0.5 => factor ~1.0 (no change)
@@ -990,7 +998,7 @@ export class World {
      * Gets the material property of a pixel at runtime.
      */
     public getMaterialAt(x: number, y: number): Material | null {
-        const chunkSize = this.worldConfig.params.general.chunk.size;
+        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
         const cx = Math.floor(x / chunkSize), cy = Math.floor(y / chunkSize);
         const key = `${cx},${cy}`;
         const chunk = this.chunks.get(key);
@@ -1002,20 +1010,23 @@ export class World {
         const combined = chunk.pixelData[idx];
         const materialIndex = combined >> 2;
 
-        return this.worldConfig.materials[materialIndex] || null;
+        return Object.values(this.worldConfig.materials)[materialIndex] || null;
     }
 
     /**
      * Gets the height of a specific pixel at coordinates.
      */
     public getHeightAt(x: number, y: number): number | null {
-        const chunkSize = this.worldConfig.params.general.chunk.size;
+        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
         const cx = Math.floor(x / chunkSize), cy = Math.floor(y / chunkSize);
         const key = `${cx},${cy}`;
         const chunk = this.chunks.get(key);
+
         if (!chunk) return null;
+
         const localX = x - cx * chunkSize;
         const localY = y - cy * chunkSize;
+
         return chunk.getHeightAt(localX, localY, chunkSize);
     }
 
@@ -1048,7 +1059,7 @@ export class World {
             return null;
         }
 
-        const chunkSize = this.worldConfig.params.general.chunk.size;
+        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
         const cx = Math.floor(worldX / chunkSize);
         const cy = Math.floor(worldY / chunkSize);
         this.worldDebug.hoveredChunk = `${cx},${cy}`;
@@ -1077,7 +1088,7 @@ export class World {
 
             // Helper to create noise type dropdown
             const noiseTypeOptions = Object.values(NoiseType).map(type =>
-                `<option value="${type}" ${this.worldConfig.params.terrain.noiseType === type ? 'selected' : ''}>${type.charAt(0).toUpperCase() + type.slice(1)}</option>`
+                `<option value="${type}" ${this.worldConfig.worldgenParams.terrain.noiseType === type ? 'selected' : ''}>${type.charAt(0).toUpperCase() + type.slice(1)}</option>`
             ).join('');
 
             form.innerHTML = `
@@ -1092,11 +1103,11 @@ export class World {
                     <div id="generalFormDiv">
                         <label>
                             <span>Chunk Size (px):</span>
-                            <input type="number" name="general.chunk.size" value="${this.worldConfig.params.general.chunk.size}" min="1" step="1">
+                            <input type="number" name="general.chunk.size" value="${this.worldConfig.worldgenParams.general.chunk.size}" min="1" step="1">
                         </label>
                         <label>
                             <span>Cell Size (px):</span>
-                            <input type="number" name="general.cell.size" value="${this.worldConfig.params.general.cell.size}" min="1" step="1">
+                            <input type="number" name="general.cell.size" value="${this.worldConfig.worldgenParams.general.cell.size}" min="1" step="1">
                         </label>
                     </div>
                 </div>
@@ -1112,31 +1123,31 @@ export class World {
                     </label>
                     <label>
                         <span>Scale:</span>
-                        <input type="number" name="terrain.scale" value="${this.worldConfig.params.terrain.scale}" step="any">
+                        <input type="number" name="terrain.scale" value="${this.worldConfig.worldgenParams.terrain.scale}" step="any">
                     </label>
                     <label>
                         <span>Intensity:</span>
-                        <input type="number" name="terrain.intensity" value="${this.worldConfig.params.terrain.intensity}" step="any" min="0">
+                        <input type="number" name="terrain.intensity" value="${this.worldConfig.worldgenParams.terrain.intensity}" step="any" min="0">
                     </label>
                     <label>
                         <span>Octaves:</span>
-                        <input type="number" name="terrain.octaves" value="${this.worldConfig.params.terrain.octaves}" min="1" max="12" step="1">
+                        <input type="number" name="terrain.octaves" value="${this.worldConfig.worldgenParams.terrain.octaves}" min="1" max="12" step="1">
                     </label>
                     <label>
                         <span>Persistence:</span>
-                        <input type="number" name="terrain.persistence" value="${this.worldConfig.params.terrain.persistence}" step="any" min="0" max="1">
+                        <input type="number" name="terrain.persistence" value="${this.worldConfig.worldgenParams.terrain.persistence}" step="any" min="0" max="1">
                     </label>
                     <label>
                         <span>Height Curve:</span>
-                        <input type="number" name="terrain.heightCurve" value="${this.worldConfig.params.terrain.heightCurve}" step="any" min="0.1">
+                        <input type="number" name="terrain.heightCurve" value="${this.worldConfig.worldgenParams.terrain.heightCurve}" step="any" min="0.1">
                     </label>
                     <label>
                         <span>Sea Level:</span>
-                        <input type="number" name="terrain.seaLevel" value="${this.worldConfig.params.terrain.seaLevel}" step="any" min="0" max="1">
+                        <input type="number" name="terrain.seaLevel" value="${this.worldConfig.worldgenParams.terrain.seaLevel}" step="any" min="0" max="1">
                     </label>
                     <label>
                         <span>Lowest Depth:</span>
-                        <input type="number" name="terrain.lowestDepth" value="${this.worldConfig.params.terrain.lowestDepth}" step="any" min="0" max="1">
+                        <input type="number" name="terrain.lowestDepth" value="${this.worldConfig.worldgenParams.terrain.lowestDepth}" step="any" min="0" max="1">
                     </label>
                 </div>
             </fieldset>
@@ -1151,11 +1162,11 @@ export class World {
                     </label>
                     <label>
                         <span>Scale:</span>
-                        <input type="number" name="material.scale" value="${this.worldConfig.params.material.scale}" step="any">
+                        <input type="number" name="material.scale" value="${this.worldConfig.worldgenParams.material.scale}" step="any">
                     </label>
                     <label>
                         <span>Color Variation:</span>
-                        <input type="number" name="material.colorVariation" value="${this.worldConfig.params.material.colorVariation}" step="any" min="0" max="1">
+                        <input type="number" name="material.colorVariation" value="${this.worldConfig.worldgenParams.material.colorVariation}" step="any" min="0" max="1">
                     </label>
                 </div>
                 <div class="form_grid form_grid_detail">
@@ -1166,7 +1177,7 @@ export class World {
                     </label>
                     <label>
                         <span>Scale:</span>
-                        <input type="number" name="material.detail.scale" value="${this.worldConfig.params.material.detail.scale}" step="any">
+                        <input type="number" name="material.detail.scale" value="${this.worldConfig.worldgenParams.material.detail.scale}" step="any">
                     </label>
                 </div>
             </fieldset>
@@ -1181,23 +1192,23 @@ export class World {
                     </label>
                     <label>
                         <span>Scale:</span>
-                        <input type="number" name="degen.scale" value="${this.worldConfig.params.degen.scale}" step="any" min="0">
+                        <input type="number" name="degen.scale" value="${this.worldConfig.worldgenParams.degen.scale}" step="any" min="0">
                     </label>
                     <label>
                         <span>Intensity:</span>
-                        <input type="number" name="degen.intensity" value="${this.worldConfig.params.degen.intensity}" step="any" min="0" max="2">
+                        <input type="number" name="degen.intensity" value="${this.worldConfig.worldgenParams.degen.intensity}" step="any" min="0" max="2">
                     </label>
                     <label>
                         <span>Min Height:</span>
-                        <input type="number" name="degen.minHeight" value="${this.worldConfig.params.degen.minHeight}" step="any" min="0" max="1">
+                        <input type="number" name="degen.minHeight" value="${this.worldConfig.worldgenParams.degen.minHeight}" step="any" min="0" max="1">
                     </label>
                     <label>
                         <span>Threshold:</span>
-                        <input type="number" name="degen.threshold" value="${this.worldConfig.params.degen.threshold}" step="any" min="0" max="1">
+                        <input type="number" name="degen.threshold" value="${this.worldConfig.worldgenParams.degen.threshold}" step="any" min="0" max="1">
                     </label>
                     <label>
                         <span>Hardness:</span>
-                        <input type="number" name="degen.hardness" value="${this.worldConfig.params.degen.hardness}" step="any" min="0" max="1">
+                        <input type="number" name="degen.hardness" value="${this.worldConfig.worldgenParams.degen.hardness}" step="any" min="0" max="1">
                     </label>
                 </div>
                 <div class="form_grid form_grid_detail">
@@ -1208,7 +1219,7 @@ export class World {
                     </label>
                     <label>
                         <span>Scale:</span>
-                        <input type="number" name="degen.detail.scale" value="${this.worldConfig.params.degen.detail.scale}" step="any" min="0">
+                        <input type="number" name="degen.detail.scale" value="${this.worldConfig.worldgenParams.degen.detail.scale}" step="any" min="0">
                     </label>
                 </div>
             </fieldset>
@@ -1223,15 +1234,15 @@ export class World {
                     </label>
                     <label>
                         <span>Scale:</span>
-                        <input type="number" name="hydration.scale" value="${this.worldConfig.params.hydration.scale}" step="any" min="0">
+                        <input type="number" name="hydration.scale" value="${this.worldConfig.worldgenParams.hydration.scale}" step="any" min="0">
                     </label>
                     <label>
                         <span>Intensity:</span>
-                        <input type="number" name="hydration.intensity" value="${this.worldConfig.params.hydration.intensity}" step="any" min="0" max="5">
+                        <input type="number" name="hydration.intensity" value="${this.worldConfig.worldgenParams.hydration.intensity}" step="any" min="0" max="5">
                     </label>
                     <label>
                         <span>Multiplier:</span>
-                        <input type="number" name="hydration.multiplier" value="${this.worldConfig.params.hydration.multiplier}" step="any" min="0" max="10">
+                        <input type="number" name="hydration.multiplier" value="${this.worldConfig.worldgenParams.hydration.multiplier}" step="any" min="0" max="10">
                     </label>
                 </div>
             </fieldset> -->
@@ -1249,36 +1260,36 @@ export class World {
                 const int = (key: string) => parseInt(fd.get(key) as string);
 
                 // --- General ---
-                this.worldConfig.params.general.chunk.size = int("general.chunk.size");
-                this.worldConfig.params.general.cell.size = int("general.cell.size");
-                this.worldConfig.params.general.seed = int("general.seed");
+                this.worldConfig.worldgenParams.general.chunk.size = int("general.chunk.size");
+                this.worldConfig.worldgenParams.general.cell.size = int("general.cell.size");
+                this.worldConfig.worldgenParams.general.seed = int("general.seed");
 
                 // --- Terrain ---
-                this.worldConfig.params.terrain.noiseType = fd.get("terrain.noiseType") as NoiseType;
-                this.worldConfig.params.terrain.scale = num("terrain.scale");
-                this.worldConfig.params.terrain.intensity = num("terrain.intensity");
-                this.worldConfig.params.terrain.octaves = int("terrain.octaves");
-                this.worldConfig.params.terrain.persistence = num("terrain.persistence");
-                this.worldConfig.params.terrain.heightCurve = num("terrain.heightCurve");
-                this.worldConfig.params.terrain.seaLevel = num("terrain.seaLevel");
-                this.worldConfig.params.terrain.lowestDepth = num("terrain.lowestDepth");
+                this.worldConfig.worldgenParams.terrain.noiseType = fd.get("terrain.noiseType") as NoiseType;
+                this.worldConfig.worldgenParams.terrain.scale = num("terrain.scale");
+                this.worldConfig.worldgenParams.terrain.intensity = num("terrain.intensity");
+                this.worldConfig.worldgenParams.terrain.octaves = int("terrain.octaves");
+                this.worldConfig.worldgenParams.terrain.persistence = num("terrain.persistence");
+                this.worldConfig.worldgenParams.terrain.heightCurve = num("terrain.heightCurve");
+                this.worldConfig.worldgenParams.terrain.seaLevel = num("terrain.seaLevel");
+                this.worldConfig.worldgenParams.terrain.lowestDepth = num("terrain.lowestDepth");
 
                 // --- Materials ---
-                this.worldConfig.params.material.noiseType = fd.get("material.noiseType") as NoiseType;
-                this.worldConfig.params.material.scale = num("material.scale");
-                this.worldConfig.params.material.colorVariation = num("material.colorVariation");
-                this.worldConfig.params.material.detail.noiseType = fd.get("material.detail.noiseType") as NoiseType;
-                this.worldConfig.params.material.detail.scale = num("material.detail.scale");
+                this.worldConfig.worldgenParams.material.noiseType = fd.get("material.noiseType") as NoiseType;
+                this.worldConfig.worldgenParams.material.scale = num("material.scale");
+                this.worldConfig.worldgenParams.material.colorVariation = num("material.colorVariation");
+                this.worldConfig.worldgenParams.material.detail.noiseType = fd.get("material.detail.noiseType") as NoiseType;
+                this.worldConfig.worldgenParams.material.detail.scale = num("material.detail.scale");
 
                 // --- Degeneration ---
-                this.worldConfig.params.degen.noiseType = fd.get("degen.noiseType") as NoiseType;
-                this.worldConfig.params.degen.scale = num("degen.scale");
-                this.worldConfig.params.degen.intensity = num("degen.intensity");
-                this.worldConfig.params.degen.minHeight = num("degen.minHeight");
-                this.worldConfig.params.degen.threshold = num("degen.threshold");
-                this.worldConfig.params.degen.hardness = num("degen.hardness");
-                this.worldConfig.params.degen.detail.noiseType = fd.get("degen.detail.noiseType") as NoiseType;
-                this.worldConfig.params.degen.detail.scale = num("degen.detail.scale");
+                this.worldConfig.worldgenParams.degen.noiseType = fd.get("degen.noiseType") as NoiseType;
+                this.worldConfig.worldgenParams.degen.scale = num("degen.scale");
+                this.worldConfig.worldgenParams.degen.intensity = num("degen.intensity");
+                this.worldConfig.worldgenParams.degen.minHeight = num("degen.minHeight");
+                this.worldConfig.worldgenParams.degen.threshold = num("degen.threshold");
+                this.worldConfig.worldgenParams.degen.hardness = num("degen.hardness");
+                this.worldConfig.worldgenParams.degen.detail.noiseType = fd.get("degen.detail.noiseType") as NoiseType;
+                this.worldConfig.worldgenParams.degen.detail.scale = num("degen.detail.scale");
 
                 // --- Hydration ---
                 // this.worldConfig.params.hydration.noiseType = fd.get("hydration.noiseType") as NoiseType;
@@ -1308,7 +1319,7 @@ export class World {
             popup.className = "config_popup";
             const form = document.createElement("form");
 
-            const w = this.worldConfig.params.render.water;
+            const w = this.worldConfig.worldgenParams.render.water;
 
             form.innerHTML = `
         <h3>Render Config</h3>
@@ -1442,8 +1453,8 @@ export class World {
     private totalYieldSteps(): number {
         const yieldPerProcess = this.YIELD_RATE;
 
-        const chunksX = Math.ceil(WORLD.WIDTH / this.worldConfig.params.general.chunk.size);
-        const chunksY = Math.ceil(WORLD.HEIGHT / this.worldConfig.params.general.chunk.size);
+        const chunksX = Math.ceil(WORLD.WIDTH / this.worldConfig.worldgenParams.general.chunk.size);
+        const chunksY = Math.ceil(WORLD.HEIGHT / this.worldConfig.worldgenParams.general.chunk.size);
         const totalChunks = chunksX * chunksY;
 
         const bakedChunks = Math.floor(totalChunks * 0.5);
@@ -1485,7 +1496,7 @@ export class World {
         }
 
         const playerPos = this.playerState.myPlayer.transform.pos;
-        const chunkSize = this.worldConfig.params.general.chunk.size;
+        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
         const loadRadius = this.CHUNK_LOAD_RADIUS;
 
         // Only load one new chunk per frame to avoid stutter
@@ -1511,8 +1522,10 @@ export class World {
     private loadChunk(cx: number, cy: number): void {
         if (!this.worldBuffer || !this.worldBuffer.cellLayerGrid || !this.worldBuffer.worldWaterData) return;
 
-        const chunkSize = this.worldConfig.params.general.chunk.size;
-        const cellSize = this.worldConfig.params.general.cell.size;
+        const allWorldLayers = Object.values(this.worldConfig.worldLayers);
+
+        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
+        const cellSize = this.worldConfig.worldgenParams.general.cell.size;
 
         const chunkPixels = new Uint8Array(chunkSize * chunkSize);
         const chunkHeights = new Uint8Array(chunkSize * chunkSize);
@@ -1557,7 +1570,7 @@ export class World {
             const c = layerCounts[k as any];
             if (c > max) { max = c; dominantIdx = parseInt(k, 10); }
         }
-        const dominantLayer = this.worldConfig.layers[dominantIdx] || this.worldConfig.layers[0];
+        const dominantLayer = allWorldLayers[dominantIdx] || allWorldLayers[0];
 
         const worldChunk = new WorldChunk(dominantLayer.name, chunkPixels, chunkHeights, chunkWater, this.worldConfig);
         const key = `${cx},${cy}`;

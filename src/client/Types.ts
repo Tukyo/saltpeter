@@ -47,7 +47,7 @@ export interface GameObject {
 /**
  * All gameobject types.
  */
-export type ObjectType = 'AmmoBox' | 'Player' | 'Projectile';
+export type GameObjects = 'AmmoBox' | 'Player' | 'Projectile';
 
 /**
  * Mapping definition for stored player objects.
@@ -180,7 +180,7 @@ export interface AmmoBox extends GameObject {
 
 export interface SpawnObjectParams {
   transform: Transform;
-  type: ObjectType;
+  type: GameObjects;
   data?: any;
 }
 //
@@ -719,14 +719,8 @@ export type WorldParams = {
   }
 }
 
-export type WorldLayer = {
-  name: string;
+export interface WorldLayer extends MaterialLayer {
   height: number;
-  materials: {
-    material: string;
-    weight: number;
-    blend: number;
-  }[];
 }
 
 export interface NetworkChunk {
@@ -764,6 +758,15 @@ export type Material = {
   physics: Liquid | Solid | Gas;
 }
 
+export interface MaterialLayer {
+  name: string;
+  materials: {
+    material: string;
+    weight: number;
+    blend: number;
+  }[];
+}
+
 export enum PhysicsMaterialTypes { Liquid, Solid, Gas }
 
 interface PhysicsMaterial {
@@ -786,5 +789,6 @@ interface Solid extends PhysicsMaterial {
 interface Gas extends PhysicsMaterial {
   type: PhysicsMaterialTypes.Gas;
 }
+
 //
 // #endregion

@@ -51,10 +51,10 @@ export class WorldDebug {
 
                     case "NumpadEnter":
                         e.preventDefault();
-                        this.world.worldConfig.params.render.grid.enabled =
-                            !this.world.worldConfig.params.render.grid.enabled;
-                        if (!this.world.worldConfig.params.render.grid.enabled) this.hoveredChunk = null;
-                        console.log("Overlay " + (this.world.worldConfig.params.render.grid.enabled ? "enabled" : "disabled") +
+                        this.world.worldConfig.worldgenParams.render.grid.enabled =
+                            !this.world.worldConfig.worldgenParams.render.grid.enabled;
+                        if (!this.world.worldConfig.worldgenParams.render.grid.enabled) this.hoveredChunk = null;
+                        console.log("Overlay " + (this.world.worldConfig.worldgenParams.render.grid.enabled ? "enabled" : "disabled") +
                             " (mode: " + this.overlayNames[this.overlayMode] + ")");
                         break;
 
@@ -63,7 +63,7 @@ export class WorldDebug {
                 }
             }
 
-            if (this.world.worldConfig.params.render.grid.enabled && e.ctrlKey && e.altKey) { // Debug page cycling
+            if (this.world.worldConfig.worldgenParams.render.grid.enabled && e.ctrlKey && e.altKey) { // Debug page cycling
                 if (e.key === "[" || e.code === "BracketLeft") {
                     e.preventDefault();
                     this.overlayMode = (this.overlayMode - 1 + this.overlayNames.length) % this.overlayNames.length;
@@ -86,7 +86,7 @@ export class WorldDebug {
         if (!this.ui.ctx || !this.world.isGenerated) return;
 
         // Draw terrain overlays if enabled
-        if (this.world.worldConfig.params.render.grid.enabled) {
+        if (this.world.worldConfig.worldgenParams.render.grid.enabled) {
             switch (this.overlayMode) {
                 case 0: this.drawGrid(); break;
                 case 1: this.drawHeightmap(); break;
@@ -103,7 +103,7 @@ export class WorldDebug {
         const hoveredCoords = this.world.updateHoveredChunk();
         if (!hoveredCoords || !this.hoveredChunk) return;
 
-        const chunkSize = this.world.worldConfig.params.general.chunk.size;
+        const chunkSize = this.world.worldConfig.worldgenParams.general.chunk.size;
         const [hcx, hcy] = this.hoveredChunk.split(",").map(Number);
 
         const worldX = Math.floor(hoveredCoords.worldX);
@@ -125,7 +125,7 @@ export class WorldDebug {
         const colorVariantIndex = combined & 0b11;
         const height01 = chunk.getHeightAt(localX, localY, chunkSize);
 
-        const mat = this.world.worldConfig.materials[materialIndex];
+        const mat = Object.values(this.world.worldConfig.materials)[materialIndex];
         const waterData = this.world.getWaterData(worldPos);
 
         const margin = 10;
@@ -232,7 +232,7 @@ export class WorldDebug {
         if (!this.ui.ctx || !this.world.isGenerated) return;
 
         const ctx = this.ui.ctx;
-        const chunkSize = this.world.worldConfig.params.general.chunk.size;
+        const chunkSize = this.world.worldConfig.worldgenParams.general.chunk.size;
         const camX = this.camera.pos.x, camY = this.camera.pos.y;
 
         const startCX = Math.floor(camX / chunkSize);
@@ -250,7 +250,7 @@ export class WorldDebug {
             const hoveredScreenX = hoveredChunkWorldX - camX;
             const hoveredScreenY = hoveredChunkWorldY - camY;
 
-            const hex = this.world.worldConfig.params.render.grid.chunkBorderColor.slice(1);
+            const hex = this.world.worldConfig.worldgenParams.render.grid.chunkBorderColor.slice(1);
             const r = parseInt(hex.slice(0, 2), 16);
             const g = parseInt(hex.slice(2, 4), 16);
             const b = parseInt(hex.slice(4, 6), 16);
@@ -277,23 +277,23 @@ export class WorldDebug {
                 ctx.beginPath();
                 ctx.moveTo(screenX + chunkSize, screenY);
                 ctx.lineTo(screenX + chunkSize, screenY + chunkSize);
-                ctx.lineWidth = vBorder ? this.world.worldConfig.params.render.grid.borderWidth : this.world.worldConfig.params.render.grid.lineWidth;
-                ctx.strokeStyle = vBorder ? this.world.worldConfig.params.render.grid.layerBorderColor : this.world.worldConfig.params.render.grid.chunkBorderColor;
+                ctx.lineWidth = vBorder ? this.world.worldConfig.worldgenParams.render.grid.borderWidth : this.world.worldConfig.worldgenParams.render.grid.lineWidth;
+                ctx.strokeStyle = vBorder ? this.world.worldConfig.worldgenParams.render.grid.layerBorderColor : this.world.worldConfig.worldgenParams.render.grid.chunkBorderColor;
                 ctx.stroke();
 
                 // Bottom edge
                 ctx.beginPath();
                 ctx.moveTo(screenX, screenY + chunkSize);
                 ctx.lineTo(screenX + chunkSize, screenY + chunkSize);
-                ctx.lineWidth = hBorder ? this.world.worldConfig.params.render.grid.borderWidth : this.world.worldConfig.params.render.grid.lineWidth;
-                ctx.strokeStyle = hBorder ? this.world.worldConfig.params.render.grid.layerBorderColor : this.world.worldConfig.params.render.grid.chunkBorderColor;
+                ctx.lineWidth = hBorder ? this.world.worldConfig.worldgenParams.render.grid.borderWidth : this.world.worldConfig.worldgenParams.render.grid.lineWidth;
+                ctx.strokeStyle = hBorder ? this.world.worldConfig.worldgenParams.render.grid.layerBorderColor : this.world.worldConfig.worldgenParams.render.grid.chunkBorderColor;
                 ctx.stroke();
             }
         }
 
         // World bounds
-        ctx.strokeStyle = this.world.worldConfig.params.render.grid.worldBorderColor;
-        ctx.lineWidth = this.world.worldConfig.params.render.grid.borderWidth;
+        ctx.strokeStyle = this.world.worldConfig.worldgenParams.render.grid.worldBorderColor;
+        ctx.lineWidth = this.world.worldConfig.worldgenParams.render.grid.borderWidth;
         ctx.strokeRect(0 - camX, 0 - camY, WORLD.WIDTH, WORLD.HEIGHT);
 
         ctx.restore();
@@ -310,12 +310,12 @@ export class WorldDebug {
 
         const camX = this.camera.pos.x;
         const camY = this.camera.pos.y;
-        const chunkSize = this.world.worldConfig.params.general.chunk.size;
+        const chunkSize = this.world.worldConfig.worldgenParams.general.chunk.size;
         const resolution = 4;
         const alpha = 0.6;
 
-        const { seaLevel, lowestDepth } = this.world.worldConfig.params.terrain;
-        const layers = this.world.worldConfig.layers;
+        const { seaLevel, lowestDepth } = this.world.worldConfig.worldgenParams.terrain;
+        const layers = this.world.worldConfig.worldLayers;
 
         ctx.save();
         ctx.globalAlpha = alpha;
@@ -339,11 +339,12 @@ export class WorldDebug {
         stops.push([seaLevel - shoreBlend, [0, 120, 220]]);
         stops.push([seaLevel + shoreBlend, [0, 200, 140]]);
 
-        for (let i = 0; i < layers.length; i++) {
-            const h = layers[i].height;
+        for (const layer of Object.values(layers)) {
+            const h = layer.height;
+
             if (h <= seaLevel) continue;
 
-            const t = i / (layers.length - 1);
+            const t = Object.keys(layers).indexOf(layer.name) / (Object.keys(layers).length - 1);
             let color: [number, number, number];
 
             if (t < 0.25) color = [60, 220, 80];
@@ -404,7 +405,7 @@ export class WorldDebug {
 
         const camX = this.camera.pos.x;
         const camY = this.camera.pos.y;
-        const chunkSize = this.world.worldConfig.params.general.chunk.size;
+        const chunkSize = this.world.worldConfig.worldgenParams.general.chunk.size;
         const resolution = 2;
         const contourStep = 0.02;
         const lineWidth = 1;

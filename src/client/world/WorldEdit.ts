@@ -23,7 +23,7 @@ export class WorldEdit {
     }
 
     public requestCraterAt(worldPos: Vec2): void {
-        const chunkSize = this.world.worldConfig.params.general.chunk.size;
+        const chunkSize = this.world.worldConfig.worldgenParams.general.chunk.size;
         const cx = Math.floor(worldPos.x / chunkSize);
         const cy = Math.floor(worldPos.y / chunkSize);
         const key = `${cx},${cy}`;
@@ -34,8 +34,8 @@ export class WorldEdit {
         const centerX = Math.floor(worldPos.x) % chunkSize;
         const centerY = Math.floor(worldPos.y) % chunkSize;
 
-        const bedrockIndex = this.world.worldConfig.materials.findIndex(m => m.name === "bedrock");
-        const bedrock = this.world.worldConfig.materials[bedrockIndex] || this.world.worldConfig.materials[0];
+        const bedrock = this.world.worldConfig.materials.bedrock;
+        const bedrockIndex = Object.keys(this.world.worldConfig.materials).indexOf("bedrock");
 
         for (let y = -radius; y <= radius; y++) {
             for (let x = -radius; x <= radius; x++) {

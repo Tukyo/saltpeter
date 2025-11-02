@@ -76,6 +76,10 @@
     --chat-height: 400px;
 }
 
+* {
+    user-select: none;
+}
+
 *:not(html):not(head) {
     display: flex;
     justify-content: center;
@@ -947,6 +951,7 @@ toggle[checked]::before {
     padding: 1rem;
     overflow-y: auto;
     gap: 1rem;
+    align-content: flex-end;
     font-family: var(--font-mono);
     font-size: var(--secondary-font-size);
 }
@@ -1257,11 +1262,6 @@ toggle[checked]::before {
     animation: rgb-strobe 0.15s linear infinite;
 }
 
-#atomJoin:hover #rootLeftConnectorEffector {
-    filter: saturate(500%) brightness(80%) hue-rotate(0deg);
-    animation: rgb-strobe 0.15s linear infinite;
-}
-
 .atom_container:hover #rootTarget {
     animation: rootTarget .5s ease forwards;
 }
@@ -1391,12 +1391,24 @@ toggle[checked]::before {
     background-image: url('./assets/img/icon/mainmenu/quickplay/icon.png');
 }
 
+#quickplayConnectorBase {
+    background-image: url('./assets/img/icon/mainmenu/quickplay/connector_base.png');
+}
+
+#quickplayConnectorEffector {
+    background-image: url('./assets/img/icon/mainmenu/quickplay/connector_effector.png');
+}
+
 #rootConnectorBase {
     background-image: url('./assets/img/icon/mainmenu/root/connector_base.png');
 }
 
 #rootLeftConnectorEffector {
     background-image: url('./assets/img/icon/mainmenu/root/connector_left_effector.png');
+}
+
+#rootRightConnectorEffector {
+    background-image: url('./assets/img/icon/mainmenu/root/connector_right_effector.png');
 }
 
 #rootTopConnectorEffector {
@@ -1799,10 +1811,13 @@ toggle[checked]::before {
     font-size: 14px;
 }
 
+.form_grid {
+    min-width: 70%;
+}
+
 .config_popup .form_grid {
     display: flex;
     gap: 1rem;
-    max-width: 80%;
 }
 
 .config_popup .form_grid_detail {
@@ -1813,6 +1828,7 @@ toggle[checked]::before {
     margin-top: 1rem;
     background-color: currentColor;
     padding: 0rem 2rem;
+    min-width: 0;
 }
 
 .form_grid_detail span {
