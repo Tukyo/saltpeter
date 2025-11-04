@@ -651,7 +651,7 @@ export class CombatController {
                         }
                         this.audioManager.playAudioNetwork(sfxParams);
 
-                        this.world.worldEdit.requestCraterAt(projectile.transform.pos);
+                        this.world.worldEdit.requestCraterAt(projectile.transform.pos); // TODO: Update this functionality
                     }
 
                     // Notify others to remove projectile

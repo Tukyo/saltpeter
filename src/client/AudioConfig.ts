@@ -31,25 +31,31 @@ export class AudioConfig {
                 }
             },
             player: {
-                male: {
+                voice_00: {
                     grunt: [
-                        '/assets/audio/sfx/player/voice/male/player_male_hit_00.ogg',
-                        '/assets/audio/sfx/player/voice/male/player_male_hit_01.ogg',
-                        '/assets/audio/sfx/player/voice/male/player_male_hit_02.ogg',
-                        '/assets/audio/sfx/player/voice/male/player_male_hit_03.ogg',
-                        '/assets/audio/sfx/player/voice/male/player_male_hit_04.ogg',
-                        '/assets/audio/sfx/player/voice/male/player_male_hit_05.ogg',
-                        '/assets/audio/sfx/player/voice/male/player_male_hit_06.ogg',
-                        '/assets/audio/sfx/player/voice/male/player_male_hit_07.ogg',
-                        '/assets/audio/sfx/player/voice/male/player_male_hit_08.ogg',
-                        '/assets/audio/sfx/player/voice/male/player_male_hit_09.ogg'
+                        '/assets/audio/sfx/player/voice/00/player_voice_00_hit_00.ogg',
+                        '/assets/audio/sfx/player/voice/00/player_voice_00_hit_01.ogg',
+                        '/assets/audio/sfx/player/voice/00/player_voice_00_hit_02.ogg',
+                        '/assets/audio/sfx/player/voice/00/player_voice_00_hit_03.ogg',
+                        '/assets/audio/sfx/player/voice/00/player_voice_00_hit_04.ogg',
+                        '/assets/audio/sfx/player/voice/00/player_voice_00_hit_05.ogg',
+                        '/assets/audio/sfx/player/voice/00/player_voice_00_hit_06.ogg',
+                        '/assets/audio/sfx/player/voice/00/player_voice_00_hit_07.ogg',
+                        '/assets/audio/sfx/player/voice/00/player_voice_00_hit_08.ogg',
+                        '/assets/audio/sfx/player/voice/00/player_voice_00_hit_09.ogg'
                     ]
                 },
-                // female: {
-                //     grunt: [
-
-                //     ]
-                // }
+                voice_01: {
+                    grunt: [
+                        '/assets/audio/sfx/player/voice/01/player_voice_01_hit_00.ogg',
+                        '/assets/audio/sfx/player/voice/01/player_voice_01_hit_01.ogg',
+                        '/assets/audio/sfx/player/voice/01/player_voice_01_hit_02.ogg',
+                        '/assets/audio/sfx/player/voice/01/player_voice_01_hit_03.ogg',
+                        '/assets/audio/sfx/player/voice/01/player_voice_01_hit_04.ogg',
+                        '/assets/audio/sfx/player/voice/01/player_voice_01_hit_05.ogg',
+                        '/assets/audio/sfx/player/voice/01/player_voice_01_hit_06.ogg'
+                    ]
+                }
             },
             weapon: {
                 glock: {
@@ -97,6 +103,16 @@ export class AudioConfig {
                         '/assets/audio/sfx/weapons/glock/glock_shell_14.ogg'
                     ],
                 }
+            }
+        },
+        ambience: {
+            beds: {
+                app: ['/assets/audio/ambience/beds/env_app_00.ogg'],
+                cliffs: ['/assets/audio/ambience/beds/env_cliffs_00.ogg'],
+                mountains: ['/assets/audio/ambience/beds/env_mountains_00.ogg'],
+                ocean: ['/assets/audio/ambience/beds/env_ocean_00.ogg'],
+                plains: ['/assets/audio/ambience/beds/env_plains_00.ogg'],
+                shore: ['/assets/audio/ambience/beds/env_shore_00.ogg']
             }
         }
     }

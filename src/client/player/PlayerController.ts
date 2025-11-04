@@ -15,7 +15,6 @@ import { UserInterface } from "../UserInterface";
 import { Utility } from "../Utility";
 import { AudioConfig } from "../AudioConfig";
 
-
 export class PlayerController {
     constructor(
         private audioConfig: AudioConfig,
@@ -66,11 +65,11 @@ export class PlayerController {
         }
         //
 
-        // CHANGED: Apply friction always, before calculating acceleration
+        // Apply friction before calculating acceleration
         this.playerState.playerVelocityX *= Math.pow(this.playerState.myPlayer.physics.friction, delta);
         this.playerState.playerVelocityY *= Math.pow(this.playerState.myPlayer.physics.friction, delta);
 
-        // CHANGED: Only apply acceleration when there's input
+        // Only apply acceleration when there's input
         if (this.moveController.isMoving()) {
             const targetVelocityX = inputX * currentSpeed;
             const targetVelocityY = inputY * currentSpeed;
@@ -129,7 +128,7 @@ export class PlayerController {
         if (params.target.id === this.userId) { // Random chance to play grunt when I'm hit
             if (this.utility.getRandomNum(0, 1) < 0.2) { // 20%
                 const gruntParams: AudioParams = {
-                    src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.player.male.grunt), // TODO: Allow player to define gender
+                    src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.player.voice_00.grunt), // TODO: Allow player to define gender
                     listener: {
                         x: this.playerState.myPlayer.transform.pos.x,
                         y: this.playerState.myPlayer.transform.pos.y

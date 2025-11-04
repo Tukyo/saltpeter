@@ -117,8 +117,6 @@ class Client {
         this.wsManager = new WebsocketManager(this.gameState, this.roomManager, this.utility);
         this.chatManager = new ChatManager(this.roomManager, this.ui);
 
-        this.world = new World(this.camera, this.controlsManager, this.playerState, this.roomManager, this.ui, this.utility);
-
         this.upgradeManager = new UpgradeManager(
             this.playerConfig,
             this.playerState,
@@ -152,6 +150,17 @@ class Client {
 
         this.audioManager = new AudioManager(this.audioConfig, this.roomManager, this.settingsManager, this.utility);
         this.animator = new Animator(this.playerState, this.roomManager, this.userId);
+
+        this.world = new World(
+            this.audioConfig,
+            this.audioManager,
+            this.camera,
+            this.controlsManager,
+            this.playerState,
+            this.roomManager,
+            this.ui,
+            this.utility
+        );
 
         this.renderingManager = new RenderingManager(
             this.animator,
@@ -293,6 +302,7 @@ class Client {
 
         if (this.audioConfig.settings.preloadSounds) {
             this.audioManager.preloadAudioAssets(this.audioConfig.resources.sfx, '.ogg');
+            this.audioManager.preloadAudioAssets(this.audioConfig.resources.ambience, '.ogg');
         }
 
         this.watchForInputs();
@@ -300,6 +310,17 @@ class Client {
         this.admin.onAdminCommand = (command, key) => {
             this.roomManager.sendAdminCommand(command, key);
         };
+
+        window.addEventListener("customEvent_AppStart", () => { // Start playing background ambience once the app has been entered by user agency
+            const src = this.audioConfig.resources.ambience.beds.app[0];
+            this.audioManager.playAudio({
+                src: src,
+                loop: true,
+                output: "music", // TODO: Add ambience mixer
+                volume: { min: 0.1, max: 0.1 }
+            });
+        });
+
     }
 
     /**
@@ -1418,6 +1439,7 @@ class Client {
 
         this.world.drawWorld();
         this.world.worldDebug.drawDebug();
+        this.world.updateAudioZones();
 
         this.ui.ctx.drawImage(
             this.ui.decalCanvas,
@@ -1453,8 +1475,6 @@ class Client {
 
         // Continue game loop
         requestAnimationFrame(() => this.gameLoop());
-
-        this.world.streamUnloadedChunks(); // Finish loading the world if it isn't yet
     }
 
     /**

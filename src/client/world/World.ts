@@ -1,6 +1,8 @@
 import { CANVAS, WORLD } from "../Config";
-import { WorldLayer, CellData, Material, PhysicsMaterialTypes, PixelData, Vec2, NoiseType, NetworkChunk, PixelWaterData, WorldData } from "../Types";
+import { WorldLayer, CellData, Material, PhysicsMaterialTypes, PixelData, Vec2, NoiseType, NetworkChunk, PixelWaterData, WorldData, WorldRegion, RegionName, AudioZone } from "../Types";
 
+import { AudioConfig } from "../AudioConfig";
+import { AudioManager } from "../AudioManager";
 import { Camera } from "../Camera";
 import { ControlsManager } from "../ControlsManager";
 import { RoomManager } from "../RoomManager";
@@ -16,6 +18,9 @@ import { PlayerState } from "../player/PlayerState";
 export class World {
     public chunks: Map<string, WorldChunk> = new Map();
     public chunkLayers: Map<string, WorldLayer> = new Map();
+    public regions: WorldRegion[] = [];
+    public audioZones: Map<string, AudioZone> = new Map();
+    private regionAudioSources: Map<number, { element: HTMLAudioElement | null; volume: number }> = new Map();
 
     public isGenerated = false;
     public currentSeed = 0;
@@ -30,10 +35,11 @@ export class World {
     private streamingComplete = false;
 
     private readonly YIELD_RATE = 10;
-    private readonly CHUNK_LOAD_RADIUS = Math.max(CANVAS.WIDTH, CANVAS.HEIGHT) * 2;
     private readonly WORLDGEN_PHASES: readonly string[] = ["cells", "degen", "hydration"];
 
     constructor(
+        private audioConfig: AudioConfig,
+        private audioManager: AudioManager,
         private camera: Camera,
         private controlsManager: ControlsManager,
         private playerState: PlayerState,
@@ -54,57 +60,33 @@ export class World {
      * Clears all of the world data for a fresh slate.
      */
     public clear(): void {
+        console.log("Clearing world data...");
+
+        // Core data maps
         this.chunks.clear();
         this.chunkLayers.clear();
-        this.worldDebug.hoveredChunk = null;
-        this.isGenerated = false;
+        this.regions = [];
+
+        this.cleanWorldAudio();
+
+        // Buffers and templates
         this.chunkBuffer = [];
         this.worldBuffer = null;
+        this.erosionTemplate = null;
+        this.streamingComplete = false;
+
+        // State flags
+        this.isGenerated = false;
+        this.currentSeed = 0;
+
+        // Debug + UI cleanup
+        this.worldDebug.hoveredChunk = null;
+
         if (this.ui.worldCtx && this.ui.worldCanvas) {
             this.ui.worldCtx.clearRect(0, 0, WORLD.WIDTH, WORLD.HEIGHT);
         }
-    }
 
-    /**
-     * General entrypoint for all chunk updates.
-     * 
-     * Network message triggers this, as well as client-side edits.
-     */
-    public handleChunkUpdate(remoteChunk: NetworkChunk): void {
-        if (!remoteChunk || !remoteChunk.pos) return;
-
-        const key = `${remoteChunk.pos.x},${remoteChunk.pos.y}`;
-        const existing = this.chunks.get(key);
-
-        // Only update if it's new or newer
-        if (existing && (remoteChunk.version ?? 0) <= (existing as any).version) {
-            return;
-        }
-
-        // Convert NetworkChunk → WorldChunk
-        const newChunk = new WorldChunk(
-            remoteChunk.layer,
-            remoteChunk.cellData.worldPixelData,
-            remoteChunk.cellData.worldHeightData,
-            remoteChunk.cellData.worldWaterData!,
-            this.worldConfig
-        );
-
-        // Extend runtime metadata
-        newChunk.version = remoteChunk.version;
-        newChunk.pos = remoteChunk.pos;
-        newChunk.size = remoteChunk.size;
-
-        this.chunks.set(key, newChunk);
-        this.chunkLayers.set(
-            key,
-            this.worldConfig.worldLayers[remoteChunk.layer] || Object.values(this.worldConfig.worldLayers)[0]
-        );
-
-        console.log(`📦 Synced chunk ${key} (v${remoteChunk.version})`);
-
-        // Immediately re-render the updated chunk
-        this.renderChunk(remoteChunk.pos.x, remoteChunk.pos.y, newChunk);
+        // this.audioManager.stopAll?.();
     }
     //
     // #endregion
@@ -687,8 +669,6 @@ export class World {
     // #region [ Baking ]
     //
     /**
-     * Final step before rendering.
-     * 
      * Bakes all generated cells into chunks.
      */
     private async bakeChunksFromCells(params: CellData): Promise<void> {
@@ -752,7 +732,7 @@ export class World {
                 this.isGenerated = true;
                 this.hideLoadingMenu();
                 console.log(`Returned early after ${i}/${totalChunks} chunks baked. Buffered ${this.chunkBuffer.length} chunks for streaming.`);
-                this.backgroundStreamAllChunks(); // Load all remaining chunks
+                this.dumpChunkBuffer(); // Load all remaining chunks
                 return;
             }
             else {
@@ -801,7 +781,7 @@ export class World {
                 const c = layerCounts[k as any];
                 if (c > max) { max = c; dominantIdx = parseInt(k, 10); }
             }
-            
+
             const dominantLayer = allWorldLayers[dominantIdx] || allWorldLayers[0];
 
             const worldChunk = new WorldChunk(
@@ -817,6 +797,218 @@ export class World {
             this.chunkLayers.set(key, dominantLayer);
             this.renderChunk(cx, cy, worldChunk);
         }
+    }
+
+    /**
+     * Bakes and classifies chunks as regions for metadata and logic.
+     */
+    private bakeRegionsFromChunks(): void {
+        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
+        const chunksX = Math.ceil(WORLD.WIDTH / chunkSize);
+        const chunksY = Math.ceil(WORLD.HEIGHT / chunkSize);
+
+        const visited = new Set<string>();
+        let regionId = 0;
+        this.regions = [];
+        const classifyRegion = (layerName: string, waterRatio: number): RegionName | null => {
+            if (waterRatio >= 0.9) return "ocean";
+            if (waterRatio > 0 && waterRatio < 0.9 && ["alluvium", "sediment"].includes(layerName)) return "shore";
+            if (layerName === "colluvium") return "cliffs";
+            if (["summit"].includes(layerName)) return "mountains";
+            if (["soil", "topsoil", "substrate", "foundation"].includes(layerName)) return "plains";
+            return null; // explicitly unclassified (handled in fill pass)
+        };
+
+        const chunkToRegion: (RegionName | null)[][] = Array.from({ length: chunksY }, () =>
+            Array.from({ length: chunksX }, () => null)
+        );
+
+        // === Initial region baking ===
+        for (let cy = 0; cy < chunksY; cy++) {
+            for (let cx = 0; cx < chunksX; cx++) {
+                const key = `${cx},${cy}`;
+                if (visited.has(key)) continue;
+
+                const layer = this.getChunkLayer(cx, cy);
+                if (!layer) continue;
+
+                // Flood-fill contiguous same-layer chunks
+                const regionChunks: { cx: number; cy: number }[] = [];
+                const queue = [{ cx, cy }];
+
+                while (queue.length > 0) {
+                    const { cx: qx, cy: qy } = queue.shift()!;
+                    const qKey = `${qx},${qy}`;
+                    if (visited.has(qKey)) continue;
+                    visited.add(qKey);
+
+                    const currentLayer = this.getChunkLayer(qx, qy);
+                    if (!currentLayer || currentLayer.name !== layer.name) continue;
+
+                    regionChunks.push({ cx: qx, cy: qy });
+
+                    const neighbors = [
+                        { cx: qx - 1, cy: qy },
+                        { cx: qx + 1, cy: qy },
+                        { cx: qx, cy: qy - 1 },
+                        { cx: qx, cy: qy + 1 }
+                    ];
+
+                    for (const n of neighbors) {
+                        if (
+                            n.cx >= 0 &&
+                            n.cx < chunksX &&
+                            n.cy >= 0 &&
+                            n.cy < chunksY &&
+                            !visited.has(`${n.cx},${n.cy}`)
+                        ) {
+                            queue.push(n);
+                        }
+                    }
+                }
+
+                if (regionChunks.length <= 5) continue;
+
+                // Compute average water ratio
+                let totalWater = 0;
+                let totalPixels = 0;
+                for (const { cx: rcx, cy: rcy } of regionChunks) {
+                    const chunk = this.chunks.get(`${rcx},${rcy}`);
+                    if (!chunk) continue;
+                    for (let y = 0; y < chunkSize; y++) {
+                        for (let x = 0; x < chunkSize; x++) {
+                            totalWater += chunk.getWaterAt(x, y, chunkSize) > 0 ? 1 : 0;
+                            totalPixels++;
+                        }
+                    }
+                }
+                const waterRatio = totalPixels > 0 ? totalWater / totalPixels : 0;
+
+                const regionName = classifyRegion(layer.name, waterRatio);
+                if (!regionName) continue; // unclassified — will be fixed later
+
+                const minX = Math.min(...regionChunks.map(c => c.cx));
+                const maxX = Math.max(...regionChunks.map(c => c.cx));
+                const minY = Math.min(...regionChunks.map(c => c.cy));
+                const maxY = Math.max(...regionChunks.map(c => c.cy));
+
+                this.regions.push({
+                    id: regionId++,
+                    name: regionName,
+                    layerName: layer.name,
+                    bounds: { minX, minY, maxX, maxY },
+                    chunkCoords: regionChunks,
+                    area: regionChunks.length
+                });
+
+                // Store in map
+                for (const c of regionChunks) chunkToRegion[c.cy][c.cx] = regionName;
+            }
+        }
+
+        // === FINAL FILL PASS ===
+        for (let cy = 0; cy < chunksY; cy++) {
+            for (let cx = 0; cx < chunksX; cx++) {
+                if (chunkToRegion[cy][cx] !== null) continue;
+
+                // Find nearest classified chunk (simple expanding radius search)
+                let nearest: RegionName | null = null;
+                let radius = 1;
+                while (!nearest && radius < Math.max(chunksX, chunksY)) {
+                    for (let dy = -radius; dy <= radius; dy++) {
+                        for (let dx = -radius; dx <= radius; dx++) {
+                            const nx = cx + dx;
+                            const ny = cy + dy;
+                            if (
+                                nx < 0 ||
+                                ny < 0 ||
+                                nx >= chunksX ||
+                                ny >= chunksY
+                            )
+                                continue;
+
+                            const candidate = chunkToRegion[ny][nx];
+                            if (candidate) {
+                                nearest = candidate;
+                                break;
+                            }
+                        }
+                        if (nearest) break;
+                    }
+                    radius++;
+                }
+
+                if (nearest) chunkToRegion[cy][cx] = nearest;
+                else chunkToRegion[cy][cx] = "plains"; // never happens in practice
+            }
+        }
+
+        // === Rebuild regions from final map ===
+        this.regions = [];
+        visited.clear();
+        regionId = 0;
+
+        for (let cy = 0; cy < chunksY; cy++) {
+            for (let cx = 0; cx < chunksX; cx++) {
+                const assigned = chunkToRegion[cy][cx];
+                if (!assigned || visited.has(`${cx},${cy}`)) continue;
+
+                // Flood-fill new merged regions
+                const regionChunks: { cx: number; cy: number }[] = [];
+                const queue = [{ cx, cy }];
+                while (queue.length > 0) {
+                    const { cx: qx, cy: qy } = queue.shift()!;
+                    const key = `${qx},${qy}`;
+                    if (visited.has(key)) continue;
+                    if (chunkToRegion[qy][qx] !== assigned) continue;
+                    visited.add(key);
+                    regionChunks.push({ cx: qx, cy: qy });
+
+                    const neighbors = [
+                        { cx: qx - 1, cy: qy },
+                        { cx: qx + 1, cy: qy },
+                        { cx: qx, cy: qy - 1 },
+                        { cx: qx, cy: qy + 1 }
+                    ];
+                    for (const n of neighbors) {
+                        if (
+                            n.cx >= 0 &&
+                            n.cx < chunksX &&
+                            n.cy >= 0 &&
+                            n.cy < chunksY &&
+                            !visited.has(`${n.cx},${n.cy}`)
+                        ) {
+                            queue.push(n);
+                        }
+                    }
+                }
+
+                const minX = Math.min(...regionChunks.map(c => c.cx));
+                const maxX = Math.max(...regionChunks.map(c => c.cx));
+                const minY = Math.min(...regionChunks.map(c => c.cy));
+                const maxY = Math.max(...regionChunks.map(c => c.cy));
+
+                this.regions.push({
+                    id: regionId++,
+                    name: assigned,
+                    layerName: assigned,
+                    bounds: { minX, minY, maxX, maxY },
+                    chunkCoords: regionChunks,
+                    area: regionChunks.length
+                });
+            }
+        }
+
+        console.log(`🗺️ Regions baked + filled: ${this.regions.length}`);
+        this.regions.forEach(r => {
+            const w = (r.bounds.maxX - r.bounds.minX + 1) * chunkSize;
+            const h = (r.bounds.maxY - r.bounds.minY + 1) * chunkSize;
+            console.log(
+                `  • ${r.name.padEnd(10)} | ${String(r.area).padStart(3)} chunks | ${w}×${h}px`
+            );
+        });
+
+        this.generateAudioZones();
     }
     //
     // #endregion
@@ -1064,6 +1256,23 @@ export class World {
         const cy = Math.floor(worldY / chunkSize);
         this.worldDebug.hoveredChunk = `${cx},${cy}`;
         return { worldX, worldY };
+    }
+
+    /**
+     * Determines the total steps needed for a full load based on the amount of chunks and the worldgen phases.
+     * 
+     * This is purely a loading helper.
+     */
+    private totalYieldSteps(): number {
+        const yieldPerProcess = this.YIELD_RATE;
+
+        const chunksX = Math.ceil(WORLD.WIDTH / this.worldConfig.worldgenParams.general.chunk.size);
+        const chunksY = Math.ceil(WORLD.HEIGHT / this.worldConfig.worldgenParams.general.chunk.size);
+        const totalChunks = chunksX * chunksY;
+
+        const bakedChunks = Math.floor(totalChunks * 0.5);
+
+        return (yieldPerProcess * this.WORLDGEN_PHASES.length) + bakedChunks;
     }
     //
     // #endregion
@@ -1432,6 +1641,9 @@ export class World {
 
     // #region [ Events ]
     //
+    /**
+     * Initializes loading events.
+     */
     private initLoadingProgressEvents(): void {
         document.addEventListener("yieldMessage", (e: Event) => {
             const event = e as CustomEvent<{ message: string }>;
@@ -1449,23 +1661,58 @@ export class World {
         });
     }
 
-
-    private totalYieldSteps(): number {
-        const yieldPerProcess = this.YIELD_RATE;
-
-        const chunksX = Math.ceil(WORLD.WIDTH / this.worldConfig.worldgenParams.general.chunk.size);
-        const chunksY = Math.ceil(WORLD.HEIGHT / this.worldConfig.worldgenParams.general.chunk.size);
-        const totalChunks = chunksX * chunksY;
-
-        const bakedChunks = Math.floor(totalChunks * 0.5);
-
-        return (yieldPerProcess * this.WORLDGEN_PHASES.length) + bakedChunks;
-    }
-
     //
     // #endregion
 
-    private async backgroundStreamAllChunks(): Promise<void> {
+    // #region [ Chunk Management ]
+    //
+    /**
+     * General entrypoint for all chunk updates.
+     * 
+     * Network message triggers this, as well as client-side edits.
+     */
+    public handleChunkUpdate(remoteChunk: NetworkChunk): void { // TODO: Needs optimization and rethink to approach on when / how to send this data
+        if (!remoteChunk || !remoteChunk.pos) return;
+
+        const key = `${remoteChunk.pos.x},${remoteChunk.pos.y}`;
+        const existing = this.chunks.get(key);
+
+        // Only update if it's new or newer
+        if (existing && (remoteChunk.version ?? 0) <= (existing as any).version) {
+            return;
+        }
+
+        // Convert NetworkChunk → WorldChunk
+        const newChunk = new WorldChunk(
+            remoteChunk.layer,
+            remoteChunk.cellData.worldPixelData,
+            remoteChunk.cellData.worldHeightData,
+            remoteChunk.cellData.worldWaterData!,
+            this.worldConfig
+        );
+
+        // Extend runtime metadata
+        newChunk.version = remoteChunk.version;
+        newChunk.pos = remoteChunk.pos;
+        newChunk.size = remoteChunk.size;
+
+        this.chunks.set(key, newChunk);
+        this.chunkLayers.set(
+            key,
+            this.worldConfig.worldLayers[remoteChunk.layer] || Object.values(this.worldConfig.worldLayers)[0]
+        );
+
+        // Immediately re-render the updated chunk
+        this.renderChunk(remoteChunk.pos.x, remoteChunk.pos.y, newChunk);
+        console.log(`📦 Synced chunk ${key} (v${remoteChunk.version})`);
+    }
+
+    /**
+     * Immediately streams all pending chunks to the user.
+     * 
+     * This can be called to dump any unloaded chunks at a maximum of 1 per frame. 
+     */
+    public async dumpChunkBuffer(): Promise<void> {
         console.log("Starting background chunk streaming...");
 
         for (let i = 0; i < this.chunkBuffer.length; i++) {
@@ -1478,13 +1725,20 @@ export class World {
             await this.utility.yield(); // one chunk per frame
         }
 
-        console.log("✅ Background streaming complete. All chunks loaded.");
+        console.log("All chunks loaded.");
         this.chunkBuffer = [];
         this.worldBuffer = null;
         this.streamingComplete = true;
+
+        this.bakeRegionsFromChunks();
     }
 
-    public async streamUnloadedChunks(): Promise<void> {
+    /**
+     * Public function that can be used to actively stream chunks as the player gets closer to them.
+     * 
+     * Only one chunk per frame can be loaded using the passed radius.
+     */
+    public async streamUnloadedChunks(radius: number): Promise<void> {
         if (!this.isGenerated || !this.playerState?.myPlayer || this.streamingComplete) return;
 
         if (!this.chunkBuffer.length || this.chunkBuffer.every(c => c.loaded)) {
@@ -1497,7 +1751,7 @@ export class World {
 
         const playerPos = this.playerState.myPlayer.transform.pos;
         const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
-        const loadRadius = this.CHUNK_LOAD_RADIUS;
+        const loadRadius = radius;
 
         // Only load one new chunk per frame to avoid stutter
         for (let i = 0; i < this.chunkBuffer.length; i++) {
@@ -1519,6 +1773,9 @@ export class World {
         }
     }
 
+    /**
+     * Loads a specific chunk.
+     */
     private loadChunk(cx: number, cy: number): void {
         if (!this.worldBuffer || !this.worldBuffer.cellLayerGrid || !this.worldBuffer.worldWaterData) return;
 
@@ -1578,4 +1835,175 @@ export class World {
         this.chunkLayers.set(key, dominantLayer);
         this.renderChunk(cx, cy, worldChunk);
     }
+
+    //
+    // #endregion
+
+    // #region [ Audio Zones ]
+    //
+
+    /**
+     * Creates audio zones for valid regions.
+     */
+    private generateAudioZones(): void {
+        console.log("Generating audio zones...");
+
+        this.regions.forEach(region => {
+            const regionAudio = this.worldConfig.regionAudioParams[region.name];
+            if (!regionAudio || region.area < regionAudio.minRegionSize) return;
+
+            const ambience = this.audioConfig.resources.ambience.beds[region.name];
+            if (!ambience || !ambience.length) return;
+
+            const audioSrc = ambience[0];
+            const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
+
+            // create one shared audio source entry
+            this.regionAudioSources.set(region.id, { element: null, volume: 0 });
+
+            const regionWidth = (region.bounds.maxX - region.bounds.minX + 1) * chunkSize;
+            const regionHeight = (region.bounds.maxY - region.bounds.minY + 1) * chunkSize;
+
+            const overlapFactor = 0.9;
+            const effectiveCoverage = regionAudio.radius * 2 * overlapFactor;
+
+            const zonesX = Math.ceil(regionWidth / effectiveCoverage);
+            const zonesY = Math.ceil(regionHeight / effectiveCoverage);
+            const totalZones = zonesX * zonesY;
+
+            if (totalZones > 5) {
+                console.warn(`⚠️ Region ${region.name} would need ${totalZones} zones - capping at grid pattern`);
+            }
+
+            for (let gy = 0; gy < zonesY; gy++) {
+                for (let gx = 0; gx < zonesX; gx++) {
+                    const zoneX = region.bounds.minX * chunkSize + (gx + 0.5) * effectiveCoverage;
+                    const zoneY = region.bounds.minY * chunkSize + (gy + 0.5) * effectiveCoverage;
+
+                    const clampedX = Math.max(
+                        region.bounds.minX * chunkSize,
+                        Math.min(region.bounds.maxX * chunkSize + chunkSize, zoneX)
+                    );
+                    const clampedY = Math.max(
+                        region.bounds.minY * chunkSize,
+                        Math.min(region.bounds.maxY * chunkSize + chunkSize, zoneY)
+                    );
+
+                    const center: Vec2 = { x: clampedX, y: clampedY };
+                    const zoneId = `${region.id}_${gx}_${gy}`;
+
+                    this.audioZones.set(zoneId, {
+                        region: region,
+                        center: center,
+                        audioParams: {
+                            src: audioSrc,
+                            listener: this.playerState.myPlayer.transform.pos,
+                            loop: true,
+                            output: 'sfx',
+                            volume: regionAudio.volume,
+                            spatial: {
+                                blend: 1.0,
+                                pos: center,
+                                rolloff: {
+                                    distance: regionAudio.radius,
+                                    factor: 1.0,
+                                    type: 'logarithmic'
+                                }
+                            }
+                        },
+                        isActive: false
+                    });
+                }
+            }
+        });
+
+        console.log(`Generated ${this.audioZones.size} audio zones.`);
+    }
+
+    /**
+     * PRocesses updates for regional audio zones and controls volume based on player position.
+     */
+    public updateAudioZones(): void {
+        if (!this.playerState?.myPlayer) return;
+        const playerPos = this.playerState.myPlayer.transform.pos;
+
+        // Reset all region brain volumes
+        this.regionAudioSources.forEach(brain => brain.volume = 0);
+
+        // Each zone contributes its influence to its region brain
+        this.audioZones.forEach(zone => {
+            const dx = playerPos.x - zone.center.x;
+            const dy = playerPos.y - zone.center.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const radius = zone.audioParams.spatial?.rolloff?.distance || 500;
+            const inRange = distance < radius;
+
+            zone.isActive = inRange;
+
+            if (inRange) {
+                const roll = zone.audioParams.spatial!.rolloff!;
+                const normalized = Math.min(1, distance / roll.distance);
+                const rollFactor = roll.factor > 0 ? roll.factor : 0.5;
+                const factor = roll.type === 'logarithmic'
+                    ? 1 - Math.pow(normalized, 0.5) * rollFactor
+                    : 1 - normalized * rollFactor;
+
+                const regionId = zone.region.id;
+                const brain = this.regionAudioSources.get(regionId);
+                if (brain) brain.volume = Math.max(brain.volume, factor);
+            }
+        });
+
+        // Manage region audio playback based on aggregate volumes
+        this.regionAudioSources.forEach((brain, regionId) => {
+            const region = this.regions.find(r => r.id === regionId);
+            if (!region) return;
+
+            const regionAudio = this.worldConfig.regionAudioParams[region.name];
+            if (!regionAudio) return;
+
+            // directly scale brain.volume into region’s [min,max] range — never clamp to 1
+            const targetVolume = regionAudio.volume.min +
+                (regionAudio.volume.max - regionAudio.volume.min) * brain.volume;
+
+            if (targetVolume > regionAudio.volume.min) {
+                if (!brain.element) {
+                    const src = this.audioConfig.resources.ambience.beds[region.name][0];
+                    brain.element = this.audioManager.playAudio({
+                        src,
+                        loop: true,
+                        output: "sfx",
+                        volume: { min: regionAudio.volume.min, max: regionAudio.volume.max }
+                    });
+                    console.log(`🎧 Started ${region.name} ambience`);
+                }
+                if (brain.element) brain.element.volume = targetVolume;
+            } else if (brain.element) {
+                brain.element.volume = regionAudio.volume.min;
+                brain.element.pause();
+                brain.element = null;
+                console.log(`🔇 Stopped ${region.name} ambience`);
+            }
+        });
+    }
+
+    /**
+    * Stops all world ambience and clears region audio references.
+    */
+    private cleanWorldAudio(): void {
+        console.log("Clearing world ambience...");
+        this.regionAudioSources.forEach((brain) => {
+            if (brain.element) {
+                try {
+                    brain.element.pause();
+                    brain.element.currentTime = 0;
+                } catch (e) { console.warn("Failed to stop world audio:", e); }
+            }
+        });
+        this.regionAudioSources.clear();
+        this.audioZones.clear();
+    }
+
+    //
+    // #endregion
 }

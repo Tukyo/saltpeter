@@ -1,17 +1,17 @@
 import { CANVAS, WORLD } from "../Config";
+import { PhysicsMaterialTypes, RegionName } from "../Types";
 
 import { Camera } from "../Camera";
 import { ControlsManager } from "../ControlsManager";
 import { UserInterface } from "../UserInterface";
-import { World } from "./World";
-import { PhysicsMaterialTypes } from "../Types";
 import { Utility } from "../Utility";
+import { World } from "./World";
 
 export class WorldDebug {
     public hoveredChunk: string | null = null;
 
     private overlayMode: number = 0; // 0 = chunks/borders, 1 = heightmap, 2 = contours
-    private overlayNames: string[] = ["Grid", "Heightmap", "Contours"];
+    private overlayNames: string[] = ["Chunk", "Heightmap", "Contours", "Regions", "Audio"];
 
     constructor(
         private camera: Camera,
@@ -51,11 +51,14 @@ export class WorldDebug {
 
                     case "NumpadEnter":
                         e.preventDefault();
-                        this.world.worldConfig.worldgenParams.render.grid.enabled =
-                            !this.world.worldConfig.worldgenParams.render.grid.enabled;
-                        if (!this.world.worldConfig.worldgenParams.render.grid.enabled) this.hoveredChunk = null;
-                        console.log("Overlay " + (this.world.worldConfig.worldgenParams.render.grid.enabled ? "enabled" : "disabled") +
+                        this.world.worldConfig.worldgenParams.render.grid.active =
+                            !this.world.worldConfig.worldgenParams.render.grid.active;
+                        if (!this.world.worldConfig.worldgenParams.render.grid.active) this.hoveredChunk = null;
+                        console.log("Overlay " + (this.world.worldConfig.worldgenParams.render.grid.active ? "enabled" : "disabled") +
                             " (mode: " + this.overlayNames[this.overlayMode] + ")");
+                        if (this.world.worldConfig.worldgenParams.render.grid.active) {
+                            this.showOverlayName();
+                        }
                         break;
 
                     default:
@@ -63,16 +66,18 @@ export class WorldDebug {
                 }
             }
 
-            if (this.world.worldConfig.worldgenParams.render.grid.enabled && e.ctrlKey && e.altKey) { // Debug page cycling
+            if (this.world.worldConfig.worldgenParams.render.grid.active && e.ctrlKey && e.altKey) { // Debug page cycling
                 if (e.key === "[" || e.code === "BracketLeft") {
                     e.preventDefault();
                     this.overlayMode = (this.overlayMode - 1 + this.overlayNames.length) % this.overlayNames.length;
                     console.log("Overlay mode: " + this.overlayNames[this.overlayMode]);
+                    this.showOverlayName();
                 }
                 if (e.key === "]" || e.code === "BracketRight") {
                     e.preventDefault();
                     this.overlayMode = (this.overlayMode + 1) % this.overlayNames.length;
                     console.log("Overlay mode: " + this.overlayNames[this.overlayMode]);
+                    this.showOverlayName();
                 }
             }
         });
@@ -86,11 +91,13 @@ export class WorldDebug {
         if (!this.ui.ctx || !this.world.isGenerated) return;
 
         // Draw terrain overlays if enabled
-        if (this.world.worldConfig.worldgenParams.render.grid.enabled) {
+        if (this.world.worldConfig.worldgenParams.render.grid.active) {
             switch (this.overlayMode) {
-                case 0: this.drawGrid(); break;
+                case 0: this.drawChunks(); break;
                 case 1: this.drawHeightmap(); break;
                 case 2: this.drawContours(); break;
+                case 3: this.drawRegions(); break;
+                case 4: this.drawAudioZones(); break;
             }
             this.drawInfoPanels();
         }
@@ -131,8 +138,19 @@ export class WorldDebug {
         const margin = 10;
         let currentX = margin;
 
+        let regionName = "N/A";
+        if (this.world.regions) {
+            for (const region of this.world.regions) {
+                if (region.chunkCoords.some(c => c.cx === hcx && c.cy === hcy)) {
+                    regionName = region.name;
+                    break;
+                }
+            }
+        }
+
         // Draw main panel
         const mainInfo = [
+            `Region: ${regionName}`,
             `Layer: ${chunkLayer ? chunkLayer.name : "N/A"}`,
             `Chunk: ${hcx}, ${hcy} (${chunkSize}x${chunkSize})`,
             `Pixel: ${worldX}, ${worldY}`,
@@ -228,7 +246,7 @@ export class WorldDebug {
     /**
      * Renders chunk borders with layer highlights
      */
-    private drawGrid(): void {
+    private drawChunks(): void {
         if (!this.ui.ctx || !this.world.isGenerated) return;
 
         const ctx = this.ui.ctx;
@@ -475,5 +493,129 @@ export class WorldDebug {
         }
 
         ctx.restore();
+    }
+
+    /**
+     * Draws region overlays with fill + border.
+     */
+    private drawRegions(): void {
+        if (!this.ui.ctx || !this.world.isGenerated || !this.world.regions) return;
+
+        const ctx = this.ui.ctx;
+        const camX = this.camera.pos.x;
+        const camY = this.camera.pos.y;
+        const chunkSize = this.world.worldConfig.worldgenParams.general.chunk.size;
+
+        const regionFillColors: Record<RegionName, string> = {
+            shore: "rgba(30, 150, 200, 0.25)",
+            cliffs: "rgba(180, 80, 60, 0.25)",
+            mountains: "rgba(120, 120, 140, 0.25)",
+            ocean: "rgba(40, 80, 180, 0.3)",
+            plains: "rgba(160, 200, 100, 0.25)"
+        };
+
+        const regionBorderColors: Record<RegionName, string> = {
+            shore: "#1e96c8",
+            cliffs: "#b4503c",
+            mountains: "#78788c",
+            ocean: "#2850b4",
+            plains: "#afc543ff"
+        };
+
+        ctx.save();
+
+        // First pass: fill
+        for (const region of this.world.regions) {
+            const color = regionFillColors[region.name];
+            ctx.fillStyle = color;
+            for (const { cx, cy } of region.chunkCoords) {
+                const screenX = cx * chunkSize - camX;
+                const screenY = cy * chunkSize - camY;
+                ctx.fillRect(screenX, screenY, chunkSize, chunkSize);
+            }
+        }
+
+        // Second pass: outline
+        ctx.lineWidth = 2;
+        for (const region of this.world.regions) {
+            const borderColor = regionBorderColors[region.name];
+            ctx.strokeStyle = borderColor;
+            for (const { cx, cy } of region.chunkCoords) {
+                const screenX = cx * chunkSize - camX;
+                const screenY = cy * chunkSize - camY;
+                ctx.strokeRect(screenX, screenY, chunkSize, chunkSize);
+            }
+        }
+
+        ctx.restore();
+    }
+
+    /**
+     * Draws audio zones and highlights the currently active zones.
+     */
+    private drawAudioZones(): void {
+        const ctx = this.ui.ctx;
+        if (!ctx) return;
+
+        ctx.save();
+
+        this.world.audioZones.forEach(zone => {
+            const screenX = zone.center.x - this.camera.pos.x;
+            const screenY = zone.center.y - this.camera.pos.y;
+            const radius = zone.audioParams.spatial?.rolloff?.distance || 500;
+
+            // Draw audio radius
+            ctx.strokeStyle = zone.isActive ? '#00ff0055' : '#ffffff22';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Draw center point
+            ctx.fillStyle = zone.isActive ? '#00ff00' : '#ffffff';
+            ctx.fillRect(screenX - 3, screenY - 3, 6, 6);
+        });
+
+        ctx.restore();
+    }
+
+    /**
+     * Shows the current debug overlay mode name with a quick fade effect.
+     */
+    private showOverlayName(): void {
+        const existing = document.getElementById('debugOverlayName');
+        if (existing) existing.remove();
+
+        // Create overlay name element
+        const overlay = document.createElement('div');
+        overlay.id = 'debugOverlayName';
+        overlay.textContent = this.overlayNames[this.overlayMode];
+        overlay.style.cssText = `
+            position: fixed;
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: #ffffff;
+            padding: 12px 24px;
+            border: 2px solid #888888;
+            border-radius: 4px;
+            z-index: 99999;
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 0.3s ease-out;
+        `;
+
+        document.body.appendChild(overlay);
+        
+        setTimeout(() => { // Fade out after short delay
+            overlay.style.opacity = '0';
+            
+            setTimeout(() => { // Remove from DOM after fade completes
+                if (overlay.parentElement) {
+                    overlay.remove();
+                }
+            }, 300); // Match transition duration
+        }, 800); // Show for 800ms before fading
     }
 }

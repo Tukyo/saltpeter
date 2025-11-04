@@ -216,7 +216,7 @@ export interface AudioParams {
     min: number;
     max: number;
   }
-  listener: Vec2;
+  listener?: Vec2;
   loop?: boolean;
   output?: string;
   priority?: number;
@@ -238,6 +238,14 @@ export interface AudioParams {
     min: number;
     max: number;
   };
+}
+
+export type AudioZone = {
+  region: WorldRegion;
+  center: Vec2;
+  audioParams: AudioParams;
+  audioElement?: HTMLAudioElement;
+  isActive: boolean;
 }
 //
 // #endregion
@@ -709,7 +717,7 @@ export type WorldParams = {
       depthDarkness: number;
     }
     grid: {
-      enabled: boolean;
+      active: boolean;
       lineWidth: number;
       chunkBorderColor: string;
       worldBorderColor: string;
@@ -717,6 +725,22 @@ export type WorldParams = {
       borderWidth: number;
     }
   }
+}
+
+export type RegionName =
+  | "shore"
+  | "cliffs"
+  | "mountains"
+  | "ocean"
+  | "plains"
+
+export interface WorldRegion {
+  id: number;
+  name: RegionName;
+  layerName: string;
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  chunkCoords: { cx: number; cy: number }[];
+  area: number;
 }
 
 export interface WorldLayer extends MaterialLayer {

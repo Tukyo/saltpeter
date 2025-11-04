@@ -26,12 +26,14 @@ export class AudioManager {
     //
     /**
      * Plays an audio source using the predefined pool for the audio source.
+     * 
+     * Returns the created audio element, or null if failed.
      */
-    public playAudio(params: AudioParams): void {
+    public playAudio(params: AudioParams): HTMLAudioElement | null {
         const audio = this.audioPool.getAudio(params.src);
         if (!audio) {
             console.warn(`Audio pool exhausted or max concurrent reached for: ${params.src}`);
-            return;
+            return null;
         }
 
         // [ Volume ]
@@ -42,7 +44,7 @@ export class AudioManager {
 
         // [ 2D Spatial Audio ]
         const blend = params.spatial?.blend ?? 0;
-        if (blend > 0 && params.spatial?.pos) {
+        if (blend > 0 && params.spatial?.pos && params.listener) {
             const dx = params.spatial.pos.x - params.listener.x;
             const dy = params.spatial.pos.y - params.listener.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
@@ -109,6 +111,8 @@ export class AudioManager {
                 console.warn('Audio play failed:', error);
             });
         }, delayMs);
+
+        return audio;
     }
 
     /**
@@ -129,14 +133,14 @@ export class AudioManager {
     /**
      * Preloads all audio of a single filetype for the game.
      */
-    public preloadAudioAssets(sfx: any, extension: string): void {
-        this.preloadSFX(sfx, extension);
+    public preloadAudioAssets(sounds: any, extension: string): void { // TODO: Needs more strict typing which should start at the resources level
+        this.preloadAudio(sounds, extension);
     }
 
     /**
      * Iterate through the passed audio object, and preload them for the session.
      */
-    private preloadSFX(obj: any, extension: string): void {
+    private preloadAudio(obj: any, extension: string): void { // TODO: Type protection
         for (const key in obj) {
             const value = obj[key];
 
@@ -149,7 +153,7 @@ export class AudioManager {
                 });
             } else if (typeof value === 'object' && value !== null) {
                 // If it's an object, recurse into it
-                this.preloadSFX(value, extension);
+                this.preloadAudio(value, extension);
             }
         }
     }

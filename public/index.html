@@ -35,7 +35,7 @@
 </head>
 
 <body>
-  <div id="landingPage" onclick="this.remove();"
+  <div id="landingPage" onclick="window.dispatchEvent(new CustomEvent('customEvent_AppStart')); this.remove();"
     style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:99999;display:flex;justify-content:center;align-items:center;font-family:monospace;color:#b3b3b3;font-size:2rem;text-align:center;user-select:none;">
     <div style="opacity:0.8;animation:pulse 2s infinite;">Click to access Neural Interface</div>
   </div>

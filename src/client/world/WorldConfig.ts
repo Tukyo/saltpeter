@@ -1,4 +1,4 @@
-import { Material, WorldLayer, PhysicsMaterialTypes, NoiseType, WorldParams } from "../Types";
+import { Material, WorldLayer, PhysicsMaterialTypes, NoiseType, WorldParams, RegionName } from "../Types";
 
 export class WorldConfig {
     public worldgenParams: WorldParams = {
@@ -57,7 +57,7 @@ export class WorldConfig {
                 depthDarkness: 1
             },
             grid: {
-                enabled: false,
+                active: false, // Switches visibility state in WorldDebug.ts
                 lineWidth: 1,
                 chunkBorderColor: "#a1a1a1",
                 worldBorderColor: "#9747ff",
@@ -66,6 +66,18 @@ export class WorldConfig {
             }
         }
     };
+
+    public regionAudioParams: Record<RegionName, {
+        minRegionSize: number;
+        radius: number;
+        volume: { min: number; max: number };
+    } | null> = {
+            shore: { minRegionSize: 4, radius: 400, volume: { min: 0.0, max: 0.175 } },
+            cliffs: { minRegionSize: 6, radius: 550, volume: { min: 0.0, max: 0.135 } },
+            mountains: { minRegionSize: 8, radius: 650, volume: { min: 0.0, max: 0.125 } },
+            ocean: { minRegionSize: 16, radius: 750, volume: { min: 0.0, max: 0.115 } },
+            plains: { minRegionSize: 14, radius: 1000, volume: { min: 0.0, max: 0.1 } }
+        };
 
     public worldLayers: Record<string, WorldLayer> = {
         // NAME KEY MUST MATCH OBJECT LITERAL !IMPORTANT
@@ -129,8 +141,8 @@ export class WorldConfig {
                 { material: "gravel", weight: 1, blend: 0.4 }
             ]
         },
-        cliffs: {
-            name: "cliffs",
+        colluvium: {
+            name: "colluvium",
             height: 0.7,
             materials: [
                 { material: "stone", weight: 6, blend: 0.3 },
@@ -139,8 +151,8 @@ export class WorldConfig {
                 { material: "snow", weight: 1, blend: 0.8 },
             ]
         },
-        mountains: {
-            name: "mountains",
+        summit: {
+            name: "summit",
             height: 0.9,
             materials: [
                 { material: "stone", weight: 2, blend: 0.3 },
