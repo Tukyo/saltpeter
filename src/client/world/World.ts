@@ -1,26 +1,28 @@
-import { CANVAS, WORLD } from "../Config";
-import { WorldLayer, CellData, Material, PhysicsMaterialTypes, PixelData, Vec2, NoiseType, NetworkChunk, PixelWaterData, WorldData, WorldRegion, RegionName, AudioZone } from "../Types";
+import { VIEWPORT, WORLD } from "../Config";
+import { WorldLayer, CellData, Material, PhysicsMaterialTypes, PixelData, Vec2, NoiseType, NetworkChunk, PixelWaterData, WorldData, WorldRegion, RegionName, AudioZone, ActiveAudio } from "../Types";
 
-import { AudioConfig } from "../AudioConfig";
-import { AudioManager } from "../AudioManager";
 import { Camera } from "../Camera";
 import { ControlsManager } from "../ControlsManager";
 import { RoomManager } from "../RoomManager";
 import { UserInterface } from "../UserInterface";
 import { Utility } from "../Utility";
-
 import { WorldChunk } from "./WorldChunk";
 import { WorldConfig } from "./WorldConfig";
 import { WorldDebug } from "./WorldDebug";
 import { WorldEdit } from "./WorldEdit";
+
+import { AudioConfig } from "../audio/AudioConfig";
+import { AudioManager } from "../audio/AudioManager";
+
 import { PlayerState } from "../player/PlayerState";
 
 export class World {
-    public chunks: Map<string, WorldChunk> = new Map();
-    public chunkLayers: Map<string, WorldLayer> = new Map();
+    public chunks: WorldChunk[][] = [];
+    public chunkLayers: WorldLayer[][] = [];
     public regions: WorldRegion[] = [];
+
     public audioZones: Map<string, AudioZone> = new Map();
-    private regionAudioSources: Map<number, { element: HTMLAudioElement | null; volume: number }> = new Map();
+    private regionAudioSources: Map<number, { element: ActiveAudio | null; volume: number }> = new Map();
 
     public isGenerated = false;
     public currentSeed = 0;
@@ -32,7 +34,6 @@ export class World {
     private erosionTemplate: { name: string; index: number }[] | null = null;
     private chunkBuffer: { cx: number; cy: number; loaded: boolean }[] = [];
     private worldBuffer: CellData | null = null;
-    private streamingComplete = false;
 
     private readonly YIELD_RATE = 10;
     private readonly WORLDGEN_PHASES: readonly string[] = ["cells", "degen", "hydration"];
@@ -63,8 +64,8 @@ export class World {
         console.log("Clearing world data...");
 
         // Core data maps
-        this.chunks.clear();
-        this.chunkLayers.clear();
+        this.chunks = [];
+        this.chunkLayers = [];
         this.regions = [];
 
         this.cleanWorldAudio();
@@ -73,7 +74,6 @@ export class World {
         this.chunkBuffer = [];
         this.worldBuffer = null;
         this.erosionTemplate = null;
-        this.streamingComplete = false;
 
         // State flags
         this.isGenerated = false;
@@ -85,21 +85,25 @@ export class World {
         if (this.ui.worldCtx && this.ui.worldCanvas) {
             this.ui.worldCtx.clearRect(0, 0, WORLD.WIDTH, WORLD.HEIGHT);
         }
-
-        // this.audioManager.stopAll?.();
     }
     //
     // #endregion
 
     // #region [ Generation ]
     //
+
     /**
      * Shows the generation menu for the host allows worldgen tuning.
      * 
      * Returns seed and chosen params for network sync and generation.
      */
-    public async showGenerationMenu(): Promise<WorldData> {
-        await this.worldgenMenu();
+    public async showGenerationMenu(): Promise<WorldData | "load"> {
+        const result = await this.worldgenMenu();
+
+        if (result.mode === "load" && result.file) {
+            await this.loadWorldFromFile(result.file);
+            return "load"; // signal that we loaded
+        }
 
         const params = this.worldConfig.worldgenParams;
         const seed = params.general.seed || Date.now();
@@ -120,15 +124,15 @@ export class World {
      */
     public async generateWorld(worldData: WorldData): Promise<void> {
         this.showLoadingMenu();
+        this.clear(); // Full refresh just in case
 
         this.worldConfig.worldgenParams = worldData.params;
         this.currentSeed = worldData.seed;
 
-        this.clear(); // Full refresh just in case
-
         const cellData = await this.generateCells(worldData.seed);
         const degenCellData = await this.applyDegen(cellData, worldData.seed);
         const hydratedCellData = await this.applyHydration(degenCellData, worldData.seed);
+
         await this.bakeChunksFromCells(hydratedCellData);
 
         this.isGenerated = true;
@@ -142,11 +146,11 @@ export class World {
      * Creates and returns the CellData which is used to bake the cells into chunks.
      */
     private async generateCells(seed: number): Promise<CellData> {
-        const cellSize = this.worldConfig.worldgenParams.general.cell.size; // Get the cell size from the configuration
-        const lowestDepth = this.worldConfig.worldgenParams.terrain.lowestDepth; // World bottom
-
-        const allLayerKeys = Object.keys(this.worldConfig.worldLayers);
-        const allMaterialKeys = Object.keys(this.worldConfig.materials);
+        const worldGenParams = this.worldConfig.worldgenParams;
+        const cellSize = worldGenParams.general.cell.size;
+        const terrain = worldGenParams.terrain;
+        const lowestDepth = terrain.lowestDepth;
+        const seaLevel = terrain.seaLevel;
 
         // Determine how many cells needed to fill world
         const cellsX = Math.ceil(WORLD.WIDTH / cellSize);
@@ -159,9 +163,8 @@ export class World {
         const cellLayerGrid: number[][] = Array.from({ length: cellsY }, () => new Array<number>(cellsX).fill(0));
 
         // Show status message
-        const phaseMessages = ["building cells...", "placing pixels...", "spawning pixels...", "creating cells..."];
-        const randomMessage = phaseMessages[Math.floor(Math.random() * phaseMessages.length)];
-        await this.utility.yield(randomMessage);
+        const message = this.worldConfig.getWorldgenMessage("generation");
+        await this.utility.yield(message);
 
         const totalCells = cellsX * cellsY;
         let processedCells = 0;
@@ -176,13 +179,13 @@ export class World {
 
                 // Sample height from noise
                 let adjustedHeight = this.utility.getNoise(
-                    this.worldConfig.worldgenParams.terrain.noiseType,
-                    (cellX + 0.5) * this.worldConfig.worldgenParams.terrain.scale,
-                    (cellY + 0.5) * this.worldConfig.worldgenParams.terrain.scale,
+                    terrain.noiseType,
+                    (cellX + 0.5) * terrain.scale,
+                    (cellY + 0.5) * terrain.scale,
                     seed,
                     {
-                        octaves: this.worldConfig.worldgenParams.terrain.octaves,
-                        persistence: this.worldConfig.worldgenParams.terrain.persistence
+                        octaves: terrain.octaves,
+                        persistence: terrain.persistence
                     }
                 );
 
@@ -190,19 +193,17 @@ export class World {
                 else if (adjustedHeight > 1) adjustedHeight = 1; // Clamp [0..1]
 
                 const mid: number = 0.5; // Push contrast around midpoint
-                adjustedHeight = mid + (adjustedHeight - mid) * this.worldConfig.worldgenParams.terrain.intensity;
+                adjustedHeight = mid + (adjustedHeight - mid) * terrain.intensity;
                 if (adjustedHeight < 0) adjustedHeight = 0;
                 else if (adjustedHeight > 1) adjustedHeight = 1; // Clamp [0..1]
 
-                adjustedHeight = Math.pow(adjustedHeight, this.worldConfig.worldgenParams.terrain.heightCurve); // Bias curve
+                adjustedHeight = Math.pow(adjustedHeight, terrain.heightCurve); // Bias curve
                 if (adjustedHeight < 0) adjustedHeight = 0;
                 else if (adjustedHeight > 1) adjustedHeight = 1; // Clamp [0..1]
 
                 // === Island / Valley shaping (exclusive) ===
-                const opts = this.worldConfig.worldgenParams.general.options;
+                const opts = worldGenParams.general.options;
                 if (opts.island || opts.valley) {
-                    const seaLevel = this.worldConfig.worldgenParams.terrain.seaLevel;
-                    const lowestDepth = this.worldConfig.worldgenParams.terrain.lowestDepth;
 
                     // Distance from nearest world edge
                     const distToEdgeX = Math.min(cellX * cellSize, WORLD.WIDTH - (cellX * cellSize + cellSize));
@@ -218,7 +219,7 @@ export class World {
 
                     // Optional subtle noise for organic variation
                     const edgeNoise = this.utility.getNoise(
-                        this.worldConfig.worldgenParams.terrain.noiseType,
+                        terrain.noiseType,
                         cellX * 0.002,
                         cellY * 0.002,
                         seed + 9100,
@@ -227,8 +228,6 @@ export class World {
 
                     // === ISLAND MODE ===
                     if (opts.island) {
-                        // Hard ocean edge (height → 0) fading toward normal terrain
-                        const fade = Math.pow(1 - t, this.worldConfig.worldgenParams.terrain.heightCurve * 1.5);
                         const target = seaLevel * 0.5; // deep ocean floor baseline
                         adjustedHeight = this.utility.lerp(target, adjustedHeight, t + edgeNoise);
 
@@ -239,7 +238,7 @@ export class World {
                     // === VALLEY MODE ===
                     else if (opts.valley) {
                         // Hard mountain edge (height → 1) fading toward valley
-                        const fade = Math.pow(1 - t, this.worldConfig.worldgenParams.terrain.heightCurve * 1.5);
+                        const fade = Math.pow(1 - t, terrain.heightCurve * 1.5);
                         const target = 1.0; // mountain peak height
                         adjustedHeight = this.utility.lerp(adjustedHeight, target, fade + edgeNoise);
 
@@ -252,7 +251,8 @@ export class World {
                 if (adjustedHeight < lowestDepth) { adjustedHeight = lowestDepth; } // Clamp water floor to lowestDepth
 
                 const layerForCell = this.pickLayerForHeight(adjustedHeight);
-                const layerIndex = allLayerKeys.indexOf(layerForCell.name);
+
+                const layerIndex = this.worldConfig.worldLayerIndex[layerForCell.name];
                 cellLayerGrid[cellY][cellX] = layerIndex;
 
                 // Calculate pixel coordinates in this cell
@@ -269,11 +269,12 @@ export class World {
                         if (worldPos.x >= WORLD.WIDTH || worldPos.y >= WORLD.HEIGHT) continue; // Skip cells outside the world
 
                         const pixelInfo = this.samplePixelData(worldPos, seed, layerForCell);
-                        const landMatIndex = allMaterialKeys.indexOf(pixelInfo.material.name);
+
+                        const landMatIndex = this.worldConfig.materialIndex[pixelInfo.material.name];
+
                         const outMaterialIndex = landMatIndex >= 0 ? landMatIndex : 0;
                         const outColorIndex = pixelInfo.materialColorIndex;
 
-                        // Pack material index + color variant into single byte
                         const combined = (outMaterialIndex << 2) | outColorIndex;
 
                         const gi = worldPos.y * WORLD.WIDTH + worldPos.x;
@@ -317,13 +318,15 @@ export class World {
         const totalWeight = entries.reduce((s, m) => s + m.weight, 0);
         let target = materialNoise * totalWeight;
 
-        let selectedMaterial: Material = this.worldConfig.materials.stone; // fallback
+        let selectedMaterial: Material = this.worldConfig.materialsList[this.worldConfig.materialIndex["stone"]];
 
         for (const entry of entries) {
             target -= entry.weight;
             if (target <= 0) {
-                const mat = this.worldConfig.materials[entry.material];
-                if (mat) selectedMaterial = mat;
+                const idx = this.worldConfig.materialIndex[entry.material];
+                if (idx !== undefined) {
+                    selectedMaterial = this.worldConfig.materialsList[idx];
+                }
                 break;
             }
         }
@@ -349,7 +352,7 @@ export class World {
      * Processes a normalized height value, and picks the closest layer.
      */
     private pickLayerForHeight(h: number): WorldLayer {
-        const layers = Object.values(this.worldConfig.worldLayers);
+        const layers = this.worldConfig.worldLayerList;
 
         let best = layers[0]; // Start with first layer as "best match"
         let bestDist = Math.abs(h - best.height);
@@ -385,12 +388,12 @@ export class World {
         const newHeightData = new Uint8Array(worldHeightData);
 
         const degenConfig = this.worldConfig.worldgenParams.degen;
+        const allMaterials = this.worldConfig.materialsList;
 
         const erosionMaterials = this.getErosionTemplate();
 
-        const phaseMessages = ["eroding terrain...", "wearing down surfaces...", "carving material layers...", "degenerating terrain...", "exposing layers..."];
-        const randomMessage = phaseMessages[Math.floor(Math.random() * phaseMessages.length)];
-        await this.utility.yield(randomMessage);
+        const message = this.worldConfig.getWorldgenMessage("degeneration");
+        await this.utility.yield(message);
 
         const totalPixels = WORLD.WIDTH * WORLD.HEIGHT;
         let processedPixels = 0;
@@ -455,7 +458,7 @@ export class World {
                 // Get current material's durability (check if solid first!)
                 const currentPacked = worldPixelData[gi];
                 const currentMatIndex = currentPacked >> 2;
-                const currentMat = Object.values(this.worldConfig.materials)[currentMatIndex];
+                const currentMat = allMaterials[currentMatIndex];
 
                 let durability = 0.5;
                 if (currentMat.physics.type === PhysicsMaterialTypes.Solid) {
@@ -482,8 +485,6 @@ export class World {
                     ? currentMat.physics.durability
                     : 0.5;
 
-                // Filter erosion materials to only those HARDER than current material
-                const allMaterials = Object.values(this.worldConfig.materials);
 
                 const harderMaterials = erosionMaterials.filter(m => {
                     const mat = allMaterials[m.index];
@@ -525,7 +526,7 @@ export class World {
                         }
                     );
 
-                    const selectedMat = Object.values(this.worldConfig.materials)[newMatIndex];
+                    const selectedMat = allMaterials[newMatIndex];
                     const numColors = selectedMat.colors.length;
                     newColorVariantIndex = Math.floor(detailForColor * numColors) % numColors;
                 }
@@ -565,13 +566,14 @@ export class World {
             "bedrock"
         ]; // These materials will be possibly exposed during erosion
 
-        const allKeys = Object.keys(this.worldConfig.materials);
+        const lookup = this.worldConfig.materialIndex;
+
         const cached: { name: string; index: number }[] = erosionMaterialNames
-            .map((name: string) => {
-                const index: number = allKeys.indexOf(name);
-                return { name, index };
-            })
-            .filter(m => m.index >= 0);
+            .map((name: string) => ({
+                name,
+                index: lookup[name]
+            }))
+            .filter(m => m.index !== undefined);
 
         this.erosionTemplate = cached;
         console.log("Cached erosion materials...");
@@ -590,43 +592,134 @@ export class World {
 
         const { worldPixelData, worldHeightData, cellLayerGrid } = cellData;
         const newWaterData = new Uint8Array(worldPixelData.length);
+        const newPixelData = new Uint8Array(worldPixelData);
+
+        const allMaterials = this.worldConfig.materialsList;
+        const materialIndexLookup = this.worldConfig.materialIndex;
 
         const seaLevel = this.worldConfig.worldgenParams.terrain.seaLevel;
         const lowestDepth = this.worldConfig.worldgenParams.terrain.lowestDepth;
         const depthRange = seaLevel - lowestDepth;
 
-        const phaseMessages = ["hydrating terrain...", "filling water basins...", "flooding valleys...", "hydrating cells...", "hydrating pixels...", "creating water..."];
-        const randomMessage = phaseMessages[Math.floor(Math.random() * phaseMessages.length)];
-        await this.utility.yield(randomMessage);
+        const width = WORLD.WIDTH;
+        const height = WORLD.HEIGHT;
+        const totalPixels = width * height;
 
-        const totalPixels = worldHeightData.length;
-        let processedPixels = 0;
+        const wetMaterialMap: Record<string, string> = {
+            "clay": "clay_wet",
+            "dirt": "mud",
+            "sand": "sand_wet",
+            "silt": "silt_wet"
+        };
 
-        for (let i = 0; i < worldHeightData.length; i++) {
-            processedPixels++;
-            if (processedPixels % Math.floor(totalPixels / this.YIELD_RATE) === 0) {
-                await this.utility.yield();
-            }
+        const message = this.worldConfig.getWorldgenMessage("hydration");
+        await this.utility.yield(message);
 
-            const height01 = worldHeightData[i] / 255;
+        // === 1. Create water depth & wetness mask ===
+        const wetness = new Float32Array(totalPixels);
+        const isWaterPixel = new Uint8Array(totalPixels); // <— track direct water
 
-            if (height01 < seaLevel) {
-                // how far below sea level this pixel is (0 = shore, 1 = deepest)
-                let depthT = (seaLevel - height01) / depthRange;
-                if (depthT < 0) depthT = 0;
-                else if (depthT > 1) depthT = 1;
+        for (let i = 0; i < totalPixels; i++) {
+            const h = worldHeightData[i] / 255;
+            let depthT = 0;
+            if (h < seaLevel) {
+                depthT = (seaLevel - h) / depthRange;
+                depthT = Math.max(0, Math.min(1, depthT));
                 newWaterData[i] = Math.round(depthT * 255);
+                wetness[i] = 1; // <— force full wetness
+                isWaterPixel[i] = 1; // <— mark as direct water
             } else {
                 newWaterData[i] = 0;
+                wetness[i] = 0;
             }
         }
 
-        console.log("Hydration pass complete.");
+        // === 2. Diffuse wetness outward (fast blur pass) ===
+        const tmp = new Float32Array(totalPixels);
+        const passes = 4;
+        const blurRadius = 5;
 
-        const hydratedData: CellData = { worldPixelData, worldHeightData, worldWaterData: newWaterData, cellLayerGrid };
+        for (let pass = 0; pass < passes; pass++) {
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = y * width + x;
 
-        return hydratedData;
+                    // skip direct water pixels; keep them at full wetness
+                    if (isWaterPixel[idx]) {
+                        tmp[idx] = 1;
+                        continue;
+                    }
+
+                    let acc = wetness[idx];
+                    let count = 1;
+                    for (let dy = -blurRadius; dy <= blurRadius; dy++) {
+                        for (let dx = -blurRadius; dx <= blurRadius; dx++) {
+                            if (dx === 0 && dy === 0) continue;
+                            const nx = x + dx;
+                            const ny = y + dy;
+                            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+                            const nIdx = ny * width + nx;
+                            acc += wetness[nIdx];
+                            count++;
+                        }
+                    }
+                    tmp[idx] = acc / count;
+                }
+            }
+            wetness.set(tmp);
+        }
+
+
+        // === 3. Add subtle low-frequency noise for realism ===
+        const moistureNoiseScale = 0.0025;
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const idx = y * width + x;
+                const n = this.utility.getNoise(
+                    this.worldConfig.worldgenParams.material.noiseType,
+                    x * moistureNoiseScale,
+                    y * moistureNoiseScale,
+                    seed + 9999
+                );
+                wetness[idx] = Math.min(1, Math.max(0, wetness[idx] * (0.9 + n * 0.3)));
+            }
+        }
+
+        // === 4. Apply material conversion based on wetness threshold ===
+        const dryThreshold = 0.05;
+
+        for (let i = 0; i < totalPixels; i++) {
+            const w = wetness[i];
+            if (w <= dryThreshold) continue;
+
+            const packed = worldPixelData[i];
+            const matIndex = packed >> 2;
+            const colorIndex = packed & 0b11;
+            const mat = allMaterials[matIndex];
+            if (!mat.tags || !mat.tags.includes("absorbent")) continue;
+
+            // chance of wet conversion increases with wetness
+            const probability = (w - dryThreshold) / (1 - dryThreshold);
+            if (Math.random() < probability) {
+                const wetName = wetMaterialMap[mat.name];
+                if (wetName) {
+                    const wetIndex = materialIndexLookup[wetName];
+                    if (wetIndex >= 0) {
+                        newPixelData[i] = (wetIndex << 2) | colorIndex;
+                    }
+                }
+            }
+        }
+
+        console.log("Hydration pass complete (noise diffusion).");
+        return {
+            worldPixelData: newPixelData,
+            worldHeightData,
+            worldWaterData: newWaterData,
+            cellLayerGrid
+        };
     }
+
 
     /**
      * Helper method that returns PixelWaterData.
@@ -637,9 +730,8 @@ export class World {
         const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
         const cx = Math.floor(worldPos.x / chunkSize);
         const cy = Math.floor(worldPos.y / chunkSize);
-        const key = `${cx},${cy}`;
-        const chunk = this.chunks.get(key);
 
+        const chunk = this.chunks[cx]?.[cy];
         if (!chunk) return null;
 
         const localX = worldPos.x - cx * chunkSize;
@@ -652,7 +744,7 @@ export class World {
         const seaLevel = this.worldConfig.worldgenParams.terrain.seaLevel;
         const depth = seaLevel - height;
 
-        const waterMaterial = this.worldConfig.materials.water;
+        const waterMaterial = this.worldConfig.materialsList[this.worldConfig.materialIndex["water"]];
 
         const pxWaterData: PixelWaterData = {
             hasWater: true,
@@ -673,7 +765,7 @@ export class World {
      */
     private async bakeChunksFromCells(params: CellData): Promise<void> {
         const chunkSize = this.worldConfig.worldgenParams.general.chunk.size; // Get the chunk size from the config
-        const allWorldLayers = Object.values(this.worldConfig.worldLayers);
+        const allWorldLayers = this.worldConfig.worldLayerList;
 
         this.worldBuffer = params; // Save worldData for streaming
 
@@ -690,12 +782,10 @@ export class World {
         const cellsX = Math.ceil(WORLD.WIDTH / cellSize);
         const cellsY = Math.ceil(WORLD.HEIGHT / cellSize);
 
-        const startMessages = ["baking chunks...", "baking pixels into chunks...", "assembling chunks...", "chunkifying... is that a word?", "packing pixels into chunks...", "arranging cells into chunks..."];
-        const halfwayMessages = ["getting close...", "thanks for waiting...", "almost done...", "still chunking...", "about 50% of chunks baked...", "still baking pixels into chunks...", "almost all pixels baked..."]
+        const startMessage = this.worldConfig.getWorldgenMessage("bakeStart");
+        const secondMessage = this.worldConfig.getWorldgenMessage("bakeHalf");
 
-        const firstMessage = startMessages[Math.floor(Math.random() * startMessages.length)];
-        const secondMessage = halfwayMessages[Math.floor(Math.random() * halfwayMessages.length)];
-        await this.utility.yield(firstMessage);
+        await this.utility.yield(startMessage);
 
         // === sort chunks by distance to player spawn ===
         const spawn = {
@@ -792,10 +882,17 @@ export class World {
                 this.worldConfig
             );
 
-            const key = `${cx},${cy}`;
-            this.chunks.set(key, worldChunk);
-            this.chunkLayers.set(key, dominantLayer);
+            // Ensure row arrays exist
+            if (!this.chunks[cx]) this.chunks[cx] = [];
+            if (!this.chunkLayers[cx]) this.chunkLayers[cx] = [];
+
+            // Assign into 2D grid
+            this.chunks[cx][cy] = worldChunk;
+            this.chunkLayers[cx][cy] = dominantLayer;
+
+            // Render the chunk
             this.renderChunk(cx, cy, worldChunk);
+
         }
     }
 
@@ -873,8 +970,9 @@ export class World {
                 let totalWater = 0;
                 let totalPixels = 0;
                 for (const { cx: rcx, cy: rcy } of regionChunks) {
-                    const chunk = this.chunks.get(`${rcx},${rcy}`);
+                    const chunk = this.chunks[rcx]?.[rcy];
                     if (!chunk) continue;
+
                     for (let y = 0; y < chunkSize; y++) {
                         for (let x = 0; x < chunkSize; x++) {
                             totalWater += chunk.getWaterAt(x, y, chunkSize) > 0 ? 1 : 0;
@@ -1019,14 +1117,24 @@ export class World {
      * Renders the world to the world canvas within the camera bounds.
      */
     public drawWorld(): void {
-        if (!this.ui.ctx || !this.ui.worldCanvas || !this.isGenerated) return;
+        if (!this.ui.ctx || !this.ui.worldCanvas || !this.ui.liquidCanvas || !this.isGenerated) return;
+
+        const cam = this.camera.pos;
 
         this.ui.ctx.drawImage(
             this.ui.worldCanvas,
-            this.camera.pos.x, this.camera.pos.y,
-            CANVAS.WIDTH, CANVAS.HEIGHT,
+            cam.x, cam.y,
+            VIEWPORT.WIDTH, VIEWPORT.HEIGHT,
             0, 0,
-            CANVAS.WIDTH, CANVAS.HEIGHT
+            VIEWPORT.WIDTH, VIEWPORT.HEIGHT
+        );
+
+        this.ui.ctx.drawImage(
+            this.ui.liquidCanvas,
+            cam.x, cam.y,
+            VIEWPORT.WIDTH, VIEWPORT.HEIGHT,
+            0, 0,
+            VIEWPORT.WIDTH, VIEWPORT.HEIGHT
         );
     }
 
@@ -1076,16 +1184,16 @@ export class World {
      * Uses getHeightAt and getWaterAt to create pixel perfect water render.
      */
     private renderWater(cx: number, cy: number, chunk: WorldChunk): void {
-        if (!this.ui.worldCtx) return;
+        if (!this.ui.liquidCtx) return;
 
-        const ctx = this.ui.worldCtx;
+        const ctx = this.ui.liquidCtx;
         const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
         const startX = cx * chunkSize;
         const startY = cy * chunkSize;
         const seaLevel = this.worldConfig.worldgenParams.terrain.seaLevel;
 
         const w = this.worldConfig.worldgenParams.render.water; // hydration config reference
-        const waterMat = this.worldConfig.materials.water;
+        const waterMat = this.worldConfig.materialsList[this.worldConfig.materialIndex.water];
         const palette = waterMat.colors;
 
         const seed = this.currentSeed + 9100;
@@ -1192,8 +1300,8 @@ export class World {
     public getMaterialAt(x: number, y: number): Material | null {
         const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
         const cx = Math.floor(x / chunkSize), cy = Math.floor(y / chunkSize);
-        const key = `${cx},${cy}`;
-        const chunk = this.chunks.get(key);
+
+        const chunk = this.chunks[cx]?.[cy];
         if (!chunk) return null;
 
         const localX = x - cx * chunkSize;
@@ -1202,7 +1310,7 @@ export class World {
         const combined = chunk.pixelData[idx];
         const materialIndex = combined >> 2;
 
-        return Object.values(this.worldConfig.materials)[materialIndex] || null;
+        return this.worldConfig.materialsList[materialIndex] || null;
     }
 
     /**
@@ -1211,8 +1319,9 @@ export class World {
     public getHeightAt(x: number, y: number): number | null {
         const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
         const cx = Math.floor(x / chunkSize), cy = Math.floor(y / chunkSize);
-        const key = `${cx},${cy}`;
-        const chunk = this.chunks.get(key);
+
+        const chunk = this.chunks[cx]?.[cy];
+        if (!chunk) return null;
 
         if (!chunk) return null;
 
@@ -1234,8 +1343,7 @@ export class World {
      * Gets the stored or calculated primary layer for a chunk.
      */
     public getChunkLayer(cx: number, cy: number): WorldLayer | null {
-        const key = `${cx},${cy}`;
-        return this.chunkLayers.get(key) || null;
+        return this.chunkLayers[cx]?.[cy] || null;
     }
 
     /**
@@ -1254,7 +1362,8 @@ export class World {
         const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
         const cx = Math.floor(worldX / chunkSize);
         const cy = Math.floor(worldY / chunkSize);
-        this.worldDebug.hoveredChunk = `${cx},${cy}`;
+        this.worldDebug.hoveredChunk = { cx, cy };
+
         return { worldX, worldY };
     }
 
@@ -1264,15 +1373,15 @@ export class World {
      * This is purely a loading helper.
      */
     private totalYieldSteps(): number {
-        const yieldPerProcess = this.YIELD_RATE;
+        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
 
-        const chunksX = Math.ceil(WORLD.WIDTH / this.worldConfig.worldgenParams.general.chunk.size);
-        const chunksY = Math.ceil(WORLD.HEIGHT / this.worldConfig.worldgenParams.general.chunk.size);
+        const chunksX = Math.ceil(WORLD.WIDTH / chunkSize);
+        const chunksY = Math.ceil(WORLD.HEIGHT / chunkSize);
         const totalChunks = chunksX * chunksY;
 
         const bakedChunks = Math.floor(totalChunks * 0.5);
 
-        return (yieldPerProcess * this.WORLDGEN_PHASES.length) + bakedChunks;
+        return (this.YIELD_RATE * this.WORLDGEN_PHASES.length) + bakedChunks;
     }
     //
     // #endregion
@@ -1282,7 +1391,7 @@ export class World {
     /**
      * Builds and displays the worldgen menu.
      */
-    private async worldgenMenu(): Promise<void> {
+    private async worldgenMenu(): Promise<{ mode: "generate" | "load", file?: File }> {
         return new Promise(resolve => {
             const container = document.createElement("div");
             container.className = "config_popup_container";
@@ -1458,8 +1567,22 @@ export class World {
 
             <div class="form_submit">
                 <button type="submit">Generate (Enter)</button>
+                <input id="loadWorldInput" type="file" accept=".json" style="display:none">
+                <button type="button" id="loadWorldButton">Load Saved World</button>
             </div>
-        `;
+            `;
+
+            const loadButton = form.querySelector("#loadWorldButton") as HTMLButtonElement;
+            const fileInput = form.querySelector("#loadWorldInput") as HTMLInputElement;
+
+            loadButton.onclick = () => fileInput.click();
+
+            fileInput.onchange = async (e) => {
+                const file = (e.target as HTMLInputElement).files?.[0];
+                if (!file) return;
+                document.body.removeChild(container);
+                resolve({ mode: "load", file });
+            };
 
             form.onsubmit = e => {
                 e.preventDefault();
@@ -1501,14 +1624,13 @@ export class World {
                 this.worldConfig.worldgenParams.degen.detail.scale = num("degen.detail.scale");
 
                 // --- Hydration ---
-                // this.worldConfig.params.hydration.noiseType = fd.get("hydration.noiseType") as NoiseType;
-                // this.worldConfig.params.hydration.scale = num("hydration.scale");
-                // this.worldConfig.params.hydration.intensity = num("hydration.intensity");ds
-                // this.worldConfig.params.hydration.multiplier = num("hydration.multiplier");
-
+                // this.worldConfig.worldgenParams.hydration.noiseType = fd.get("hydration.noiseType") as NoiseType;
+                // this.worldConfig.worldgenParams.hydration.scale = num("hydration.scale");
+                // this.worldConfig.worldgenParams.hydration.intensity = num("hydration.intensity");
+                // this.worldConfig.worldgenParams.hydration.multiplier = num("hydration.multiplier");
 
                 document.body.removeChild(container);
-                resolve();
+                resolve({ mode: "generate" });
             };
 
             popup.appendChild(form);
@@ -1531,42 +1653,42 @@ export class World {
             const w = this.worldConfig.worldgenParams.render.water;
 
             form.innerHTML = `
-        <h3>Render Config</h3>
+            <h3>Render Config</h3>
 
-        <fieldset>
-            <legend>Water Rendering</legend>
-            <div class="form_grid">
-                <label><span>Base Opacity:</span>
-                    <input type="number" name="opacityBase" value="${w.opacityBase}" step="any" min="0" max="1">
-                </label>
-                <label><span>Opacity Multiplier:</span>
-                    <input type="number" name="opacityMultiplier" value="${w.opacityMultiplier}" step="any" min="0" max="2">
-                </label>
-                <label><span>Foam Intensity:</span>
-                    <input type="number" name="foamIntensity" value="${w.foamIntensity}" step="any" min="0" max="2">
-                </label>
-                <label><span>Foam Scale:</span>
-                    <input type="number" name="foamScale" value="${w.foamScale}" step="any" min="0">
-                </label>
-                <label><span>Noise Scale:</span>
-                    <input type="number" name="noiseScale" value="${w.noiseScale}" step="any" min="0">
-                </label>
-                <label><span>Shore Blend:</span>
-                    <input type="number" name="shoreBlend" value="${w.shoreBlend}" step="any" min="0" max="1">
-                </label>
-                <label><span>Shimmer Strength:</span>
-                    <input type="number" name="shimmerStrength" value="${w.shimmerStrength}" step="any" min="0" max="1">
-                </label>
-                <label><span>Depth Darkness:</span>
-                    <input type="number" name="depthDarkness" value="${w.depthDarkness}" step="any" min="0" max="2">
-                </label>
+            <fieldset>
+                <legend>Water Rendering</legend>
+                <div class="form_grid">
+                    <label><span>Base Opacity:</span>
+                        <input type="number" name="opacityBase" value="${w.opacityBase}" step="any" min="0" max="1">
+                    </label>
+                    <label><span>Opacity Multiplier:</span>
+                        <input type="number" name="opacityMultiplier" value="${w.opacityMultiplier}" step="any" min="0" max="2">
+                    </label>
+                    <label><span>Foam Intensity:</span>
+                        <input type="number" name="foamIntensity" value="${w.foamIntensity}" step="any" min="0" max="2">
+                    </label>
+                    <label><span>Foam Scale:</span>
+                        <input type="number" name="foamScale" value="${w.foamScale}" step="any" min="0">
+                    </label>
+                    <label><span>Noise Scale:</span>
+                        <input type="number" name="noiseScale" value="${w.noiseScale}" step="any" min="0">
+                    </label>
+                    <label><span>Shore Blend:</span>
+                        <input type="number" name="shoreBlend" value="${w.shoreBlend}" step="any" min="0" max="1">
+                    </label>
+                    <label><span>Shimmer Strength:</span>
+                        <input type="number" name="shimmerStrength" value="${w.shimmerStrength}" step="any" min="0" max="1">
+                    </label>
+                    <label><span>Depth Darkness:</span>
+                        <input type="number" name="depthDarkness" value="${w.depthDarkness}" step="any" min="0" max="2">
+                    </label>
+                </div>
+            </fieldset>
+
+            <div class="form_submit">
+                <button type="submit">Apply (Enter)</button>
             </div>
-        </fieldset>
-
-        <div class="form_submit">
-            <button type="submit">Apply (Enter)</button>
-        </div>
-        `;
+            `;
 
             form.onsubmit = e => {
                 e.preventDefault();
@@ -1590,9 +1712,16 @@ export class World {
                     this.ui.worldCtx.clearRect(0, 0, WORLD.WIDTH, WORLD.HEIGHT);
                 }
 
-                for (const [key, chunk] of this.chunks.entries()) {
-                    const [cx, cy] = key.split(",").map(Number);
-                    this.renderChunk(cx, cy, chunk);
+                for (let cx = 0; cx < this.chunks.length; cx++) {
+                    const col = this.chunks[cx];
+                    if (!col) continue;
+
+                    for (let cy = 0; cy < col.length; cy++) {
+                        const chunk = col[cy];
+                        if (!chunk) continue;
+
+                        this.renderChunk(cx, cy, chunk);
+                    }
                 }
 
                 document.body.removeChild(popup);
@@ -1621,7 +1750,8 @@ export class World {
                 <div id="loadingBarFill"></div>
             </div>
         </div>
-    `;
+        `;
+
         document.body.appendChild(menu);
     }
 
@@ -1639,48 +1769,26 @@ export class World {
     //
     // #endregion
 
-    // #region [ Events ]
-    //
-    /**
-     * Initializes loading events.
-     */
-    private initLoadingProgressEvents(): void {
-        document.addEventListener("yieldMessage", (e: Event) => {
-            const event = e as CustomEvent<{ message: string }>;
-            const msgEl = document.getElementById("loadingMessage");
-            if (msgEl) msgEl.textContent = event.detail.message;
-        });
-
-        document.addEventListener("yieldProgress", () => {
-            const bar = document.getElementById("loadingBarFill");
-            if (!bar) return;
-
-            const current = parseFloat(bar.style.width || "0");
-            const newWidth = Math.min(100, current + (100 / this.totalYieldSteps()));
-            bar.style.width = `${newWidth}%`;
-        });
-    }
-
-    //
-    // #endregion
-
     // #region [ Chunk Management ]
     //
     /**
-     * General entrypoint for all chunk updates.
-     * 
-     * Network message triggers this, as well as client-side edits.
+     * Processes all chunk updates. Optionally patches a chunk to reflect the newest partial update.
      */
-    public handleChunkUpdate(remoteChunk: NetworkChunk): void { // TODO: Needs optimization and rethink to approach on when / how to send this data
+    public handleChunkUpdate(remoteChunk: NetworkChunk): void {
         if (!remoteChunk || !remoteChunk.pos) return;
 
-        const key = `${remoteChunk.pos.x},${remoteChunk.pos.y}`;
-        const existing = this.chunks.get(key);
-
-        // Only update if it's new or newer
-        if (existing && (remoteChunk.version ?? 0) <= (existing as any).version) {
+        if ((remoteChunk as any).patches) {
+            this.handleChunkPatch(remoteChunk);
             return;
         }
+
+        const cx = remoteChunk.pos.x;
+        const cy = remoteChunk.pos.y;
+
+        const existing = this.chunks[cx]?.[cy];
+
+        // Only update if it's new or newer
+        if (existing && (remoteChunk.version ?? 0) <= existing.version) return;
 
         // Convert NetworkChunk → WorldChunk
         const newChunk = new WorldChunk(
@@ -1691,20 +1799,80 @@ export class World {
             this.worldConfig
         );
 
-        // Extend runtime metadata
         newChunk.version = remoteChunk.version;
         newChunk.pos = remoteChunk.pos;
         newChunk.size = remoteChunk.size;
 
-        this.chunks.set(key, newChunk);
-        this.chunkLayers.set(
-            key,
-            this.worldConfig.worldLayers[remoteChunk.layer] || Object.values(this.worldConfig.worldLayers)[0]
-        );
+        if (!this.chunks[cx]) this.chunks[cx] = [];
+        this.chunks[cx][cy] = newChunk;
 
-        // Immediately re-render the updated chunk
-        this.renderChunk(remoteChunk.pos.x, remoteChunk.pos.y, newChunk);
-        console.log(`📦 Synced chunk ${key} (v${remoteChunk.version})`);
+        if (!this.chunkLayers[cx]) this.chunkLayers[cx] = [];
+
+        const idx = this.worldConfig.worldLayerIndex[remoteChunk.layer];
+
+        this.chunkLayers[cx][cy] =
+            idx !== undefined
+                ? this.worldConfig.worldLayerList[idx]
+                : this.worldConfig.worldLayerList[0];
+
+        this.renderChunk(cx, cy, newChunk);
+    }
+
+    /**
+     * Processes partial chunk updates and changes.
+     */
+    private handleChunkPatch(remoteChunk: any): void {
+        const cx = remoteChunk.pos.x;
+        const cy = remoteChunk.pos.y;
+
+        const chunk = this.chunks[cx]?.[cy];
+        if (!chunk || !remoteChunk.patches) return;
+
+        const ctx = this.ui.worldCtx;
+        if (!ctx) return;
+
+        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
+        const startX = remoteChunk.pos.x * chunkSize;
+        const startY = remoteChunk.pos.y * chunkSize;
+
+        for (const patch of remoteChunk.patches) {
+            const i = patch.i;
+
+            // Update the pixel, height and water data
+            if (typeof patch.pixel !== "undefined") {
+                chunk.pixelData[i] = patch.pixel;
+            }
+            if (typeof patch.height !== "undefined") {
+                chunk.heightData[i] = patch.height;
+            }
+            if (chunk.waterData && typeof patch.water !== "undefined") {
+                chunk.waterData[i] = patch.water;
+            }
+
+            // Compute world-space pixel coordinates
+            const localX = i % chunkSize;
+            const localY = Math.floor(i / chunkSize);
+            const worldX = startX + localX;
+            const worldY = startY + localY;
+
+            // Draw updated pixel
+            const baseColor = chunk.getColorAt(localX, localY, chunkSize);
+            const detailNoise = this.utility.getNoise(
+                this.worldConfig.worldgenParams.material.detail.noiseType,
+                worldX * this.worldConfig.worldgenParams.material.detail.scale,
+                worldY * this.worldConfig.worldgenParams.material.detail.scale,
+                this.currentSeed + 3000,
+                {
+                    octaves: this.worldConfig.worldgenParams.terrain.octaves,
+                    persistence: this.worldConfig.worldgenParams.terrain.persistence
+                }
+            );
+            const finalColor = this.adjustPixelColor(baseColor, detailNoise);
+
+            ctx.fillStyle = finalColor;
+            ctx.fillRect(worldX, worldY, 1, 1);
+        }
+        // console.log(`Patched ${remoteChunk.patches.length} pixels in chunk ${key}`);
     }
 
     /**
@@ -1725,52 +1893,11 @@ export class World {
             await this.utility.yield(); // one chunk per frame
         }
 
-        console.log("All chunks loaded.");
         this.chunkBuffer = [];
         this.worldBuffer = null;
-        this.streamingComplete = true;
 
         this.bakeRegionsFromChunks();
-    }
-
-    /**
-     * Public function that can be used to actively stream chunks as the player gets closer to them.
-     * 
-     * Only one chunk per frame can be loaded using the passed radius.
-     */
-    public async streamUnloadedChunks(radius: number): Promise<void> {
-        if (!this.isGenerated || !this.playerState?.myPlayer || this.streamingComplete) return;
-
-        if (!this.chunkBuffer.length || this.chunkBuffer.every(c => c.loaded)) {
-            console.log("All chunks streamed. Cleaning up temporary world data...");
-            this.chunkBuffer = [];
-            this.worldBuffer = null;
-            this.streamingComplete = true;
-            return;
-        }
-
-        const playerPos = this.playerState.myPlayer.transform.pos;
-        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
-        const loadRadius = radius;
-
-        // Only load one new chunk per frame to avoid stutter
-        for (let i = 0; i < this.chunkBuffer.length; i++) {
-            const entry = this.chunkBuffer[i];
-            if (entry.loaded) continue;
-
-            const centerX = (entry.cx + 0.5) * chunkSize;
-            const centerY = (entry.cy + 0.5) * chunkSize;
-            const dx = centerX - playerPos.x;
-            const dy = centerY - playerPos.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-
-            if (dist < loadRadius) {
-                entry.loaded = true;
-                this.loadChunk(entry.cx, entry.cy);
-                await this.utility.yield(); // Give the frame time to breathe
-                break; // One chunk allowed per frame
-            }
-        }
+        console.log("All chunks loaded.");
     }
 
     /**
@@ -1779,8 +1906,7 @@ export class World {
     private loadChunk(cx: number, cy: number): void {
         if (!this.worldBuffer || !this.worldBuffer.cellLayerGrid || !this.worldBuffer.worldWaterData) return;
 
-        const allWorldLayers = Object.values(this.worldConfig.worldLayers);
-
+        const allWorldLayers = this.worldConfig.worldLayerList;
         const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
         const cellSize = this.worldConfig.worldgenParams.general.cell.size;
 
@@ -1830,10 +1956,15 @@ export class World {
         const dominantLayer = allWorldLayers[dominantIdx] || allWorldLayers[0];
 
         const worldChunk = new WorldChunk(dominantLayer.name, chunkPixels, chunkHeights, chunkWater, this.worldConfig);
-        const key = `${cx},${cy}`;
-        this.chunks.set(key, worldChunk);
-        this.chunkLayers.set(key, dominantLayer);
+
+        if (!this.chunks[cx]) this.chunks[cx] = [];
+        if (!this.chunkLayers[cx]) this.chunkLayers[cx] = [];
+
+        this.chunks[cx][cy] = worldChunk;
+        this.chunkLayers[cx][cy] = dominantLayer;
+
         this.renderChunk(cx, cy, worldChunk);
+
     }
 
     //
@@ -1870,13 +2001,17 @@ export class World {
             const zonesX = Math.ceil(regionWidth / effectiveCoverage);
             const zonesY = Math.ceil(regionHeight / effectiveCoverage);
             const totalZones = zonesX * zonesY;
+            const maxZones = 10; // TODO: Calculate this more dynamically
 
-            if (totalZones > 5) {
-                console.warn(`⚠️ Region ${region.name} would need ${totalZones} zones - capping at grid pattern`);
+            if (totalZones > maxZones) {
+                console.warn(`Region ${region.name} needs ${totalZones} zones - capping at ${maxZones}.`);
             }
 
+            let createdZones = 0;
             for (let gy = 0; gy < zonesY; gy++) {
                 for (let gx = 0; gx < zonesX; gx++) {
+                    if (createdZones >= maxZones) break;
+
                     const zoneX = region.bounds.minX * chunkSize + (gx + 0.5) * effectiveCoverage;
                     const zoneY = region.bounds.minY * chunkSize + (gy + 0.5) * effectiveCoverage;
 
@@ -1913,7 +2048,10 @@ export class World {
                         },
                         isActive: false
                     });
+
+                    createdZones++;
                 }
+                if (createdZones >= maxZones) break;
             }
         });
 
@@ -1921,7 +2059,7 @@ export class World {
     }
 
     /**
-     * PRocesses updates for regional audio zones and controls volume based on player position.
+     * Processes updates for regional audio zones and controls volume based on player position.
      */
     public updateAudioZones(): void {
         if (!this.playerState?.myPlayer) return;
@@ -1972,17 +2110,16 @@ export class World {
                     brain.element = this.audioManager.playAudio({
                         src,
                         loop: true,
-                        output: "sfx",
+                        output: "ambience",
                         volume: { min: regionAudio.volume.min, max: regionAudio.volume.max }
                     });
-                    console.log(`🎧 Started ${region.name} ambience`);
+                    console.log(`Started ${region.name} ambience`);
                 }
-                if (brain.element) brain.element.volume = targetVolume;
+                if (brain.element) brain.element.setVolume(targetVolume);
             } else if (brain.element) {
-                brain.element.volume = regionAudio.volume.min;
-                brain.element.pause();
+                brain.element.stop();
                 brain.element = null;
-                console.log(`🔇 Stopped ${region.name} ambience`);
+                console.log(`Stopped ${region.name} ambience`);
             }
         });
     }
@@ -1995,8 +2132,7 @@ export class World {
         this.regionAudioSources.forEach((brain) => {
             if (brain.element) {
                 try {
-                    brain.element.pause();
-                    brain.element.currentTime = 0;
+                    brain.element.stop();
                 } catch (e) { console.warn("Failed to stop world audio:", e); }
             }
         });
@@ -2006,4 +2142,231 @@ export class World {
 
     //
     // #endregion
+
+    // #region [ Events ]
+    //
+    /**
+     * Initializes loading events.
+     */
+    private initLoadingProgressEvents(): void {
+        document.addEventListener("yieldMessage", (e: Event) => {
+            const event = e as CustomEvent<{ message: string }>;
+            const msgEl = document.getElementById("loadingMessage");
+            if (msgEl) msgEl.textContent = event.detail.message;
+        });
+
+        document.addEventListener("yieldProgress", () => {
+            const bar = document.getElementById("loadingBarFill");
+            if (!bar) return;
+
+            const current = parseFloat(bar.style.width || "0");
+            const newWidth = Math.min(100, current + (100 / this.totalYieldSteps()));
+            bar.style.width = `${newWidth}%`;
+        });
+    }
+
+    //
+    // #endregion
+
+    public exportWorldData(): void {
+        console.log("Exporting full world data snapshot...");
+
+        const chunkSize = this.worldConfig.worldgenParams.general.chunk.size;
+
+        const encodeBase64 = (u8: Uint8Array): string => {
+            let binary = "";
+            const len = u8.byteLength;
+            for (let i = 0; i < len; i++) binary += String.fromCharCode(u8[i]);
+            return btoa(binary);
+        };
+
+        const chunksOut: any[] = []; // TODO: Type protect the output
+        for (let cx = 0; cx < this.chunks.length; cx++) {
+            const col = this.chunks[cx];
+            if (!col) continue;
+
+            for (let cy = 0; cy < col.length; cy++) {
+                const chunk = col[cy];
+                if (!chunk) continue;
+
+                const pos = {
+                    x: cx * chunkSize,
+                    y: cy * chunkSize
+                };
+
+                chunksOut.push({
+                    cx,
+                    cy,
+                    pos,
+                    size: chunkSize,
+                    chosenBiomeName: chunk.chosenBiomeName,
+                    pixelData: encodeBase64(chunk.pixelData),
+                    heightData: encodeBase64(chunk.heightData),
+                    waterData: encodeBase64(chunk.waterData)
+                });
+            }
+        }
+
+        const regionsOut = this.regions.map(r => ({
+            id: r.id,
+            name: r.name,
+            layerName: r.layerName,
+            bounds: r.bounds,
+            chunkCoords: r.chunkCoords,
+            area: r.area
+        }));
+
+        const zonesOut: any[] = []; // TODO: Type protect the output
+        this.audioZones.forEach((zone, id) => {
+            zonesOut.push({
+                id,
+                regionId: zone.region.id,
+                regionName: zone.region.name,
+                center: zone.center,
+                src: zone.audioParams.src,
+                volume: zone.audioParams.volume,
+                rolloff: zone.audioParams.spatial?.rolloff,
+                radius: zone.audioParams.spatial?.rolloff?.distance
+            });
+        });
+
+        const output = {
+            meta: {
+                seed: this.currentSeed,
+                generatedAt: new Date().toISOString(),
+                worldSize: {
+                    width: WORLD.WIDTH,
+                    height: WORLD.HEIGHT
+                },
+                chunkCount: chunksOut.length,
+                regionCount: this.regions.length,
+                audioZoneCount: this.audioZones.size
+            },
+            params: this.worldConfig.worldgenParams,
+            chunks: chunksOut,
+            regions: regionsOut,
+            audioZones: zonesOut
+        };
+
+        const json = JSON.stringify(output, null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `${this.currentSeed}.json`;
+        link.click();
+
+        console.log(`World exported successfully (${this.currentSeed}.json)`);
+    }
+
+
+
+    private async loadWorldFromFile(file: File): Promise<void> {
+        console.log(`Loading saved world from ${file.name}...`);
+
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        this.showLoadingMenu();
+        this.clear();
+
+        // Restore config + seed
+        this.worldConfig.worldgenParams = data.params;
+        this.currentSeed = data.meta.seed;
+
+        const decodeBase64 = (b64: string): Uint8Array => {
+            const binary = atob(b64);
+            const len = binary.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+            return bytes;
+        };
+
+        // === Chunks ===
+        this.chunks = [];
+        this.chunkLayers = [];
+
+        const totalChunks = data.chunks.length;
+        const allWorldLayers = this.worldConfig.worldLayerList;
+
+        for (let i = 0; i < totalChunks; i++) {
+            const c = data.chunks[i];
+
+            const pixel = decodeBase64(c.pixelData);
+            const height = decodeBase64(c.heightData);
+            const water = decodeBase64(c.waterData);
+
+            const chunk = new WorldChunk(
+                c.chosenBiomeName,
+                pixel,
+                height,
+                water,
+                this.worldConfig
+            );
+
+            const layer =
+                allWorldLayers.find(l => l.name === c.chosenBiomeName) ||
+                allWorldLayers[0];
+
+            // cx, cy were exported — use them directly
+            const cx = c.cx;
+            const cy = c.cy;
+
+            if (!this.chunks[cx]) this.chunks[cx] = [];
+            if (!this.chunkLayers[cx]) this.chunkLayers[cx] = [];
+
+            this.chunks[cx][cy] = chunk;
+            this.chunkLayers[cx][cy] = layer;
+
+            chunk.pos = c.pos;
+            chunk.size = c.size;
+
+            this.renderChunk(cx, cy, chunk);
+
+            if (i % 20 === 0) {
+                await this.utility.yield(`Restoring chunk ${i}/${totalChunks}`);
+            }
+        }
+
+        console.log("All chunks rendered.");
+
+        // === Regions ===
+        this.regions = data.regions.map((r: any) => ({
+            id: r.id,
+            name: r.name,
+            layerName: r.layerName,
+            bounds: r.bounds,
+            chunkCoords: r.chunkCoords,
+            area: r.area
+        }));
+
+        // === Audio Zones ===
+        this.audioZones.clear();
+        data.audioZones.forEach((z: any) => {
+            const regionRef = this.regions.find(r => r.id === z.regionId);
+            if (!regionRef) return;
+
+            this.audioZones.set(z.id, {
+                region: regionRef,
+                center: z.center,
+                audioParams: {
+                    src: z.src,
+                    loop: true,
+                    output: "sfx",
+                    volume: z.volume,
+                    spatial: {
+                        blend: 1.0,
+                        pos: z.center,
+                        rolloff: z.rolloff
+                    }
+                },
+                isActive: false
+            });
+        });
+
+        // === Finalize ===
+        this.isGenerated = true;
+        this.hideLoadingMenu();
+
+        console.log(`World loaded and rendered successfully (Seed: ${data.meta.seed}).`);
+    }
 }

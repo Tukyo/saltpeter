@@ -11,6 +11,14 @@ export class Animator {
 
     constructor(private playerState: PlayerState, private roomManager: RoomManager, private userId: string) { }
 
+    /**
+     * Clears animation state.
+     */
+    public clear(): void {
+        this.characterAnimations.clear();
+        this.characterOffsets.clear();
+    }
+
     // #region [ Animation ]
     /**
      * Animates a specific character part locally with generateCharacterAnimation and broadcasts for other clients to sync animations.
@@ -130,14 +138,6 @@ export class Animator {
                 this.characterOffsets.delete(id);
             }
         });
-    }
-
-    /**
-     * Clears all active character animations and offsets.
-     */
-    public clearAllAnimations(): void {
-        this.characterAnimations.clear();
-        this.characterOffsets.clear();
     }
     //
     // #endregion

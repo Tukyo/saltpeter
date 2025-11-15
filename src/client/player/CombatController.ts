@@ -1,23 +1,25 @@
-import { OBJECT_DEFAULTS, SHRAPNEL, WORLD } from "../Config";
-import { AttackType, AudioParams, CreateParticleParams, DecalParams, PlayerHitParams, Projectile, ProjectileOverrides, Shrapnel, Vec2 } from "../Types";
+import { GAME, SHRAPNEL, WORLD } from "../Config";
+import { AttackType, AudioParams, CreateParticleParams, DecalParams, PlayerHitParams, DamageEntity, ProjectileOverrides, Shrapnel, Vec2 } from "../Types";
 
 import { Animator } from "../Animator";
-import { AudioManager } from "../AudioManager";
 import { CollisionsManager } from "../CollisionsManager";
 import { DecalsManager } from "../DecalsManager";
 import { GameState } from "../GameState";
 import { LuckController } from "./LuckController";
 import { ParticlesManager } from "../ParticlesManager";
+import { PlayerController, } from "./PlayerController";
 import { PlayerState } from "./PlayerState";
 import { RoomManager } from "../RoomManager";
-import { Utility } from "../Utility";
-import { PlayerController, } from "./PlayerController";
 import { UserInterface } from "../UserInterface";
-import { AudioConfig } from "../AudioConfig";
+import { Utility } from "../Utility";
+
+import { AudioConfig } from "../audio/AudioConfig";
+import { AudioManager } from "../audio/AudioManager";
+
 import { World } from "../world/World";
 
 export class CombatController {
-    public projectiles: Map<string, Projectile> = new Map();
+    public projectiles: Map<string, DamageEntity> = new Map();
 
     constructor(
         private animator: Animator,
@@ -154,20 +156,21 @@ export class CombatController {
             y: Math.sin(angle - Math.PI / 2) * range
         };
 
-        const meleeProjectile = {
-            id: this.utility.generateUID(OBJECT_DEFAULTS.DATA.ID_LENGTH),
+        const meleeProjectile: DamageEntity = {
+            id: this.utility.generateUID(GAME.DATA.ID_LENGTH),
             transform: {
                 pos: { x: spawnX, y: spawnY },
                 rot: angle
             },
             timestamp: Date.now(),
-            color: 'rgba(255, 255, 255, 0)',
+            color: 'rgba(255, 255, 255, 0)', // Invisible
             damage: this.playerState.myPlayer.actions.melee.damage,
             distanceTraveled: 0,
             length: size,
             ownerId: this.userId,
             range: range,
             size: size,
+            type: 'melee',
             velocity: velocity
         };
 
@@ -175,7 +178,7 @@ export class CombatController {
 
         this.roomManager.sendMessage(JSON.stringify({
             type: 'projectile-launch',
-            projectile: meleeProjectile
+            projectile: meleeProjectile // TODO: Need to attach isMelee or something to read this in updateProjectiles to get if melee or ranged!
         }));
 
         // Remove melee projectile after it has traveled its duration
@@ -211,6 +214,12 @@ export class CombatController {
         const ammoNeeded = this.playerState.myPlayer.actions.primary.burst.amount;
         const ammoToUse = Math.min(ammoNeeded, this.playerState.myPlayer.actions.primary.magazine.currentAmmo);
 
+        const currentWeapon = this.playerState.myPlayer.inventory.primary;
+        const emptySfx = this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon[currentWeapon].empty ?? [])
+
+        const playerX = this.playerState.myPlayer.transform.pos.x;
+        const playerY = this.playerState.myPlayer.transform.pos.y;
+
         if (ammoToUse === 0) {
             console.log('Out of ammo! Magazine empty.');
 
@@ -224,17 +233,19 @@ export class CombatController {
                 partIndex: 1
             }); // duration=0 means infinite/held
 
+            if (!emptySfx) { console.warn(`No empty sound effects for ${currentWeapon}`); return; }
+
             this.audioManager.playAudioNetwork({
-                src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon.glock.empty),
+                src: emptySfx,
                 listener: {
-                    x: this.playerState.myPlayer.transform.pos.x,
-                    y: this.playerState.myPlayer.transform.pos.y
+                    x: playerX,
+                    y: playerY
                 },
                 output: 'sfx',
                 pitch: { min: 0.975, max: 1.05 },
                 spatial: {
                     blend: 1.0,
-                    pos: { x: this.playerState.myPlayer.transform.pos.x, y: this.playerState.myPlayer.transform.pos.y }
+                    pos: { x: playerX, y: playerY }
                 },
                 volume: { min: 0.985, max: 1 }
             });
@@ -261,18 +272,20 @@ export class CombatController {
         const ammoRatio = this.playerState.myPlayer.actions.primary.magazine.currentAmmo / this.playerState.myPlayer.actions.primary.magazine.size;
         const emptyBlend = 1 - ammoRatio; // 0 when full, 1 when empty
 
-        if (emptyBlend > 0.5) { // Only play when below 50% ammo (half mag empty)
-            const blendVolume = (emptyBlend - 0.5) * 2 * 0.5; // Remap 0.5-1.0 to 0-0.5 volume
-            this.audioManager.playAudio({ // Play sound locally
-                src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon.glock.empty), // TODO: Use current weapon
-                listener: {
-                    x: this.playerState.myPlayer.transform.pos.x,
-                    y: this.playerState.myPlayer.transform.pos.y
-                },
-                output: 'sfx',
-                pitch: { min: 0.975, max: 1.05 },
-                volume: { min: blendVolume, max: blendVolume }
-            });
+        if (emptySfx) {
+            if (emptyBlend > 0.5) { // Only play when below 50% ammo (half mag empty)
+                const blendVolume = (emptyBlend - 0.5) * 2 * 0.5; // Remap 0.5-1.0 to 0-0.5 volume
+                this.audioManager.playAudio({ // Play sound locally
+                    src: emptySfx,
+                    listener: {
+                        x: playerX,
+                        y: playerY
+                    },
+                    output: 'sfx',
+                    pitch: { min: 0.975, max: 1.05 },
+                    volume: { min: blendVolume, max: blendVolume }
+                });
+            }
         }
 
         // If burst has more shots and we have ammo, schedule the next one
@@ -306,21 +319,13 @@ export class CombatController {
         const distance = Math.sqrt(dir.x * dir.x + dir.y * dir.y);
         if (distance === 0) return;
 
+        const playerX = this.playerState.myPlayer.transform.pos.x;
+        const playerY = this.playerState.myPlayer.transform.pos.y;
+
+        const currentWeapon = this.playerState.myPlayer.inventory.primary;
+
         const dirX = dir.x / distance;
         const dirY = dir.y / distance;
-
-        // Animate weapon slide (glock_slide.png is index 1 in the weapon.glock array)
-        this.animator.animateCharacterPart({
-            playerId: this.userId,
-            part: 'weapon',
-            frames: {
-                0: { x: 0, y: 0 },    // Start position
-                0.5: { x: 0, y: 20 }, // Pull back slide
-                1: { x: 0, y: 0 }     // Return to start
-            },
-            duration: 175,
-            partIndex: 1
-        });
 
         const canTriggerUnique = overrides?.canTriggerUnique ?? true;
         const projectileAmount = overrides?.amount ?? this.playerState.myPlayer.actions.primary.projectile.amount;
@@ -335,10 +340,23 @@ export class CombatController {
         // Calculate spawn offset
         const baseAngle = Math.atan2(dirY, dirX);
         const spawnOffset = this.collisionsManager.getPlayerCollider(this.playerState.myPlayer) + projectileSize + this.playerState.myPlayer.actions.primary.offset;
-        const bulletSpawnX = this.playerState.myPlayer.transform.pos.x + Math.cos(baseAngle) * spawnOffset;
-        const bulletSpawnY = this.playerState.myPlayer.transform.pos.y + Math.sin(baseAngle) * spawnOffset;
+        const bulletSpawnX = playerX + Math.cos(baseAngle) * spawnOffset;
+        const bulletSpawnY = playerY + Math.sin(baseAngle) * spawnOffset;
         const rightX = -dirY;
         const rightY = dirX;
+
+        // Animate weapon slide (glock_slide.png is index 1 in the weapon.glock array)
+        this.animator.animateCharacterPart({
+            playerId: this.userId,
+            part: 'weapon',
+            frames: {
+                0: { x: 0, y: 0 },    // Start position
+                0.5: { x: 0, y: 20 }, // Pull back slide
+                1: { x: 0, y: 0 }     // Return to start
+            },
+            duration: 175,
+            partIndex: 1
+        });
 
         // TODO: Wrap all of these particles in some sort of defined type that contains this in one message
 
@@ -348,7 +366,7 @@ export class CombatController {
                 x: bulletSpawnX,
                 y: bulletSpawnY
             },
-            particleParams: this.particlesManager.particlesConfig.particles.glock.muzzle.flash, // TODO: Get current weapon
+            particleParams: this.particlesManager.particlesConfig.weaponParticles[currentWeapon].muzzle.flash,
             direction: { x: dirX, y: dirY }
         }
         this.particlesManager.createParticles(muzzleParams);
@@ -359,7 +377,7 @@ export class CombatController {
                 x: bulletSpawnX,
                 y: bulletSpawnY
             },
-            particleParams: this.particlesManager.particlesConfig.particles.glock.muzzle.smoke, // TODO: Get current weapon
+            particleParams: this.particlesManager.particlesConfig.weaponParticles[currentWeapon].muzzle.smoke,
             direction: { x: dirX * 0.3, y: dirY * 0.3 }
         }
         this.particlesManager.createParticles(smokeParams);
@@ -370,22 +388,22 @@ export class CombatController {
                 x: bulletSpawnX - 5,
                 y: bulletSpawnY - 5
             },
-            particleParams: this.particlesManager.particlesConfig.particles.glock.projectile.shell, // TODO: Get current weapon
+            particleParams: this.particlesManager.particlesConfig.weaponParticles[currentWeapon].projectile.shell,
             direction: { x: rightX * 0.8 + dirX * -0.2, y: rightY * 0.8 + dirY * -0.2 } // Right + slightly back
         }
         this.particlesManager.createParticles(shellParams);
 
         this.audioManager.playAudioNetwork({
-            src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon.glock.attack), // TODO: Use current weapon
+            src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon[currentWeapon].attack),
             listener: {
-                x: this.playerState.myPlayer.transform.pos.x,
-                y: this.playerState.myPlayer.transform.pos.y
+                x: playerX,
+                y: playerY
             },
             output: 'sfx',
             pitch: { min: 0.95, max: 1.125 },
             spatial: {
                 blend: 1.0,
-                pos: { x: this.playerState.myPlayer.transform.pos.x, y: this.playerState.myPlayer.transform.pos.y },
+                pos: { x: playerX, y: playerY },
                 rolloff: {
                     distance: Math.max(WORLD.WIDTH, WORLD.HEIGHT) / 2, // TODO: Make more reliable distance attenuation, right now, just half of the world size
                     factor: 0.5,
@@ -395,18 +413,20 @@ export class CombatController {
             volume: { min: 0.965, max: 1 }
         });
 
+        const shellSfx = this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon[currentWeapon].shell ?? [])
+
         this.audioManager.playAudioNetwork({
-            src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon.glock.shell), // TODO: Use current weapon
+            src: shellSfx, // TODO: Get soft or hard for this based on the ground it "hits"
             delay: { min: 0.25, max: 0.5 }, // Play with a short delay trigger to simulate the shell hitting the ground
             listener: {
-                x: this.playerState.myPlayer.transform.pos.x,
-                y: this.playerState.myPlayer.transform.pos.y
+                x: playerX,
+                y: playerY
             },
             output: 'sfx',
             pitch: { min: 0.95, max: 1.125 },
             spatial: {
                 blend: 1.0,
-                pos: { x: this.playerState.myPlayer.transform.pos.x, y: this.playerState.myPlayer.transform.pos.y }
+                pos: { x: playerX, y: playerY }
             },
             volume: { min: 0.375, max: 0.85 }
         });
@@ -428,8 +448,8 @@ export class CombatController {
             const angle = Math.atan2(dirY, dirX) + spread;
             const dir = this.utility.forward(angle);
 
-            const projectile: Projectile = {
-                id: this.utility.generateUID(OBJECT_DEFAULTS.DATA.ID_LENGTH),
+            const projectile: DamageEntity = {
+                id: this.utility.generateUID(GAME.DATA.ID_LENGTH),
                 transform: {
                     pos: {
                         x: bulletSpawnX,
@@ -445,6 +465,7 @@ export class CombatController {
                 ownerId: this.userId,
                 range: projectileRange * 100, // Convert to px
                 size: projectileSize,
+                type: 'ranged',
                 velocity: {
                     x: dir.x * projectileSpeed,
                     y: dir.y * projectileSpeed,
@@ -467,11 +488,15 @@ export class CombatController {
     public updateProjectiles(delta: number): void {
         const projectilesToRemove: string[] = [];
 
+        const myPlayer = this.playerState.myPlayer;
+        const myPlayerX = myPlayer.transform.pos.x;
+        const myPlayerY = myPlayer.transform.pos.y;
+        const myStats = myPlayer.stats;
+
         this.projectiles.forEach((projectile, id) => {
-            // Update movement (with optional spatial targeting nudge)
             if (projectile.ownerId === this.userId) {
-                if (this.playerState.myPlayer.unique.includes('spatial_targeting')) {
-                    const aim = this.playerState.myPlayer.transform.rot - Math.PI / 2;
+                if (myPlayer.unique.includes('spatial_targeting')) {
+                    const aim = myPlayer.transform.rot - Math.PI / 2;
                     const dx = Math.cos(aim), dy = Math.sin(aim);
                     const speed = Math.sqrt(projectile.velocity.x ** 2 + projectile.velocity.y ** 2);
                     const vx = projectile.velocity.x / speed, vy = projectile.velocity.y / speed;
@@ -485,24 +510,24 @@ export class CombatController {
                     projectile.transform.rot = Math.atan2(projectile.velocity.y, projectile.velocity.x);
                 }
             }
+
             projectile.transform.pos.x += projectile.velocity.x * delta;
             projectile.transform.pos.y += projectile.velocity.y * delta;
 
-            // Update distance traveled
-            const frameDistance = Math.sqrt(
+            const frameDistance = Math.sqrt( // Update distance traveled
                 projectile.velocity.x * projectile.velocity.x +
                 projectile.velocity.y * projectile.velocity.y
             ) * delta;
             projectile.distanceTraveled += frameDistance;
 
             // Check collision with my player (only if I'm alive)
-            if (this.collisionsManager.collisionsEnabled(this.playerState.myPlayer)) {
-                const dx = projectile.transform.pos.x - this.playerState.myPlayer.transform.pos.x;
-                const dy = projectile.transform.pos.y - this.playerState.myPlayer.transform.pos.y;
+            if (this.collisionsManager.collisionsEnabled(myPlayer)) {
+                const dx = projectile.transform.pos.x - myPlayerX;
+                const dy = projectile.transform.pos.y - myPlayerY;
                 const distance = Math.sqrt(dx * dx + dy * dy);
 
-                const playerCollider = this.collisionsManager.getPlayerCollider(this.playerState.myPlayer);
-                const canDeflect = this.playerState.myPlayer.unique.includes('kinetic_brain') &&
+                const playerCollider = this.collisionsManager.getPlayerCollider(myPlayer);
+                const canDeflect = myPlayer.unique.includes('kinetic_brain') &&
                     distance <= playerCollider * 4 &&
                     distance > playerCollider + projectile.size &&
                     projectile.ownerId !== this.userId;
@@ -513,8 +538,8 @@ export class CombatController {
 
                         // Calculate normal from player center to projectile
                         const normal = {
-                            x: (projectile.transform.pos.x - this.playerState.myPlayer.transform.pos.x) / distance,
-                            y: (projectile.transform.pos.y - this.playerState.myPlayer.transform.pos.y) / distance
+                            x: (projectile.transform.pos.x - myPlayerX) / distance,
+                            y: (projectile.transform.pos.y - myPlayerY) / distance
                         };
 
                         const speedReduction = this.utility.getRandomNum(0.85, 0.95);
@@ -526,7 +551,7 @@ export class CombatController {
 
                         // Change ownership
                         projectile.ownerId = this.userId;
-                        projectile.color = this.playerState.myPlayer.actions.primary.projectile.color;
+                        projectile.color = myPlayer.actions.primary.projectile.color;
 
                         // Update rotation
                         projectile.transform.rot = Math.atan2(projectile.velocity.y, projectile.velocity.x);
@@ -547,22 +572,24 @@ export class CombatController {
                 if (distance <= playerCollider + projectile.size) { // Projectile collided with my player
                     projectilesToRemove.push(id);
 
-                    const actualDamage = Math.max(0, projectile.damage - this.playerState.myPlayer.stats.defense);
-                    this.playerState.myPlayer.stats.health.value = Math.max(0, this.playerState.myPlayer.stats.health.value - actualDamage);
+                    const actualDamage = Math.max(0, projectile.damage - myStats.defense);
+                    myStats.health.value = Math.max(0, myStats.health.value - actualDamage);
+
+                    const myHealth = myStats.health.value;
 
                     const params: PlayerHitParams = {
-                        target: this.playerState.myPlayer,
+                        target: myPlayer,
                         shooterId: projectile.ownerId,
                         damage: projectile.damage,
-                        newHealth: this.playerState.myPlayer.stats.health.value,
+                        newHealth: myHealth,
                         source: projectile,
-                        wasKill: this.playerState.myPlayer.stats.health.value <= 0
+                        wasKill: myHealth <= 0
                     }
                     this.playerController.playerHit(params);
                 }
             }
 
-            // Check collision with other players (for my projectiles only)
+            // Check my projectile's collisions with other players
             if (projectile.ownerId === this.userId) {
                 this.playerState.players.forEach((player, playerId) => {
                     if (this.collisionsManager.collisionsEnabled(player)) { // Only check collision if the player has collisions enabled
@@ -591,15 +618,14 @@ export class CombatController {
                 });
             }
 
-            // Check if projectile should be removed (range/bounds)
-            if (projectile.distanceTraveled >= projectile.range ||
+            const shouldRemove = projectile.distanceTraveled >= projectile.range ||
                 projectile.transform.pos.x < 0 || projectile.transform.pos.x > WORLD.WIDTH ||
-                projectile.transform.pos.y < 0 || projectile.transform.pos.y > WORLD.HEIGHT) {
+                projectile.transform.pos.y < 0 || projectile.transform.pos.y > WORLD.HEIGHT;
 
+            if (shouldRemove) {
                 projectilesToRemove.push(id);
 
-                // Create burn mark where projectile expired (only for my projectiles)
-                if (projectile.ownerId === this.userId) {
+                if (projectile.ownerId === this.userId) { // Create burn mark where projectile expired for my projectiles
                     const impactX = projectile.transform.pos.x;
                     const impactY = projectile.transform.pos.y;
 
@@ -607,66 +633,72 @@ export class CombatController {
 
                     // TODO: Catch the triggered uniques, and use that string array, might be a bouncing bullet or something that makes it not get destroyed yet
 
-                    const inBounds =
-                        impactX >= 0 && impactX <= WORLD.WIDTH &&
-                        impactY >= 0 && impactY <= WORLD.HEIGHT;
-
-                    if (inBounds) {
-                        if (projectile.distanceTraveled >= projectile.range) {
-                            const decalParams: DecalParams = {
-                                id: `impact_${id}`,
-                                pos: {
-                                    x: projectile.transform.pos.x,
-                                    y: projectile.transform.pos.y
-                                },
-                                type: 'parametric',
-                                parametric: this.decalsManager.decalsConfig.decals.projectile
-                            };
-                            this.decalsManager.createDecal(decalParams);
-                        }
-
-                        const sparksParams: CreateParticleParams = {
-                            id: `sparks_${id}`,
-                            pos: {
-                                x: projectile.transform.pos.x,
-                                y: projectile.transform.pos.y
-                            },
-                            particleParams: this.particlesManager.particlesConfig.particles.glock.projectile.sparks  // TODO: Use current projectile hit effect
-                        }
-                        this.particlesManager.createParticles(sparksParams);
-
-                        const sfxParams: AudioParams = {
-                            src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.impact.metal.bullet), // TODO: Use current projectile type
-                            listener: {
-                                x: this.playerState.myPlayer.transform.pos.x,
-                                y: this.playerState.myPlayer.transform.pos.y
-                            },
-                            output: 'sfx',
-                            pitch: { min: 0.95, max: 1.125 },
-                            spatial: {
-                                blend: 1.0,
-                                pos: { x: projectile.transform.pos.x, y: projectile.transform.pos.y }
-                            },
-                            volume: { min: 0.965, max: 1 }
-                        }
-                        this.audioManager.playAudioNetwork(sfxParams);
-
-                        this.world.worldEdit.requestCraterAt(projectile.transform.pos); // TODO: Update this functionality
-                    }
-
                     // Notify others to remove projectile
                     this.roomManager.sendMessage(JSON.stringify({
                         type: 'projectile-remove',
                         projectileId: id
                     }));
+
+                    const inBounds = impactX >= 0 && impactX <= WORLD.WIDTH && impactY >= 0 && impactY <= WORLD.HEIGHT;
+                    if (!inBounds) return;
+
+                    const currentWeapon = myPlayer.inventory.primary;
+
+                    if (projectile.distanceTraveled >= projectile.range) {
+                        const decalParams: DecalParams = {
+                            id: `impact_${id}`,
+                            pos: {
+                                x: impactX,
+                                y: impactY
+                            },
+                            type: 'parametric',
+                            parametric: this.decalsManager.decalsConfig.decals.projectile
+                        };
+                        this.decalsManager.createDecal(decalParams);
+                    }
+
+                    const sparksParams: CreateParticleParams = {
+                        id: `sparks_${id}`,
+                        pos: {
+                            x: impactX,
+                            y: impactY
+                        },
+                        particleParams: this.particlesManager.particlesConfig.weaponParticles[currentWeapon].projectile.sparks // TODO: Create material based particles on hit
+                    }
+                    this.particlesManager.createParticles(sparksParams);
+
+                    const material = this.world.getMaterialAt(Math.round(impactX), Math.round(impactY)); // Snap to nearest pixel to avoid sub-pixel sampling errors 
+                    if (!material) { console.warn('No material returned from hit.'); return; }
+
+                    const matName = material.name.toLowerCase();
+                    const impactSounds = this.audioConfig.resources.sfx.impact[matName];
+                    if (!impactSounds) { console.warn('No impact sounds for:', matName); return; }
+
+                    const impactSoundList = impactSounds[projectile.type];
+                    if (!impactSoundList || impactSoundList.length <= 0) { console.warn('No impact soundlist for:', impactSounds); return; }
+
+                    const sfxParams: AudioParams = {
+                        src: this.utility.getRandomInArray(impactSoundList),
+                        listener: {
+                            x: myPlayerX,
+                            y: myPlayerY
+                        },
+                        output: 'sfx',
+                        pitch: { min: 0.95, max: 1.125 },
+                        spatial: {
+                            blend: 1.0,
+                            pos: { x: impactX, y: impactY }
+                        },
+                        volume: { min: 0.965, max: 1 }
+                    }
+                    this.audioManager.playAudioNetwork(sfxParams);
+
+                    this.world.worldEdit.requestCraterAt(projectile.transform.pos); // TODO: Update this functionality
                 }
             }
         });
 
-        // Remove projectiles locally
-        projectilesToRemove.forEach(id => {
-            this.projectiles.delete(id);
-        });
+        projectilesToRemove.forEach(id => { this.projectiles.delete(id); }); // Remove projectiles locally
     }
 
     /**
@@ -850,8 +882,12 @@ export class CombatController {
             partIndex: 1
         }); // duration=0 means infinite/held
 
+        const currentWeapon = this.playerState.myPlayer.inventory.primary;
+        const reloadStartSfx = this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon[currentWeapon].reload?.start ?? [])
+        if (!reloadStartSfx) { console.warn(`No reload sounds for ${currentWeapon}`); return; }
+
         this.audioManager.playAudioNetwork({
-            src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon.glock.reload.start), // TODO: Use current weapon
+            src: reloadStartSfx,
             listener: {
                 x: this.playerState.myPlayer.transform.pos.x,
                 y: this.playerState.myPlayer.transform.pos.y
@@ -870,6 +906,8 @@ export class CombatController {
      * Ends the reload loop, and updates visual state.
      */
     private finishReload(): void {
+        console.log(`Reload complete...`);
+
         const magazineSpace = this.playerState.myPlayer.actions.primary.magazine.size - this.playerState.myPlayer.actions.primary.magazine.currentAmmo;
         const ammoToReload = Math.min(magazineSpace, this.playerState.myPlayer.actions.primary.magazine.currentReserve);
 
@@ -890,8 +928,12 @@ export class CombatController {
             partIndex: 1
         });
 
+        const currentWeapon = this.playerState.myPlayer.inventory.primary;
+        const reloadEndSfx = this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon[currentWeapon].reload?.end ?? [])
+        if (!reloadEndSfx) { console.warn(`No reload sounds for ${currentWeapon}`); return; }
+
         this.audioManager.playAudioNetwork({
-            src: this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon.glock.reload.end), // TODO: Use current weapon
+            src: reloadEndSfx,
             listener: {
                 x: this.playerState.myPlayer.transform.pos.x,
                 y: this.playerState.myPlayer.transform.pos.y
@@ -904,8 +946,6 @@ export class CombatController {
             },
             volume: { min: 0.985, max: 1 }
         });
-
-        console.log(`Reload complete...`);
     }
     //
     // #endregion

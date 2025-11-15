@@ -24,7 +24,7 @@ export class DashController {
      * Start a dash when the assigned keybind is pressed.
      */
     public startDash(): void {
-        if (this.playerState.isDashing || !this.collisionsManager.collisionsEnabled(this.playerState.myPlayer) || !this.moveController.isMoving()) return;
+        if (this.playerState.isDashing || !this.collisionsManager.collisionsEnabled(this.playerState.myPlayer) || !this.moveController.isMoveInput()) return;
 
         const currentTime = Date.now(); // Cooldown check first
         if (currentTime < this.playerState.lastDashTime + this.playerState.myPlayer.actions.dash.cooldown) {
@@ -36,7 +36,7 @@ export class DashController {
         let { inputX, inputY, inputLength } = this.moveController.getMoveInput();
 
         // Normalize input
-        if (!this.moveController.isMoving()) {
+        if (!this.moveController.isMoveInput()) {
             console.log('No movement input for dash');
             return;
         }

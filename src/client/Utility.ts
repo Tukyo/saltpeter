@@ -13,7 +13,7 @@ export class Utility {
 
     // #region [ General ]
     //
-
+    
     public deepMerge(target: any, source: any): void {
         for (const key in source) {
             if (
@@ -32,7 +32,7 @@ export class Utility {
     /** Yields to next animation frame (~16ms) allowing UI updates and optional progress message. */
     public async yield(message?: string): Promise<void> {
         console.log(`[Yield] ${message ?? "(no message)"}`);
-        
+
         if (message) {
             document.dispatchEvent(new CustomEvent("yieldMessage", { detail: { message } }));
         } else {
@@ -87,6 +87,15 @@ export class Utility {
     // #endregion
     //
     // #region [ Math ]
+    /**
+     * Clamps the passed value between the min/max.
+     */
+    public clamp(value: number, min: number, max: number): number {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+    }
+    
     /**
      * Returns a random number.
      * 

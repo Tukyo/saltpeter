@@ -1,4 +1,4 @@
-import { CANVAS, WORLD } from "../Config";
+import { VIEWPORT, WORLD } from "../Config";
 import { PhysicsMaterialTypes, RegionName } from "../Types";
 
 import { Camera } from "../Camera";
@@ -8,9 +8,9 @@ import { Utility } from "../Utility";
 import { World } from "./World";
 
 export class WorldDebug {
-    public hoveredChunk: string | null = null;
+    public hoveredChunk: { cx: number; cy: number } | null = null;
 
-    private overlayMode: number = 0; // 0 = chunks/borders, 1 = heightmap, 2 = contours
+    private overlayMode: number = 0;
     private overlayNames: string[] = ["Chunk", "Heightmap", "Contours", "Regions", "Audio"];
 
     constructor(
@@ -28,18 +28,22 @@ export class WorldDebug {
      * 
      * Overlay: Numpad Enter | [ ] < -- Brackets switch debug overlay pages.
      * 
-     * Regen World: Numpad 0 | ReRender: Numpad . 
+     * Regen World: Numpad 0 | ReRender: Numpad . | Save World: Numpad /
      */
     private listenForDebugShortcuts(): void {
         window.addEventListener("keydown", e => {
             if (e.ctrlKey && e.altKey) {
+                if (!this.world.isGenerated) return;
+
                 switch (e.code) {
                     case "Numpad0":
                         e.preventDefault();
                         console.log("Opening generation menu...");
                         this.world.showGenerationMenu()
                             .then(async (worldData) => {
-                                await this.world.generateWorld(worldData);
+                                if (worldData !== "load") {
+                                    await this.world.generateWorld(worldData);
+                                }
                             });
                         break;
 
@@ -59,6 +63,12 @@ export class WorldDebug {
                         if (this.world.worldConfig.worldgenParams.render.grid.active) {
                             this.showOverlayName();
                         }
+                        break;
+
+                    case "NumpadDivide":
+                        e.preventDefault();
+                        console.log("Exporting world data...");
+                        this.world.exportWorldData();
                         break;
 
                     default:
@@ -111,16 +121,15 @@ export class WorldDebug {
         if (!hoveredCoords || !this.hoveredChunk) return;
 
         const chunkSize = this.world.worldConfig.worldgenParams.general.chunk.size;
-        const [hcx, hcy] = this.hoveredChunk.split(",").map(Number);
+        const hcx = this.hoveredChunk.cx;
+        const hcy = this.hoveredChunk.cy;
 
         const worldX = Math.floor(hoveredCoords.worldX);
         const worldY = Math.floor(hoveredCoords.worldY);
         const worldPos = { x: worldX, y: worldY }
 
-        const key = `${hcx},${hcy}`;
-        const chunk = this.world.chunks.get(key);
-        const chunkLayer = this.world.chunkLayers.get(key);
-
+        const chunk = this.world.chunks[hcx]?.[hcy];
+        const chunkLayer = this.world.chunkLayers[hcx]?.[hcy];
         if (!chunk) return;
 
         const localX = worldX - hcx * chunkSize;
@@ -132,7 +141,7 @@ export class WorldDebug {
         const colorVariantIndex = combined & 0b11;
         const height01 = chunk.getHeightAt(localX, localY, chunkSize);
 
-        const mat = Object.values(this.world.worldConfig.materials)[materialIndex];
+        const mat = this.world.worldConfig.materialsList[materialIndex];
         const waterData = this.world.getWaterData(worldPos);
 
         const margin = 10;
@@ -148,17 +157,15 @@ export class WorldDebug {
             }
         }
 
-        // Draw main panel
-        const mainInfo = [
+        const mainInfo = [ // Draw main panel
             `Region: ${regionName}`,
             `Layer: ${chunkLayer ? chunkLayer.name : "N/A"}`,
-            `Chunk: ${hcx}, ${hcy} (${chunkSize}x${chunkSize})`,
-            `Pixel: ${worldX}, ${worldY}`,
+            `Chunk: ${hcx},${hcy})`,
+            `Pixel: ${worldX},${worldY}`,
             `Height: ${height01.toFixed(3)}`
         ];
         currentX += this.drawPanel("Main", mainInfo, currentX, 10, '#888888', null) + margin;
 
-        // Solid material (terrain)
         if (mat && mat.physics.type === PhysicsMaterialTypes.Solid) {
             const materialColor = this.utility.getLightestColor(mat.colors);
             const solidInfo = [
@@ -173,12 +180,11 @@ export class WorldDebug {
             currentX += this.drawPanel("Solid", solidInfo, currentX, 10, materialColor, materialColor) + margin;
         }
 
-        // Liquid (water)
         if (waterData && waterData.hasWater) {
             const phys = waterData.material.physics;
+            const materialColor = this.utility.getLightestColor(waterData.material.colors);
 
             if (phys.type === PhysicsMaterialTypes.Liquid) {
-                const materialColor = this.utility.getLightestColor(waterData.material.colors);
                 const liquidInfo = [
                     `Material: ${waterData.material.name}`,
                     `Depth: ${waterData.depth.toFixed(3)}`,
@@ -254,15 +260,16 @@ export class WorldDebug {
         const camX = this.camera.pos.x, camY = this.camera.pos.y;
 
         const startCX = Math.floor(camX / chunkSize);
-        const endCX = Math.ceil((camX + CANVAS.WIDTH) / chunkSize);
+        const endCX = Math.ceil((camX + VIEWPORT.WIDTH) / chunkSize);
         const startCY = Math.floor(camY / chunkSize);
-        const endCY = Math.ceil((camY + CANVAS.HEIGHT) / chunkSize);
+        const endCY = Math.ceil((camY + VIEWPORT.HEIGHT) / chunkSize);
 
         ctx.save();
 
         // Highlight hovered chunk
         if (this.hoveredChunk) {
-            const [hcx, hcy] = this.hoveredChunk.split(",").map(Number);
+            const hcx = this.hoveredChunk.cx;
+            const hcy = this.hoveredChunk.cy;
             const hoveredChunkWorldX = hcx * chunkSize;
             const hoveredChunkWorldY = hcy * chunkSize;
             const hoveredScreenX = hoveredChunkWorldX - camX;
@@ -333,15 +340,15 @@ export class WorldDebug {
         const alpha = 0.6;
 
         const { seaLevel, lowestDepth } = this.world.worldConfig.worldgenParams.terrain;
-        const layers = this.world.worldConfig.worldLayers;
+        const layers = this.world.worldConfig.worldLayerList;
 
         ctx.save();
         ctx.globalAlpha = alpha;
 
         const startCX = Math.floor(camX / chunkSize);
-        const endCX = Math.ceil((camX + CANVAS.WIDTH) / chunkSize);
+        const endCX = Math.ceil((camX + VIEWPORT.WIDTH) / chunkSize);
         const startCY = Math.floor(camY / chunkSize);
-        const endCY = Math.ceil((camY + CANVAS.HEIGHT) / chunkSize);
+        const endCY = Math.ceil((camY + VIEWPORT.HEIGHT) / chunkSize);
 
         const lerpColor = (a: [number, number, number], b: [number, number, number], t: number): [number, number, number] => [
             Math.floor(this.utility.lerp(a[0], b[0], t)),
@@ -362,7 +369,7 @@ export class WorldDebug {
 
             if (h <= seaLevel) continue;
 
-            const t = Object.keys(layers).indexOf(layer.name) / (Object.keys(layers).length - 1);
+            const t = this.world.worldConfig.worldLayerIndex[layer.name] / (this.world.worldConfig.worldLayerList.length - 1);
             let color: [number, number, number];
 
             if (t < 0.25) color = [60, 220, 80];
@@ -378,8 +385,7 @@ export class WorldDebug {
 
         for (let cx = startCX; cx < endCX; cx++) {
             for (let cy = startCY; cy < endCY; cy++) {
-                const key = `${cx},${cy}`;
-                const chunk = this.world.chunks.get(key);
+                const chunk = this.world.chunks[cx]?.[cy];
                 if (!chunk) continue;
 
                 const startX = cx * chunkSize - camX;
@@ -434,16 +440,15 @@ export class WorldDebug {
         ctx.strokeStyle = color;
 
         const startCX = Math.floor(camX / chunkSize);
-        const endCX = Math.ceil((camX + CANVAS.WIDTH) / chunkSize);
+        const endCX = Math.ceil((camX + VIEWPORT.WIDTH) / chunkSize);
         const startCY = Math.floor(camY / chunkSize);
-        const endCY = Math.ceil((camY + CANVAS.HEIGHT) / chunkSize);
+        const endCY = Math.ceil((camY + VIEWPORT.HEIGHT) / chunkSize);
 
         const getH = (chunk: any, x: number, y: number): number => chunk.getHeightAt(x, y, chunkSize);
 
         for (let cx = startCX; cx < endCX; cx++) {
             for (let cy = startCY; cy < endCY; cy++) {
-                const key = `${cx},${cy}`;
-                const chunk = this.world.chunks.get(key);
+                const chunk = this.world.chunks[cx]?.[cy];
                 if (!chunk) continue;
 
                 const startX = cx * chunkSize - camX;
@@ -607,10 +612,10 @@ export class WorldDebug {
         `;
 
         document.body.appendChild(overlay);
-        
+
         setTimeout(() => { // Fade out after short delay
             overlay.style.opacity = '0';
-            
+
             setTimeout(() => { // Remove from DOM after fade completes
                 if (overlay.parentElement) {
                     overlay.remove();

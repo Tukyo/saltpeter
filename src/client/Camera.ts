@@ -1,4 +1,4 @@
-import { CANVAS, WORLD } from "./Config";
+import { VIEWPORT, WORLD } from "./Config";
 import { Vec2 } from "./Types";
 
 import { PlayerState } from "./player/PlayerState";
@@ -31,12 +31,12 @@ export class Camera {
         const offsetY = forwardDir.y * this.config.lookAhead;
 
         // Set camera target to follow player with directional offset
-        this.targetPos.x = (this.playerState.myPlayer.transform.pos.x + offsetX) - CANVAS.WIDTH / 2;
-        this.targetPos.y = (this.playerState.myPlayer.transform.pos.y + offsetY) - CANVAS.HEIGHT / 2;
+        this.targetPos.x = (this.playerState.myPlayer.transform.pos.x + offsetX) - VIEWPORT.WIDTH / 2;
+        this.targetPos.y = (this.playerState.myPlayer.transform.pos.y + offsetY) - VIEWPORT.HEIGHT / 2;
 
         // Constrain camera to world bounds
-        this.targetPos.x = Math.max(0, Math.min(WORLD.WIDTH - CANVAS.WIDTH, this.targetPos.x));
-        this.targetPos.y = Math.max(0, Math.min(WORLD.HEIGHT - CANVAS.HEIGHT, this.targetPos.y));
+        this.targetPos.x = Math.max(0, Math.min(WORLD.WIDTH - VIEWPORT.WIDTH, this.targetPos.x));
+        this.targetPos.y = Math.max(0, Math.min(WORLD.HEIGHT - VIEWPORT.HEIGHT, this.targetPos.y));
 
         // Smooth camera movement
         this.pos.x += (this.targetPos.x - this.pos.x) * this.config.followSpeed * delta;
@@ -68,8 +68,8 @@ export class Camera {
      */
     public isVisible(worldPos: Vec2, margin: number = 50): boolean {
         return worldPos.x >= this.pos.x - margin &&
-            worldPos.x <= this.pos.x + CANVAS.WIDTH + margin &&
+            worldPos.x <= this.pos.x + VIEWPORT.WIDTH + margin &&
             worldPos.y >= this.pos.y - margin &&
-            worldPos.y <= this.pos.y + CANVAS.HEIGHT + margin;
+            worldPos.y <= this.pos.y + VIEWPORT.HEIGHT + margin;
     }
 }

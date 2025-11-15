@@ -1,13 +1,15 @@
 import { GAME } from "./Config";
-import { GameSettings } from "./Types";
+import { AudioMixerName, GameSettings } from "./Types";
 
 import { CacheManager } from "./CacheManager";
-import { AudioConfig } from "./AudioConfig";
+
+import { AudioConfig } from "./audio/AudioConfig";
+import { PlayerConfig } from "./player/PlayerConfig";
 
 export class SettingsManager {
     private gameSettings: GameSettings
 
-    constructor(private audioConfig: AudioConfig, private cacheManager: CacheManager) {
+    constructor(private audioConfig: AudioConfig, private cacheManager: CacheManager, private playerConfig: PlayerConfig ) {
         this.gameSettings = this.initSettings();
     }
 
@@ -19,7 +21,7 @@ export class SettingsManager {
             audio: {
                 mixer: {
                     master: this.audioConfig.mixer.master,
-                    interface: this.audioConfig.mixer.interface,
+                    ambience: this.audioConfig.mixer.ambience,
                     music: this.audioConfig.mixer.music,
                     sfx: this.audioConfig.mixer.sfx,
                     voice: this.audioConfig.mixer.voice
@@ -46,6 +48,14 @@ export class SettingsManager {
                     sprint: GAME.CONTROLS.GAMEPAD.SPRINT
                 }
             },
+            character: {
+                rig: {
+                    body: this.playerConfig.default.rig.body,
+                    head: this.playerConfig.default.rig.head,
+                    headwear: this.playerConfig.default.rig.headwear,
+                    weapon: this.playerConfig.default.rig.weapon
+                }
+            },
             graphics: {
                 physics: {
                     ammoReserves: GAME.GRAPHICS.PHYSICS.AMMORESERVES
@@ -65,6 +75,23 @@ export class SettingsManager {
      * Recursively updates any setting(s) passed within the stored gameSettings.
      */
     public updateSettings(settings: any): void {
+        // Special handling for audio mixer updates
+        if (settings.audio?.mixer) {
+            const mixerUpdates = settings.audio.mixer;
+
+            (Object.keys(mixerUpdates) as AudioMixerName[]).forEach((busName) => {
+                const update = mixerUpdates[busName];
+
+                if (update && typeof update.volume === "number") {
+                    this.gameSettings.audio.mixer[busName].volume = update.volume;
+                }
+            });
+
+            this.cacheManager.write('gameSettings', this.gameSettings);
+            return;
+        }
+
+        // Fallback: normal deep merge for *non mixer* stuff
         const merge = (target: any, source: any): void => {
             for (const key in source) {
                 if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
@@ -79,6 +106,7 @@ export class SettingsManager {
         merge(this.gameSettings, settings);
         this.cacheManager.write('gameSettings', this.gameSettings);
     }
+
 
     /**
      * Loads the currently cached gameSettings from the cacheManager.

@@ -143,7 +143,7 @@ export interface Player extends GameObject {
   unique: string[];
 }
 
-export interface Projectile extends GameObject {
+export interface DamageEntity extends GameObject {
   color: string;
   damage: number;
   distanceTraveled: number;
@@ -151,12 +151,13 @@ export interface Projectile extends GameObject {
   ownerId: string;
   range: number;
   size: number;
+  type: AttackType;
   velocity: Vec2;
 }
 
 export type ProjectileOverrides = {
-  canTriggerUnique?: boolean;
   bypassDefault?: boolean;
+  canTriggerUnique?: boolean;
   color?: string;
   damage?: number;
   length?: number;
@@ -211,6 +212,26 @@ export type TextAnimParams = {
 
 // #region [ Audio ]
 //
+export type AudioFileType =
+  | ".ogg";
+
+export type AudioMixerName =
+  | "master"
+  | "ambience"
+  | "music"
+  | "sfx"
+  | "voice";
+
+export interface AudioMixer {
+  out: AudioMixerName | null;
+  volume: number;
+}
+
+export interface ActiveAudio {
+  setVolume: (volume: number) => void;
+  stop: () => void;
+}
+
 export interface AudioParams {
   delay?: {
     min: number;
@@ -218,7 +239,7 @@ export interface AudioParams {
   }
   listener?: Vec2;
   loop?: boolean;
-  output?: string;
+  output?: AudioMixerName;
   priority?: number;
   pitch?: {
     min: number;
@@ -234,6 +255,10 @@ export interface AudioParams {
     }
   }
   src: string;
+  startTime?: {
+    min: number;
+    max: number;
+  }
   volume?: {
     min: number;
     max: number;
@@ -244,8 +269,27 @@ export type AudioZone = {
   region: WorldRegion;
   center: Vec2;
   audioParams: AudioParams;
-  audioElement?: HTMLAudioElement;
+  audioElement?: ActiveAudio;
   isActive: boolean;
+}
+
+export interface WeaponSFX {
+  [weaponName: string]: {
+    attack: string[];
+    empty?: string[];
+    reload?: {
+      start: string[];
+      end: string[];
+    };
+    shell?: string[];
+  };
+}
+
+export interface ImpactSFX {
+  [surface: string]: {
+    ranged: string[];
+    melee: string[];
+  }
 }
 //
 // #endregion
@@ -305,11 +349,11 @@ export type ChatMessage = {
 export interface GameSettings {
   audio: {
     mixer: {
-      master: number;
-      interface: number;
-      music: number;
-      sfx: number;
-      voice: number;
+      master: AudioMixer;
+      ambience: AudioMixer;
+      music: AudioMixer;
+      sfx: AudioMixer;
+      voice: AudioMixer;
     }
   }
   controls: {
@@ -331,6 +375,14 @@ export interface GameSettings {
       melee: number;
       reload: number;
       sprint: number;
+    }
+  }
+  character: {
+    rig: {
+      body: string;
+      head: string;
+      headwear: string;
+      weapon: string;
     }
   }
   graphics: {
@@ -379,8 +431,16 @@ export type PlayerHitParams = {
   shooterId: string;
   damage: number;
   newHealth: number;
-  source: Projectile | ShrapnelPiece;
+  source: DamageEntity | ShrapnelPiece;
   wasKill: boolean;
+}
+
+export type FootstepParams = {
+  pos: Vec2;
+  material: string;
+  waterRatio: number;
+  isWet: boolean;
+  speedRatio: number;
 }
 //
 // #endregion
@@ -505,6 +565,22 @@ export type Emitter = {
   particleType: ParticleParams;
 }
 
+export interface GoreParticles {
+  drip: ParticleParams;
+  spray: ParticleParams;
+}
+
+export interface WeaponParticles {
+  muzzle: {
+    smoke: ParticleParams;
+    flash: ParticleParams;
+  };
+  projectile: {
+    shell: ParticleParams;
+    sparks: ParticleParams;
+  };
+}
+
 export type Decal = {
   params: DecalParams | null;
   pos: Vec2;
@@ -585,6 +661,11 @@ export type DeathStamp = {
   scale: number;
   src: string;
 }
+
+export type WeaponMagazine = {
+  empty: string;
+  full: string;
+};
 
 export type ReserveBulletParticle = {
   transform: Transform;
@@ -774,12 +855,17 @@ export type PixelWaterData = {
   depth: number;
   material: Material;
 }
+//
+// #endregion
 
+// #region [ Materials ]
+//
 export type Material = {
   name: string;
-  type: 'terrain' | 'mineral' | 'surface' | 'liquid';
+  type: 'terrain' | 'mineral' | 'surface' | 'liquid' | 'organic';
   colors: string[];
   physics: Liquid | Solid | Gas;
+  tags?: MaterialTag[];
 }
 
 export interface MaterialLayer {
@@ -793,26 +879,45 @@ export interface MaterialLayer {
 
 export enum PhysicsMaterialTypes { Liquid, Solid, Gas }
 
+export enum FrictionTypes {
+  Sticky = 0.7,
+  Wet = 0.755,
+  Soft = 0.8,
+  Normal = 0.825,
+  Hard = 0.85,
+  Slick = 0.9
+}
+
+export enum LiquidFrictionTypes {
+  Water = 0.915
+}
+
 interface PhysicsMaterial {
   type: PhysicsMaterialTypes;
   simulate: boolean;
 }
 
-interface Liquid extends PhysicsMaterial {
-  type: PhysicsMaterialTypes.Liquid;
-  viscosity: number; // how fast it flows / spreads
-}
-
 interface Solid extends PhysicsMaterial {
   type: PhysicsMaterialTypes.Solid;
   durability: number;
-  friction: number;
+  friction: FrictionTypes;
   density: number;
+}
+
+interface Liquid extends PhysicsMaterial {
+  type: PhysicsMaterialTypes.Liquid;
+  friction: LiquidFrictionTypes;
+  viscosity: number; // how fast it flows / spreads
 }
 
 interface Gas extends PhysicsMaterial {
   type: PhysicsMaterialTypes.Gas;
 }
+
+export type MaterialTag =
+  | "absorbent" // Can absorb liquids
+  | "imprint_on_footstep" // Footsteps can be imprinted into the material
+  | "track_on_footstep" // Material stains after being stepped on
 
 //
 // #endregion

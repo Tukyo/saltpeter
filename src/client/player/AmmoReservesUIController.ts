@@ -16,6 +16,10 @@ export class AmmoReservesUIController {
         private utility: Utility
     ) { }
 
+    public clear(): void {
+        this.reserveBulletParticles = [];
+    }
+
     // [ Ammo Reserve Canvas ]
     //
     /**

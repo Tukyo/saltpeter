@@ -1,6 +1,7 @@
-import { OBJECT_DEFAULTS, WORLD } from "./Config";
-import { CreateParticleParams, DeathDecal, DeathStamp, DecalParams, Emitter, EmitterParams, Particle, ParticleParams, PlayerHitParams, Shrapnel, ShrapnelPiece } from "./Types";
+import { GAME, WORLD } from "./Config";
+import { CreateParticleParams, DecalParams, Emitter, EmitterParams, Particle, ParticleParams, PlayerHitParams, Shrapnel, ShrapnelPiece } from "./Types";
 
+import { Camera } from "./Camera";
 import { CharacterConfig } from "./CharacterConfig";
 import { DecalsManager } from "./DecalsManager";
 import { RenderingManager } from "./RenderingManager";
@@ -11,7 +12,6 @@ import { Utility } from "./Utility";
 import { PlayerState } from "./player/PlayerState";
 import { CollisionsManager } from "./CollisionsManager";
 import { ParticlesConfig } from "./ParticlesConfig";
-import { Camera } from "./Camera";
 
 export class ParticlesManager {
     public particlesConfig: ParticlesConfig;
@@ -35,9 +35,17 @@ export class ParticlesManager {
         this.particlesConfig = new ParticlesConfig();
     }
 
+    /**
+     * Resets the internal state of the particle manager.
+     */
+    public clear(): void {
+        this.particles.clear();
+        this.emitters.clear();
+        this.shrapnel.clear();
+    }
+
     // #region [ Particles ]
     //
-    // [ Basic Particles ]
     //
     /**
      * Creates particles with params. Entrypoint for all particle creations.
@@ -59,7 +67,7 @@ export class ParticlesManager {
 
         this.generateParticles(params);
     }
-    
+
     /**
      * Responsible for actual generation of particles locally.
      */
@@ -415,119 +423,6 @@ export class ParticlesManager {
     //
     // #endregion
 
-    // #region [ Gore ]
-    //
-    /**
-     * Generates gore particles using the decals for the character object.
-     */
-    public generateGore(params: DeathDecal): void {
-        const gorePool = [...this.charConfig.characterDecals.default.gore]; // TODO: Get current pool for gore
-        for (let i = 0; i < params.gore.amount && gorePool.length > 0; i++) {
-            const goreAsset = this.utility.getRandomInArray(gorePool);
-            gorePool.splice(gorePool.indexOf(goreAsset), 1);
-            const angle = this.utility.getRandomNum(0, Math.PI * 2);
-            const distance = this.utility.getRandomNum(0, params.radius);
-
-            const goreDecal: DeathStamp = {
-                type: 'gore',
-                src: goreAsset,
-                transform: {
-                    pos: {
-                        x: params.pos.x + Math.cos(angle) * distance,
-                        y: params.pos.y + Math.sin(angle) * distance
-                    },
-                    rot: this.utility.getRandomNum(0, Math.PI * 2),
-                },
-                scale: this.utility.getRandomNum(0.65, 1.05)
-            };
-
-            const decalId = `death_gore_${params.ownerId}_${Date.now()}_${i}`;
-            this.stampGore(goreDecal);
-            this.decalsManager.dynamicDecals.set(decalId, {
-                params: null,
-                pos: {
-                    x: goreDecal.transform.pos.x,
-                    y: goreDecal.transform.pos.y
-                }
-            });
-        }
-
-        const bloodPool = [...this.charConfig.characterDecals.default.blood]; // TODO: Get current pool for blood
-        for (let i = 0; i < params.blood.amount && bloodPool.length > 0; i++) {
-            const bloodAsset = this.utility.getRandomInArray(bloodPool);
-            bloodPool.splice(bloodPool.indexOf(bloodAsset), 1);
-            const angle = this.utility.getRandomNum(0, Math.PI * 2);
-            const distance = this.utility.getRandomNum(0, params.radius * 0.7);
-
-            const bloodDecal: DeathStamp = {
-                type: 'blood',
-                src: bloodAsset,
-                transform: {
-                    pos: {
-                        x: params.pos.x + Math.cos(angle) * distance,
-                        y: params.pos.y + Math.sin(angle) * distance
-                    },
-                    rot: this.utility.getRandomNum(0, Math.PI * 2),
-                },
-                scale: this.utility.getRandomNum(1.25, 1.45)
-            };
-
-            const decalId = `death_blood_${params.ownerId}_${Date.now()}_${i}`;
-            this.stampGore(bloodDecal);
-            this.decalsManager.dynamicDecals.set(decalId, {
-                params: null,
-                pos: {
-                    x: bloodDecal.transform.pos.x,
-                    y: bloodDecal.transform.pos.y
-                }
-            });
-        }
-    }
-
-    /**
-     * Persists gore on the decal canvas.
-     */
-    private stampGore(params: DeathStamp): void {
-        if (!this.ui.decalCtx) return;
-        if (!this.camera.isVisible(params.transform.pos)) return;
-
-        const screenPos = this.camera.worldToScreen(params.transform.pos);
-
-        let image = this.renderingManager.characterImages.get(params.src);
-
-        if (!image) {
-            image = new Image();
-            image.src = params.src;
-            this.renderingManager.characterImages.set(params.src, image);
-
-            if (!image.complete) {
-                image.onload = () => {
-                    this.stampGore(params);
-                };
-                return;
-            }
-        }
-
-        if (!image.complete || image.naturalWidth === 0) return;
-
-        this.ui.decalCtx.save();
-        this.ui.decalCtx.translate(screenPos.x, screenPos.y);
-        this.ui.decalCtx.rotate(params.transform.rot);
-
-        const drawSize = 32 * params.scale;
-        this.ui.decalCtx.drawImage(
-            image,
-            -drawSize / 2,
-            -drawSize / 2,
-            drawSize,
-            drawSize
-        );
-
-        this.ui.decalCtx.restore();
-    }
-    //
-    // #endregion
-
     // #region [ Shrapnel ]
     //
     /**
@@ -545,7 +440,7 @@ export class ParticlesManager {
             const torque = this.utility.getRandomNum(params.torque.min, params.torque.max) * (Math.PI / 180); // Convert radians > deg
 
             const piece: ShrapnelPiece = {
-                id: this.utility.generateUID(OBJECT_DEFAULTS.DATA.ID_LENGTH),
+                id: this.utility.generateUID(GAME.DATA.ID_LENGTH),
                 image: params.images[i], // Already randomly selected in triggerUnique
                 transform: {
                     pos: {

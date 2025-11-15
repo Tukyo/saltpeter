@@ -1,19 +1,24 @@
 import { GAMEPAD_MAP } from "./Config";
+import { AudioMixerName } from "./Types";
 
 import { Animator } from "./Animator";
-import { ChatManager } from "./ChatManager";
+import { Camera } from "./Camera";
 import { ControlsManager } from "./ControlsManager";
 import { GameState } from "./GameState";
 import { RoomController } from "./RoomController";
 import { SettingsManager } from "./SettingsManager";
 import { UserInterface } from "./UserInterface";
 
+import { AudioManager } from "./audio/AudioManager";
+
+import { ChatManager } from "./chat/ChatManager";
+
 import { PlayerState } from "./player/PlayerState";
-import { Camera } from "./Camera";
 
 export class EventsManager {
     constructor(
         private animator: Animator,
+        private audioManager: AudioManager,
         private camera: Camera,
         private chatManager: ChatManager,
         private controlsManager: ControlsManager,
@@ -269,13 +274,18 @@ export class EventsManager {
      * Initializes event listeners for audio sliders on audio settings page.
      */
     private initSettingsAudioSliders(): void {
-        const sliders = [
-            { slider: this.ui.masterSlider, fill: this.ui.masterFill, value: this.ui.masterValue, channel: 'master' },
-            { slider: this.ui.interfaceSlider, fill: this.ui.interfaceFill, value: this.ui.interfaceValue, channel: 'interface' },
-            { slider: this.ui.musicSlider, fill: this.ui.musicFill, value: this.ui.musicValue, channel: 'music' },
-            { slider: this.ui.sfxSlider, fill: this.ui.sfxFill, value: this.ui.sfxValue, channel: 'sfx' },
-            { slider: this.ui.voiceSlider, fill: this.ui.voiceFill, value: this.ui.voiceValue, channel: 'voice' }
-        ];
+        const sliders: {
+            slider: HTMLDivElement | null;
+            fill: HTMLDivElement | null;
+            value: HTMLDivElement | null;
+            channel: AudioMixerName;
+        }[] = [
+                { slider: this.ui.masterSlider, fill: this.ui.masterFill, value: this.ui.masterValue, channel: 'master' },
+                { slider: this.ui.ambienceSlider, fill: this.ui.ambienceFill, value: this.ui.ambienceValue, channel: 'ambience' },
+                { slider: this.ui.musicSlider, fill: this.ui.musicFill, value: this.ui.musicValue, channel: 'music' },
+                { slider: this.ui.sfxSlider, fill: this.ui.sfxFill, value: this.ui.sfxValue, channel: 'sfx' },
+                { slider: this.ui.voiceSlider, fill: this.ui.voiceFill, value: this.ui.voiceValue, channel: 'voice' }
+            ];
 
         sliders.forEach(({ slider, fill, value, channel }) => {
             if (!slider || !fill || !value) return;
@@ -288,7 +298,10 @@ export class EventsManager {
                     this.settingsManager.updateSettings({
                         audio: {
                             mixer: {
-                                [channel]: sliderValue
+                                [channel]: {
+                                    ...this.settingsManager.getSettings().audio.mixer[channel],
+                                    volume: sliderValue
+                                }
                             }
                         }
                     });
@@ -297,6 +310,8 @@ export class EventsManager {
                 const handleUp = () => {
                     document.removeEventListener('mousemove', handleMove);
                     document.removeEventListener('mouseup', handleUp);
+
+                    this.audioManager.updateMixerGains();
                 };
 
                 handleMove(e);
@@ -306,6 +321,7 @@ export class EventsManager {
             });
         });
     }
+
 
     /**
      * Initializes event listeners for input fields on all settings pages.

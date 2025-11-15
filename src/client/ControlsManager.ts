@@ -18,6 +18,18 @@ export class ControlsManager {
         this.initGamepad();
     }
 
+    /**
+     * Clears the internal controls state.
+     */
+    public clear(): void {
+        this.clearActiveKeys();
+
+        this.gamepadRAxis = null;
+
+        this.mousePos.x = 0;
+        this.mousePos.y = 0;
+    }
+
     // #region [ Keys ]
     //
     /**
@@ -60,6 +72,8 @@ export class ControlsManager {
      */
     public clearActiveKeys(): void {
         this.activeKeys.clear();
+        this.gamepadKeys.clear();
+        this.previousKeys.clear();
     }
 
     /**

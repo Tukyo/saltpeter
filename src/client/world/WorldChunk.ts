@@ -37,7 +37,7 @@ export class WorldChunk {
 
         const materialIndex = combinedIndex >> 2;
         const colorVariantIndex = combinedIndex & 0b11;
-        const material = Object.values(this.worldConfig.materials)[materialIndex];
+        const material = this.worldConfig.materialsList[materialIndex];
 
         return material.colors[colorVariantIndex];
     }

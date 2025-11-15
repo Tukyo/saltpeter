@@ -1,3 +1,5 @@
+import { WeaponMagazine } from "./Types";
+
 export class CharacterConfig {
     public weapon = {
         glock: [
@@ -9,7 +11,7 @@ export class CharacterConfig {
         ]
     };
 
-    public magazine = {
+    public magazine: Record<string, WeaponMagazine> = {
         glock: {
             empty: '/assets/img/object/weapons/glock/magazine_empty.png',
             full: '/assets/img/object/weapons/glock/magazine_full.png'

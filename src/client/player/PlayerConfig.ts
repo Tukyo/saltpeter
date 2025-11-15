@@ -1,3 +1,5 @@
+import { FrictionTypes } from "../Types";
+
 export class PlayerConfig {
     public default = {
         actions: {
@@ -60,7 +62,7 @@ export class PlayerConfig {
         },
         physics: {
             acceleration: 0.65,
-            friction: 0.8
+            friction: FrictionTypes.Normal
         },
         rig: {
             body: 'default',

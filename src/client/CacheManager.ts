@@ -1,6 +1,6 @@
 export class CacheManager {
     private dbName = 'SaltpeterCache';
-    private dbVersion = 1;
+    private dbVersion = 3;
     private db: IDBDatabase | null = null;
 
     constructor() {

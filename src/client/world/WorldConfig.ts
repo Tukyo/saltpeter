@@ -1,4 +1,4 @@
-import { Material, WorldLayer, PhysicsMaterialTypes, NoiseType, WorldParams, RegionName } from "../Types";
+import { Material, WorldLayer, PhysicsMaterialTypes, NoiseType, WorldParams, RegionName, LiquidFrictionTypes, FrictionTypes } from "../Types";
 
 export class WorldConfig {
     public worldgenParams: WorldParams = {
@@ -67,6 +67,51 @@ export class WorldConfig {
         }
     };
 
+    private worldgenMessages = {
+        bakeStart: [
+            "baking chunks...",
+            "baking pixels into chunks...",
+            "assembling chunks...",
+            "chunkifying... is that a word?",
+            "packing pixels into chunks...",
+            "arranging cells into chunks..."
+        ],
+        bakeHalf: [
+            "getting close...",
+            "thanks for waiting...",
+            "almost done...",
+            "still chunking...",
+            "about 50% of chunks baked...",
+            "still baking pixels into chunks...",
+            "almost all pixels baked..."
+        ],
+        generation: [
+            "building cells...",
+            "placing pixels...",
+            "spawning pixels...",
+            "creating cells..."
+        ],
+        degeneration: [
+            "eroding terrain...",
+            "wearing down surfaces...",
+            "carving material layers...",
+            "degenerating terrain...",
+            "exposing layers..."
+        ],
+        hydration: [
+            "hydrating terrain...",
+            "filling water basins...",
+            "moisturizing...",
+            "creating shores..."
+        ],
+        special: [
+            "beltalowding...",
+            "i love a24 films",
+            "tehe",
+            "thank you for buying the battlepass..."
+        ]
+    }
+
     public regionAudioParams: Record<RegionName, {
         minRegionSize: number;
         radius: number;
@@ -79,7 +124,7 @@ export class WorldConfig {
             plains: { minRegionSize: 14, radius: 1000, volume: { min: 0.0, max: 0.1 } }
         };
 
-    public worldLayers: Record<string, WorldLayer> = {
+    private worldLayers: Record<string, WorldLayer> = {
         // NAME KEY MUST MATCH OBJECT LITERAL !IMPORTANT
         // MUST BE ORDERED BY HEIGHT [0..1]
 
@@ -108,6 +153,7 @@ export class WorldConfig {
             materials: [
                 { material: "silt", weight: 4, blend: 0.9 },
                 { material: "sand", weight: 5, blend: 0.9 },
+                { material: "sand_wet", weight: 3, blend: 0.1 },
                 { material: "gravel", weight: 2, blend: 0.6 },
                 { material: "dirt", weight: 1, blend: 0.4 }
             ]
@@ -118,6 +164,7 @@ export class WorldConfig {
             materials: [
                 { material: "silt", weight: 3, blend: 0.95 },
                 { material: "sand", weight: 6, blend: 0.9 },
+                { material: "sand_wet", weight: 3, blend: 0.1 },
                 { material: "gravel", weight: 3, blend: 0.6 },
                 { material: "stone", weight: 1, blend: 0.2 }
             ]
@@ -128,6 +175,7 @@ export class WorldConfig {
             materials: [
                 { material: "grass", weight: 7, blend: 0.8 },
                 { material: "dirt", weight: 2, blend: 0.6 },
+                { material: "mud", weight: 1, blend: 0.1 },
                 { material: "gravel", weight: 2, blend: 0.7 },
                 { material: "stone", weight: 1, blend: 0.3 }
             ]
@@ -163,7 +211,7 @@ export class WorldConfig {
         }
     };
 
-    public materials: Record<string, Material> = {
+    private materials: Record<string, Material> = {
         // NAME KEY MUST MATCH OBJECT LITERAL !IMPORTANT
 
         // TEMPLATE
@@ -176,7 +224,8 @@ export class WorldConfig {
         //         durability: ,
         //         friction: ,
         //         density: 
-        //     }
+        //     },
+        //     tags: []
         // },
 
         // TERRAIN
@@ -187,9 +236,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.8,
-                friction: 0.88,
+                friction: FrictionTypes.Hard,
                 density: 0.88
-            }
+            },
+            tags: []
         },
         bedrock: {
             name: "bedrock", type: "terrain",
@@ -198,9 +248,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 1,
-                friction: 0.9,
+                friction: FrictionTypes.Hard,
                 density: 0.95
-            }
+            },
+            tags: []
         },
         clay: {
             name: "clay", type: "terrain",
@@ -209,9 +260,22 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.2,
-                friction: 0.75,
+                friction: FrictionTypes.Soft,
                 density: 0.4
-            }
+            },
+            tags: ["absorbent", "imprint_on_footstep"]
+        },
+        clay_wet: {
+            name: "clay_wet", type: "terrain",
+            colors: ["#4a3a2f", "#554437", "#604e3f", "#6b5947"],
+            physics: {
+                type: PhysicsMaterialTypes.Solid,
+                simulate: false,
+                durability: 0.1,
+                friction: FrictionTypes.Wet,
+                density: 0.4
+            },
+            tags: ["imprint_on_footstep", "track_on_footstep"]
         },
         dirt: {
             name: "dirt", type: "terrain",
@@ -220,9 +284,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.2,
-                friction: 0.8,
+                friction: FrictionTypes.Normal,
                 density: 0.5
-            }
+            },
+            tags: ["absorbent", "imprint_on_footstep"]
         },
         granite: {
             name: "granite", type: "terrain",
@@ -231,9 +296,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.9,
-                friction: 0.9,
+                friction: FrictionTypes.Hard,
                 density: 0.9
-            }
+            },
+            tags: []
         },
         grass: {
             name: "grass", type: "terrain",
@@ -242,9 +308,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.2,
-                friction: 0.8,
+                friction: FrictionTypes.Normal,
                 density: 0.5
-            }
+            },
+            tags: []
         },
         gravel: {
             name: "gravel", type: "terrain",
@@ -253,9 +320,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: true,
                 durability: 0.1,
-                friction: 0.6,
+                friction: FrictionTypes.Soft,
                 density: 0.3
-            }
+            },
+            tags: ["imprint_on_footstep"]
         },
         ice: {
             name: "ice", type: "terrain",
@@ -264,9 +332,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.3,
-                friction: 0.4,
+                friction: FrictionTypes.Slick,
                 density: 0.5
-            }
+            },
+            tags: []
         },
         permafrost: {
             name: "permafrost", type: "terrain",
@@ -275,9 +344,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.7,
-                friction: 0.85,
+                friction: FrictionTypes.Slick,
                 density: 0.8
-            }
+            },
+            tags: []
         },
         loam: {
             name: "loam", type: "terrain",
@@ -286,9 +356,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.2,
-                friction: 0.8,
+                friction: FrictionTypes.Soft,
                 density: 0.55
-            }
+            },
+            tags: ["absorbent"]
         },
         limestone: {
             name: "limestone", type: "terrain",
@@ -297,9 +368,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.5,
-                friction: 0.8,
+                friction: FrictionTypes.Hard,
                 density: 0.7
-            }
+            },
+            tags: []
         },
         moss: {
             name: "moss", type: "terrain",
@@ -308,9 +380,22 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.1,
-                friction: 0.8,
+                friction: FrictionTypes.Soft,
                 density: 0.4
-            }
+            },
+            tags: ["absorbent"]
+        },
+        mud: {
+            name: "mud", type: "terrain",
+            colors: ["#3b2416", "#4a2e1d", "#583924", "#66452b"],
+            physics: {
+                type: PhysicsMaterialTypes.Solid,
+                simulate: false,
+                durability: 0.1,
+                friction: FrictionTypes.Wet,
+                density: 0.6
+            },
+            tags: ["imprint_on_footstep", "track_on_footstep"]
         },
         peat: {
             name: "peat", type: "terrain",
@@ -319,9 +404,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.1,
-                friction: 0.6,
+                friction: FrictionTypes.Soft,
                 density: 0.3
-            }
+            },
+            tags: ["absorbent"]
         },
         sand: {
             name: "sand", type: "terrain",
@@ -330,9 +416,22 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: true,
                 durability: 0.1,
-                friction: 0.6,
+                friction: FrictionTypes.Soft,
                 density: 0.2
-            }
+            },
+            tags: ["absorbent", "imprint_on_footstep"]
+        },
+        sand_wet: {
+            name: "sand_wet", type: "terrain",
+            colors: ["#8f7e5e", "#9d8d6c", "#ab9c7a", "#b9ab88"],
+            physics: {
+                type: PhysicsMaterialTypes.Solid,
+                simulate: false,
+                durability: 0.1,
+                friction: FrictionTypes.Wet,
+                density: 0.3
+            },
+            tags: ["imprint_on_footstep", "track_on_footstep"]
         },
         sandstone: {
             name: "sandstone", type: "terrain",
@@ -341,9 +440,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.4,
-                friction: 0.75,
+                friction: FrictionTypes.Hard,
                 density: 0.65
-            }
+            },
+            tags: []
         },
         scree: {
             name: "scree", type: "terrain",
@@ -352,9 +452,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.4,
-                friction: 0.75,
+                friction: FrictionTypes.Hard,
                 density: 0.65
-            }
+            },
+            tags: []
         },
         shale: {
             name: "shale", type: "terrain",
@@ -363,9 +464,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.4,
-                friction: 0.75,
+                friction: FrictionTypes.Hard,
                 density: 0.7
-            }
+            },
+            tags: []
         },
         silt: {
             name: "silt", type: "terrain",
@@ -374,9 +476,22 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: true,
                 durability: 0.1,
-                friction: 0.5,
+                friction: FrictionTypes.Soft,
                 density: 0.3
-            }
+            },
+            tags: ["absorbent", "imprint_on_footstep"]
+        },
+        silt_wet: {
+            name: "silt_wet", type: "terrain",
+            colors: ["#5e5648", "#655d4f", "#6c6453", "#746b57"],
+            physics: {
+                type: PhysicsMaterialTypes.Solid,
+                simulate: false,
+                durability: 0.1,
+                friction: FrictionTypes.Wet,
+                density: 0.4
+            },
+            tags: ["imprint_on_footstep", "track_on_footstep"]
         },
         slate: {
             name: "slate", type: "terrain",
@@ -385,9 +500,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.6,
-                friction: 0.82,
+                friction: FrictionTypes.Hard,
                 density: 0.75
-            }
+            },
+            tags: []
         },
         snow: {
             name: "snow", type: "terrain",
@@ -396,9 +512,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.2,
-                friction: 0.9,
+                friction: FrictionTypes.Sticky,
                 density: 0.4
-            }
+            },
+            tags: ["absorbent", "imprint_on_footstep"]
         },
         stone: {
             name: "stone", type: "terrain",
@@ -407,9 +524,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.5,
-                friction: 0.85,
+                friction: FrictionTypes.Hard,
                 density: 0.75
-            }
+            },
+            tags: []
         },
 
         // MINERAL
@@ -420,9 +538,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.6,
-                friction: 0.85,
+                friction: FrictionTypes.Hard,
                 density: 0.55
-            }
+            },
+            tags: []
         },
         iron: {
             name: "iron", type: "mineral",
@@ -431,9 +550,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.7,
-                friction: 0.85,
+                friction: FrictionTypes.Hard,
                 density: 0.9
-            }
+            },
+            tags: []
         },
         gold: {
             name: "gold", type: "mineral",
@@ -442,9 +562,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.8,
-                friction: 0.85,
+                friction: FrictionTypes.Hard,
                 density: 0.8
-            }
+            },
+            tags: []
         },
         silver: {
             name: "silver", type: "mineral",
@@ -453,9 +574,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.7,
-                friction: 0.85,
+                friction: FrictionTypes.Hard,
                 density: 0.75
-            }
+            },
+            tags: []
         },
         copper: {
             name: "copper", type: "mineral",
@@ -464,9 +586,24 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.6,
-                friction: 0.85,
+                friction: FrictionTypes.Hard,
                 density: 0.7
-            }
+            },
+            tags: []
+        },
+
+        // ORGANIC
+        flesh: {
+            name: "flesh", type: "organic",
+            colors: ["#c895e3", "#b94e51", "#be6987", "#c04444"],
+            physics: {
+                type: PhysicsMaterialTypes.Solid,
+                simulate: false,
+                durability: 0.2,
+                friction: FrictionTypes.Soft,
+                density: 0.4
+            },
+            tags: []
         },
 
         // SURFACE
@@ -477,9 +614,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.4,
-                friction: 0.85,
+                friction: FrictionTypes.Hard,
                 density: 0.5
-            }
+            },
+            tags: []
         },
         concrete: {
             name: "concrete", type: "surface",
@@ -488,9 +626,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.8,
-                friction: 0.85,
+                friction: FrictionTypes.Hard,
                 density: 0.65
-            }
+            },
+            tags: []
         },
         metal: {
             name: "metal", type: "surface",
@@ -499,9 +638,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.9,
-                friction: 0.85,
+                friction: FrictionTypes.Hard,
                 density: 0.8
-            }
+            },
+            tags: []
         },
         asphalt: {
             name: "asphalt", type: "surface",
@@ -510,9 +650,10 @@ export class WorldConfig {
                 type: PhysicsMaterialTypes.Solid,
                 simulate: false,
                 durability: 0.8,
-                friction: 0.85,
+                friction: FrictionTypes.Hard,
                 density: 0.7
-            }
+            },
+            tags: []
         },
 
         // LIQUIDS
@@ -522,12 +663,52 @@ export class WorldConfig {
             physics: {
                 type: PhysicsMaterialTypes.Liquid,
                 simulate: true,
+                friction: LiquidFrictionTypes.Water,
                 viscosity: 0.2
-            }
+            },
+            tags: []
         }
     };
 
-    constructor() { }
+    public materialIndex: Record<string, number> = {};
+    public worldLayerIndex: Record<string, number> = {};
+
+    public materialsList: Material[] = [];
+    public worldLayerList: WorldLayer[] = [];
+
+    constructor() {
+        this.materialsList = Object.values(this.materials);
+        this.worldLayerList = Object.values(this.worldLayers);
+
+        this.materialsList.forEach((mat, i) => {
+            this.materialIndex[mat.name] = i;
+        });
+
+        this.worldLayerList.forEach((layer, i) => {
+            this.worldLayerIndex[layer.name] = i;
+        });
+    }
+
+    /**
+     * Returns a worldgen message for the specific loading phase.
+     */
+    public getWorldgenMessage(phase: string): string {
+        const messages = this.worldgenMessages;
+        const roll: number = Math.random();
+
+        if (roll <= 0.01 && messages.special.length > 0) {
+            const specialIndex: number = Math.floor(Math.random() * messages.special.length);
+            const specialMessage: string = messages.special[specialIndex];
+            return specialMessage;
+        }
+
+        const phaseMessages: string[] | undefined = (messages as Record<string, string[]>)[phase];
+        if (!phaseMessages || phaseMessages.length === 0) { return "loading..."; }
+
+        const randomIndex: number = Math.floor(Math.random() * phaseMessages.length);
+        const selectedMessage: string = phaseMessages[randomIndex];
+        return selectedMessage;
+    }
 }
 
 // 1761802917695 1761883681927 1761926328530

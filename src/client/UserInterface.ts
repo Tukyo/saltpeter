@@ -1,5 +1,5 @@
-import { CANVAS, GAMEPAD_MAP, WORLD } from "./Config";
-import { GameSettings, Leaderboard, Players } from "./Types";
+import { VIEWPORT, GAMEPAD_MAP, WORLD } from "./Config";
+import { GameSettings, Leaderboard, Players, SetSliderParams } from "./Types";
 
 import { LobbyManager } from "./LobbyManager";
 import { SettingsManager } from "./SettingsManager";
@@ -11,6 +11,8 @@ import { AmmoReservesUIController } from "./player/AmmoReservesUIController";
 export class UserInterface {
     public ammoReservesUIController: AmmoReservesUIController;
 
+    public leaderboard: Leaderboard = new Map();
+
     // [ Canvas ]
     //
     public ammoReservesCanvas: HTMLCanvasElement | null = null;
@@ -21,6 +23,10 @@ export class UserInterface {
     public decalCtx: CanvasRenderingContext2D | null = null;
     public worldCanvas: HTMLCanvasElement | null = null;
     public worldCtx: CanvasRenderingContext2D | null = null;
+    public liquidCanvas: HTMLCanvasElement | null = null;
+    public liquidCtx: CanvasRenderingContext2D | null = null;
+    public postEffectsCanvas: HTMLCanvasElement | null = null;
+    public postEffectsCtx: CanvasRenderingContext2D | null = null;
     //
     //
     // [ Containers ]
@@ -95,7 +101,6 @@ export class UserInterface {
     //
     // [ Leaderboard ]
     //
-    public leaderboard: Leaderboard = new Map();
     public leaderboardBody: HTMLTableSectionElement | null = null;
     public leaderboardContainer: HTMLDivElement | null = null;
     //
@@ -114,9 +119,9 @@ export class UserInterface {
     public masterSlider: HTMLDivElement | null = null;
     public masterFill: HTMLDivElement | null = null;
     public masterValue: HTMLDivElement | null = null;
-    public interfaceSlider: HTMLDivElement | null = null;
-    public interfaceFill: HTMLDivElement | null = null;
-    public interfaceValue: HTMLDivElement | null = null;
+    public ambienceSlider: HTMLDivElement | null = null;
+    public ambienceFill: HTMLDivElement | null = null;
+    public ambienceValue: HTMLDivElement | null = null;
     public musicSlider: HTMLDivElement | null = null;
     public musicFill: HTMLDivElement | null = null;
     public musicValue: HTMLDivElement | null = null;
@@ -156,6 +161,14 @@ export class UserInterface {
         this.initInterfaceListeners();
     }
 
+    /**
+     * Clears internal ui state but not cached DOM elements.
+     */
+    public clear(): void {
+        this.ammoReservesUIController.clear();
+        this.clearLeaderboard();
+    }
+
     // #region [ Init ]
     //
     /**
@@ -167,6 +180,8 @@ export class UserInterface {
         this.canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
         this.decalCanvas = document.createElement('canvas') as HTMLCanvasElement;
         this.worldCanvas = document.createElement('canvas') as HTMLCanvasElement;
+        this.liquidCanvas = document.createElement('canvas') as HTMLCanvasElement;
+        this.postEffectsCanvas = document.createElement('canvas') as HTMLCanvasElement;
         this.ammoReservesCanvas = document.getElementById('ammoReservesCanvas') as HTMLCanvasElement;
         this.charCustomizeCanvas = document.getElementById('charCustomizeCanvas') as HTMLCanvasElement;
 
@@ -236,9 +251,9 @@ export class UserInterface {
         this.masterSlider = document.getElementById('masterSlider') as HTMLDivElement;
         this.masterFill = document.getElementById('masterFill') as HTMLDivElement;
         this.masterValue = document.getElementById('masterValue') as HTMLDivElement;
-        this.interfaceSlider = document.getElementById('interfaceSlider') as HTMLDivElement;
-        this.interfaceFill = document.getElementById('interfaceFill') as HTMLDivElement;
-        this.interfaceValue = document.getElementById('interfaceValue') as HTMLDivElement;
+        this.ambienceSlider = document.getElementById('ambienceSlider') as HTMLDivElement;
+        this.ambienceFill = document.getElementById('ambienceFill') as HTMLDivElement;
+        this.ambienceValue = document.getElementById('ambienceValue') as HTMLDivElement;
         this.musicSlider = document.getElementById('musicSlider') as HTMLDivElement;
         this.musicFill = document.getElementById('musicFill') as HTMLDivElement;
         this.musicValue = document.getElementById('musicValue') as HTMLDivElement;
@@ -262,8 +277,8 @@ export class UserInterface {
         this.shotSpeedStat = document.getElementById('shotSpeedValue') as HTMLSpanElement;
         this.speedStat = document.getElementById('speedValue') as HTMLSpanElement;
 
-        if (!this.canvas || !this.decalCanvas || !this.ammoReservesCanvas || !this.charCustomizeCanvas ||
-            !this.worldCanvas || !this.roomControls || !this.gameContainer || !this.lobbyContainer ||
+        if (!this.canvas || !this.decalCanvas || !this.postEffectsCanvas || !this.ammoReservesCanvas || !this.charCustomizeCanvas ||
+            !this.liquidCanvas || !this.worldCanvas || !this.roomControls || !this.gameContainer || !this.lobbyContainer ||
             !this.userIdDisplay || !this.roomIdDisplay || !this.gameRoomIdDisplay ||
             !this.lobbyPlayersList || !this.startGameBtn || !this.gameOptionsContainer || !this.chatContainer ||
             !this.chatMessages || !this.chatInput || !this.chatSendBtn || !this.privateToggle ||
@@ -272,9 +287,9 @@ export class UserInterface {
             !this.quickplayButton || !this.lobbyLeaveButton || !this.lobbyCodeButton || !this.gameLeaveButton ||
             !this.gameCodeButton || !this.settingsButton || !this.settingsCloseButton || !this.settingsContainer ||
             !this.controlsTab || !this.graphicsTab || !this.soundTab || !this.controlsBody || !this.graphicsBody ||
-            !this.soundBody || !this.masterSlider || !this.masterFill || !this.interfaceSlider ||
-            !this.interfaceFill || !this.musicSlider || !this.musicFill || !this.sfxSlider || !this.sfxFill ||
-            !this.voiceSlider || !this.voiceFill || !this.masterValue || !this.interfaceValue || !this.musicValue ||
+            !this.soundBody || !this.masterSlider || !this.masterFill || !this.ambienceSlider ||
+            !this.ambienceFill || !this.musicSlider || !this.musicFill || !this.sfxSlider || !this.sfxFill ||
+            !this.voiceSlider || !this.voiceFill || !this.masterValue || !this.ambienceValue || !this.musicValue ||
             !this.sfxValue || !this.voiceValue || !this.accuracyStat || !this.damageStat ||
             !this.luckStat || !this.rangeStat || !this.shotSpeedStat || !this.speedStat || !this.deadzoneInput ||
             !this.particleJSToggle || !this.staticVfxToggle || !this.ammoReservesPhysicsToggle ||
@@ -285,12 +300,17 @@ export class UserInterface {
             throw new Error('Critical error: Required DOM elements are missing.');
         }
 
-        this.canvas.width = CANVAS.WIDTH;
-        this.canvas.height = CANVAS.HEIGHT;
+        this.canvas.width = VIEWPORT.WIDTH;
+        this.canvas.height = VIEWPORT.HEIGHT;
+        this.postEffectsCanvas.width = VIEWPORT.WIDTH;
+        this.postEffectsCanvas.height = VIEWPORT.HEIGHT
+
         this.decalCanvas.width = WORLD.WIDTH;
         this.decalCanvas.height = WORLD.HEIGHT;
         this.worldCanvas.width = WORLD.WIDTH;
         this.worldCanvas.height = WORLD.HEIGHT;
+        this.liquidCanvas.width = WORLD.WIDTH;
+        this.liquidCanvas.height = WORLD.HEIGHT;
 
         this.ammoReservesCanvas.width = 100;
         this.ammoReservesCanvas.height = 64;
@@ -300,10 +320,12 @@ export class UserInterface {
         this.ctx = this.canvas.getContext('2d');
         this.decalCtx = this.decalCanvas.getContext('2d');
         this.worldCtx = this.worldCanvas.getContext('2d');
+        this.liquidCtx = this.liquidCanvas.getContext('2d'); 
+        this.postEffectsCtx = this.postEffectsCanvas.getContext('2d');
         this.ammoReservesCtx = this.ammoReservesCanvas.getContext('2d');
         this.charCustomizeCtx = this.charCustomizeCanvas.getContext('2d')
 
-        if (!this.ctx || !this.decalCtx || !this.worldCtx || !this.ammoReservesCtx || !this.charCustomizeCtx) {
+        if (!this.ctx || !this.decalCtx || !this.worldCtx || !this.liquidCtx || !this.postEffectsCtx || !this.ammoReservesCtx || !this.charCustomizeCtx) {
             alert('Failed to load game. Please refresh the page.');
             throw new Error('Could not get canvas context');
         }
@@ -617,11 +639,11 @@ export class UserInterface {
      */
     public initSoundSliders(settings: GameSettings): void {
         const audioSettings = settings.audio.mixer;
-        if (this.masterFill && this.masterValue) this.updateSettingsSlider(this.masterFill, this.masterValue, audioSettings.master);
-        if (this.interfaceFill && this.interfaceValue) this.updateSettingsSlider(this.interfaceFill, this.interfaceValue, audioSettings.interface);
-        if (this.musicFill && this.musicValue) this.updateSettingsSlider(this.musicFill, this.musicValue, audioSettings.music);
-        if (this.sfxFill && this.sfxValue) this.updateSettingsSlider(this.sfxFill, this.sfxValue, audioSettings.sfx);
-        if (this.voiceFill && this.voiceValue) this.updateSettingsSlider(this.voiceFill, this.voiceValue, audioSettings.voice);
+        if (this.masterFill && this.masterValue) this.updateSettingsSlider(this.masterFill, this.masterValue, audioSettings.master.volume);
+        if (this.ambienceFill && this.ambienceValue) this.updateSettingsSlider(this.ambienceFill, this.ambienceValue, audioSettings.ambience.volume);
+        if (this.musicFill && this.musicValue) this.updateSettingsSlider(this.musicFill, this.musicValue, audioSettings.music.volume);
+        if (this.sfxFill && this.sfxValue) this.updateSettingsSlider(this.sfxFill, this.sfxValue, audioSettings.sfx.volume);
+        if (this.voiceFill && this.voiceValue) this.updateSettingsSlider(this.voiceFill, this.voiceValue, audioSettings.voice.volume);
     }
     //
     // #endregion
@@ -972,6 +994,24 @@ export class UserInterface {
         if (this.leaderboardBody) {
             this.leaderboardBody.innerHTML = '';
         }
+    }
+    //
+    // #endregion
+
+    // #region [ HUD ]
+    //
+    private readonly HUD_LERP_TIME = 300; // ms
+
+    public updateSlider(target: "stamina" | "health"): void {
+        const playerStats = this.playerState.myPlayer.stats;
+
+        const sliderParams: SetSliderParams = {
+            sliderId: target === "health" ? "healthBar" : "staminaBar",
+            targetValue: playerStats[target].value,
+            maxValue: playerStats[target].max,
+            lerpTime: this.HUD_LERP_TIME
+        };
+        this.utility.setSlider(sliderParams);
     }
     //
     // #endregion

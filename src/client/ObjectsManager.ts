@@ -1,4 +1,4 @@
-import { OBJECT_DEFAULTS } from "./Config";
+import { GAME } from "./Config";
 import { AmmoBox, GameObject, SpawnObjectParams } from "./Types";
 
 import { Utility } from "./Utility";
@@ -10,6 +10,13 @@ export class ObjectsManager {
 
     constructor(private playerState: PlayerState, private utility: Utility) {}
 
+    /**
+     * Clears all game objects from internal memory.
+     */
+    public clear(): void {
+        this.ammoBoxes.clear();
+    }
+
     // #region [ Objects ]
     //
     /**
@@ -17,7 +24,7 @@ export class ObjectsManager {
      */
     private spawnObject(params: SpawnObjectParams): GameObject {
         const baseObject: GameObject = {
-            id: this.utility.generateUID(OBJECT_DEFAULTS.DATA.ID_LENGTH),
+            id: this.utility.generateUID(GAME.DATA.ID_LENGTH),
             transform: params.transform,
             timestamp: Date.now()
         };

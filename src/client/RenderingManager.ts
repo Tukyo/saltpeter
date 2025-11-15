@@ -1,5 +1,5 @@
-import { AMMO_BOX, CANVAS, GAME, UI, WORLD } from "./Config";
-import { CharacterLayer, Projectile, RenderCharacterParams } from "./Types";
+import { AMMO_BOX, VIEWPORT, GAME, UI, WORLD } from "./Config";
+import { CharacterLayer, DamageEntity, RenderCharacterParams } from "./Types";
 
 import { Animator } from "./Animator";
 import { CharacterManager } from "./CharacterManager";
@@ -37,13 +37,13 @@ export class RenderingManager {
      */
     public clearCtx(customCtx?: CanvasRenderingContext2D): void {
         if (customCtx) {
-            customCtx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+            customCtx.clearRect(0, 0, VIEWPORT.WIDTH, VIEWPORT.HEIGHT);
             return;
         }
 
         if (!this.ui.decalCtx || !this.ui.ctx) return;
 
-        this.ui.ctx.clearRect(0, 0, CANVAS.WIDTH, CANVAS.HEIGHT);
+        this.ui.ctx.clearRect(0, 0, VIEWPORT.WIDTH, VIEWPORT.HEIGHT);
         this.ui.decalCtx.clearRect(0, 0, WORLD.WIDTH, WORLD.HEIGHT);
     }
     //
@@ -407,7 +407,7 @@ export class RenderingManager {
     /**
      * Draws the rect of the projectile and renders it on the main canvas.
      */
-    public drawProjectile(projectile: Projectile): void {
+    public drawProjectile(projectile: DamageEntity): void {
         if (!this.ui.ctx) return;
         if (!this.camera.isVisible(projectile.transform.pos)) return;
 

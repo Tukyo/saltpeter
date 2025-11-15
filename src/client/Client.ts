@@ -1,20 +1,20 @@
 
-import { CANVAS, GAME, WORLD } from './Config';
-import { Player, RoomMessage, LobbyPlayer, LeaderboardEntry, ResetType, SetSliderParams, SetSpanParams, DeathDecal, EmitterParams, GameSettings, RenderCharacterParams } from './Types';
+import { VIEWPORT, GAME, WORLD } from './Config';
+import { Player, RoomMessage, LobbyPlayer, ResetType, SetSpanParams, DeathDecal, EmitterParams, GameSettings, RenderCharacterParams } from './Types';
 
 import { Admin } from './Admin';
 import { Animator } from './Animator';
-import { AudioManager } from './AudioManager';
 import { CacheManager } from './CacheManager';
+import { Camera } from './Camera';
 import { CharacterConfig } from './CharacterConfig';
 import { CharacterManager } from './CharacterManager';
-import { ChatManager } from './ChatManager';
 import { ControlsManager } from './ControlsManager';
 import { CollisionsManager } from './CollisionsManager';
 import { DecalsManager } from './DecalsManager';
 import { EventsManager } from './EventsManager';
 import { GameState } from './GameState';
 import { LobbyManager } from './LobbyManager';
+import { ObjectsManager } from './ObjectsManager';
 import { ParticlesManager } from './ParticlesManager';
 import { RenderingManager } from './RenderingManager';
 import { RoomController } from './RoomController';
@@ -25,17 +25,20 @@ import { UserInterface } from './UserInterface';
 import { Utility } from './Utility';
 import { WebsocketManager } from './WebsocketManager';
 
+import { AudioConfig } from './audio/AudioConfig';
+import { AudioManager } from './audio/AudioManager';
+
+import { ChatManager } from './chat/ChatManager';
+
 import { CombatController } from './player/CombatController';
 import { DashController } from './player/DashController';
 import { LuckController } from './player/LuckController';
 import { MoveController } from './player/MoveController';
-import { ObjectsManager } from './ObjectsManager';
+import { PlayerConfig } from './player/PlayerConfig';
 import { PlayerController } from './player/PlayerController';
 import { PlayerState } from './player/PlayerState';
 import { StaminaController } from './player/StaminaController';
-import { PlayerConfig } from './player/PlayerConfig';
-import { AudioConfig } from './AudioConfig';
-import { Camera } from './Camera';
+
 import { World } from './world/World';
 
 class Client {
@@ -90,13 +93,13 @@ class Client {
 
         this.audioConfig = new AudioConfig();
 
-        this.settingsManager = new SettingsManager(this.audioConfig, this.cacheManager);
+        this.playerConfig = new PlayerConfig();
+
+        this.settingsManager = new SettingsManager(this.audioConfig, this.cacheManager, this.playerConfig);
         this.controlsManager = new ControlsManager(this.settingsManager);
 
         this.charConfig = new CharacterConfig();
         this.charManager = new CharacterManager(this.charConfig);
-
-        this.playerConfig = new PlayerConfig();
 
         this.userId = this.utility.generateUID(this.playerConfig.default.data.idLength);
         this.playerState = new PlayerState(this.playerConfig, this.userId, this.utility);
@@ -107,13 +110,10 @@ class Client {
 
         this.admin = new Admin(this.cacheManager, this.ui);
 
-        this.objectsManager = new ObjectsManager(
-            this.playerState,
-            this.utility
-        );
+        this.objectsManager = new ObjectsManager(this.playerState, this.utility);
 
         this.roomManager = new RoomManager(this.userId, this.utility);
-        this.lobbyManager = new LobbyManager(this.charManager, this.playerConfig, this.playerState, this.roomManager, this.ui, this.utility);
+        this.lobbyManager = new LobbyManager(this.charManager, this.playerConfig, this.playerState, this.roomManager, this.settingsManager, this.ui, this.utility);
         this.wsManager = new WebsocketManager(this.gameState, this.roomManager, this.utility);
         this.chatManager = new ChatManager(this.roomManager, this.ui);
 
@@ -144,7 +144,7 @@ class Client {
             this.userId
         );
 
-        this.moveController = new MoveController(this.controlsManager, this.settingsManager);
+        this.moveController = new MoveController(this.controlsManager, this.playerState, this.settingsManager);
         this.staminaController = new StaminaController(this.playerState);
         this.luckController = new LuckController(this.playerState);
 
@@ -177,6 +177,7 @@ class Client {
             this.camera,
             this.charConfig,
             this.playerState,
+            this.renderingManager,
             this.roomManager,
             this.ui,
             this.userId,
@@ -209,7 +210,8 @@ class Client {
             this.roomManager,
             this.ui,
             this.userId,
-            this.utility
+            this.utility,
+            this.world
         );
 
         this.combatController = new CombatController(
@@ -242,6 +244,7 @@ class Client {
 
         this.eventsManager = new EventsManager(
             this.animator,
+            this.audioManager,
             this.camera,
             this.chatManager,
             this.controlsManager,
@@ -273,6 +276,15 @@ class Client {
     }
 
     /**
+     * Clears the client state.
+     */
+    private clear(): void {
+        this.isRoundInProgress = false;
+        this.gameWinner = null;
+        this.roundWinner = null;
+    }
+
+    /**
      * Main initializer for the game client.
      */
     private async initClient(): Promise<void> {
@@ -295,15 +307,13 @@ class Client {
         this.ui.initSoundSliders(settings);
         this.ui.initSettingsInputs(settings);
         this.ui.initSettingsToggles(settings)
-
         this.ui.ammoReservesUIController.initAmmoReserveCanvas();
 
         this.eventsManager.initKeybindListeners();
 
-        if (this.audioConfig.settings.preloadSounds) {
-            this.audioManager.preloadAudioAssets(this.audioConfig.resources.sfx, '.ogg');
-            this.audioManager.preloadAudioAssets(this.audioConfig.resources.ambience, '.ogg');
-        }
+        this.audioManager.updateMixerGains();
+        await this.audioManager.preloadAudio(this.audioConfig.resources.sfx, '.ogg');
+        await this.audioManager.preloadAudio(this.audioConfig.resources.ambience, '.ogg');
 
         this.watchForInputs();
 
@@ -316,8 +326,8 @@ class Client {
             this.audioManager.playAudio({
                 src: src,
                 loop: true,
-                output: "music", // TODO: Add ambience mixer
-                volume: { min: 0.1, max: 0.1 }
+                output: "ambience",
+                volume: { min: 0.025, max: 0.025 }
             });
         });
 
@@ -346,6 +356,9 @@ class Client {
     //
     // #region [ Client <> Server ]
     //
+    /**
+     * Responsible for room related WS messages.
+     */
     private handleRoomMessage(message: RoomMessage): void {
         switch (message.type) {
             case 'room-created':
@@ -436,6 +449,9 @@ class Client {
         }
     }
 
+    /**
+     * Processes all client sent network messages related to gameplay and lobby logic.
+     */
     private async handleGameMessage(message: RoomMessage): Promise<void> {
         if (!message.message) return;
 
@@ -565,124 +581,24 @@ class Client {
                 //
                 // [ Player ]
                 //
-                // [ IMPORTANT ] Keep full track of Player object here
-                case 'player-state':
-                    console.log('Player State for player', gameData.id, ':', gameData);
+                case "player-state": {
+                    const playerData = gameData.data;
+                    if (!playerData || !playerData.id) return;
 
-                    this.playerState.players.set(message.userId, {
-                        id: message.userId,
-                        transform: {
-                            pos: {
-                                x: gameData.transform?.pos.x,
-                                y: gameData.transform?.pos.y
-                            },
-                            rot: gameData.transform?.rot
-                        },
-                        timestamp: gameData.timestamp,
-                        color: gameData.color,
-                        actions: {
-                            dash: {
-                                cooldown: gameData.actions?.dash.cooldown || this.playerConfig.default.actions.dash.cooldown,
-                                drain: gameData.actions?.dash.drain || this.playerConfig.default.actions.dash.drain,
-                                multiplier: gameData.actions?.dash.multiplier || this.playerConfig.default.actions.dash.multiplier,
-                                time: gameData.actions?.dash.time || this.playerConfig.default.actions.dash.time
-                            },
-                            melee: {
-                                cooldown: gameData.actions?.melee.cooldown || this.playerConfig.default.actions.melee.cooldown,
-                                damage: gameData.actions?.melee.damage || this.playerConfig.default.actions.melee.damage,
-                                duration: gameData.actions?.melee.duration || this.playerConfig.default.actions.melee.duration,
-                                range: gameData.actions?.melee.range || this.playerConfig.default.actions.melee.range,
-                                size: gameData.actions?.melee.size || this.playerConfig.default.actions.melee.size
-                            },
-                            primary: {
-                                buffer: gameData.actions?.primary.buffer || this.playerConfig.default.actions.primary.buffer,
-                                burst: {
-                                    amount: gameData.actions?.primary.burst.amount || this.playerConfig.default.actions.primary.burst.amount,
-                                    delay: gameData.actions?.primary.burst.delay || this.playerConfig.default.actions.primary.burst.delay
-                                },
-                                magazine: {
-                                    currentAmmo: gameData.actions?.primary.magazine.currentAmmo,
-                                    currentReserve: gameData.actions?.primary.magazine.currentReserve,
-                                    maxReserve: gameData.actions?.primary.magazine.maxReserve,
-                                    size: gameData.actions?.primary.magazine.size || this.playerConfig.default.actions.primary.magazine.size
-                                },
-                                offset: gameData.actions?.primary.offset || this.playerConfig.default.actions.primary.offset,
-                                projectile: {
-                                    amount: gameData.actions?.primary.projectile.amount || this.playerConfig.default.actions.primary.projectile.amount,
-                                    color: gameData.actions?.primary.projectile.color || this.playerConfig.default.actions.primary.projectile.color,
-                                    damage: gameData.actions?.primary.projectile.damage || this.playerConfig.default.actions.primary.projectile.damage,
-                                    length: gameData.actions?.primary.projectile.length || this.playerConfig.default.actions.primary.projectile.length,
-                                    range: gameData.actions?.primary.projectile.range || this.playerConfig.default.actions.primary.projectile.range,
-                                    size: gameData.actions?.primary.projectile.size || this.playerConfig.default.actions.primary.projectile.size,
-                                    speed: gameData.actions?.primary.projectile.speed || this.playerConfig.default.actions.primary.projectile.speed,
-                                    spread: gameData.actions?.primary.projectile.spread || this.playerConfig.default.actions.primary.projectile.spread
-                                },
-                                reload: {
-                                    time: gameData.actions?.primary.reload.time || this.playerConfig.default.actions.primary.reload.time
-                                }
-                            },
-                            sprint: {
-                                drain: gameData.actions?.sprint.drain || this.playerConfig.default.actions.sprint.drain,
-                                multiplier: gameData.actions?.sprint.multiplier || this.playerConfig.default.actions.sprint.multiplier
-                            }
-                        },
-                        equipment: gameData.equipment || this.playerConfig.default.equipment,
-                        flags: {
-                            hidden: gameData.flags?.hidden || this.playerConfig.default.flags.hidden,
-                            invulnerable: gameData.flags?.invulnerable || this.playerConfig.default.flags.invulnerable
-                        },
-                        inventory: {
-                            primary: gameData.inventory?.primary || this.playerConfig.default.inventory.primary,
-                            melee: gameData.inventory?.melee || this.playerConfig.default.inventory.melee
-                        },
-                        physics: {
-                            acceleration: gameData.physics?.acceleration || this.playerConfig.default.physics.acceleration,
-                            friction: gameData.physics?.friction || this.playerConfig.default.physics.friction
-                        },
-                        rig: {
-                            body: gameData.rig?.body || this.playerConfig.default.rig.body,
-                            head: gameData.rig?.head || this.playerConfig.default.rig.head,
-                            headwear: gameData.rig?.headwear || this.playerConfig.default.rig.headwear,
-                            weapon: gameData.rig?.weapon || this.playerConfig.default.rig.weapon
-                        },
-                        stats: {
-                            defense: gameData.stats?.defense || this.playerConfig.default.stats.defense,
-                            health: {
-                                max: gameData.stats?.health.max || this.playerConfig.default.stats.health.max,
-                                value: gameData.stats?.health.value || this.playerConfig.default.stats.health.max
-                            },
-                            luck: gameData.stats?.luck || this.playerConfig.default.stats.luck,
-                            size: gameData.stats?.size || this.playerConfig.default.stats.size,
-                            speed: gameData.stats?.speed || this.playerConfig.default.stats.speed,
-                            stamina: {
-                                max: gameData.stats?.stamina.max || this.playerConfig.default.stats.stamina.max,
-                                recovery: {
-                                    delay: gameData.stats?.stamina.recovery.delay || this.playerConfig.default.stats.stamina.recovery.delay,
-                                    rate: gameData.stats?.stamina.recovery.rate || this.playerConfig.default.stats.stamina.recovery.rate
-                                },
-                                value: gameData.stats?.stamina.value || this.playerConfig.default.stats.stamina.max,
-                            },
-                        },
-                        unique: gameData.unique || this.playerConfig.default.unique
-                    });
-
-                    if (gameData.leaderboard) {
-                        gameData.leaderboard.forEach(([playerId, entry]: [string, LeaderboardEntry]) => {
-                            this.ui.leaderboard.set(playerId, entry);
-                        });
-                    }
+                    this.playerState.players.set(playerData.id, playerData);
 
                     this.ui.createLeaderboard(this.lobbyManager, this.playerState.players, this.userId);
+                    console.log('State update for player', message.userId, ':', gameData);
                     break;
+                }
                 case 'partial-state': {
                     if (message.userId === this.userId) return;
 
                     const player = this.playerState.players.get(message.userId);
                     if (!player) break;
 
-                    console.log('Partial State update for player', message.userId, ':', gameData);
-
                     this.utility.deepMerge(player, gameData);
+                    console.log('Partial State update for player', message.userId, ':', gameData);
                     break;
                 }
                 case 'player-move':
@@ -708,14 +624,7 @@ class Client {
                     if (gameData.targetId === this.userId) { // I got hit
                         this.playerState.myPlayer.stats.health.value = gameData.newHealth;
 
-                        const sliderLerpTime = 300; //TODO: Define UI lerping times globally
-                        const healthSliderParams: SetSliderParams = {
-                            sliderId: 'healthBar',
-                            targetValue: this.playerState.myPlayer.stats.health.value,
-                            maxValue: this.playerState.myPlayer.stats.health.max,
-                            lerpTime: sliderLerpTime
-                        }
-                        this.utility.setSlider(healthSliderParams);
+                        this.ui.updateSlider('health');
 
                         if (this.playerState.myPlayer.stats.health.value <= 0) {
                             this.playerController.playerDeath();
@@ -765,7 +674,7 @@ class Client {
                         },
                         radius: gameData.size
                     }
-                    this.particlesManager.generateGore(gore); // Spawn gore
+                    this.decalsManager.generateGore(gore); // Spawn gore
 
                     console.log(`Generated gore for ${message.userId}`);
                     break;
@@ -875,23 +784,8 @@ class Client {
 
                     this.playerState.myPlayer.stats.health.value = this.playerState.myPlayer.stats.health.max;
 
-                    const sliderLerpTime = 300; //TODO: Define UI lerping times globally
-                    const healthSliderParams: SetSliderParams = {
-                        sliderId: 'healthBar',
-                        targetValue: this.playerState.myPlayer.stats.health.value,
-                        maxValue: this.playerState.myPlayer.stats.health.max,
-                        lerpTime: sliderLerpTime
-                    }
-
-                    const staminaSliderParams: SetSliderParams = {
-                        sliderId: 'staminaBar',
-                        targetValue: this.playerState.myPlayer.stats.stamina.value,
-                        maxValue: this.playerState.myPlayer.stats.stamina.max,
-                        lerpTime: sliderLerpTime
-                    }
-
-                    this.utility.setSlider(healthSliderParams);
-                    this.utility.setSlider(staminaSliderParams);
+                    this.ui.updateSlider('health');
+                    this.ui.updateSlider('stamina');
 
                     this.playerState.myPlayer.transform.pos.x = gameData.spawnMap[this.userId].x;
                     this.playerState.myPlayer.transform.pos.y = gameData.spawnMap[this.userId].y;
@@ -985,8 +879,8 @@ class Client {
                 // [ World ]
                 //
                 case 'chunk-update':
-                    if (gameData.chunk) {
-                        this.world.handleChunkUpdate(gameData.chunk);
+                    if (message.userId !== this.userId) {
+                        this.world.worldEdit.createChunkPatchNetwork(gameData.chunk);
                     }
                     break;
             }
@@ -994,6 +888,7 @@ class Client {
             console.error('Error parsing game message:', error);
         }
     }
+
     //
     // #endregion
     //
@@ -1032,6 +927,7 @@ class Client {
             userId: this.userId
         });
     }
+
     //
     // #endregion
     //
@@ -1119,64 +1015,6 @@ class Client {
     private startNewRound(): void {
         console.log('Starting new round...');
 
-        // Locally update all other players for the winner, their state should already be updated after taking upgrades
-        // [ IMPORTANT ] Keep full track of Player object here
-        // TODO: Probably won't need this eventually due to player-state messages being sent when upgrades are taken, but need more testing to be sure
-        this.playerState.players.forEach((player: Player) => {
-            player.transform.rot = 0;
-            player.timestamp = player.timestamp || Date.now();
-            player.actions.dash.cooldown = player.actions.dash.cooldown || this.playerConfig.default.actions.dash.cooldown;
-            player.actions.dash.drain = player.actions.dash.drain || this.playerConfig.default.actions.dash.drain;
-            player.actions.dash.multiplier = player.actions.dash.multiplier || this.playerConfig.default.actions.dash.multiplier;
-            player.actions.dash.time = player.actions.dash.time || this.playerConfig.default.actions.dash.time;
-            player.actions.melee.cooldown = player.actions.melee.cooldown || this.playerConfig.default.actions.melee.cooldown;
-            player.actions.melee.damage = player.actions.melee.damage || this.playerConfig.default.actions.melee.damage;
-            player.actions.melee.duration = player.actions.melee.duration || this.playerConfig.default.actions.melee.duration;
-            player.actions.melee.range = player.actions.melee.range || this.playerConfig.default.actions.melee.range;
-            player.actions.melee.size = player.actions.melee.size || this.playerConfig.default.actions.melee.size;
-            player.actions.primary.buffer = player.actions.primary.buffer || this.playerConfig.default.actions.primary.buffer;
-            player.actions.primary.burst.amount = player.actions.primary.burst.amount || this.playerConfig.default.actions.primary.burst.amount;
-            player.actions.primary.burst.delay = player.actions.primary.burst.delay || this.playerConfig.default.actions.primary.burst.delay;
-            player.actions.primary.magazine.currentAmmo = player.actions.primary.magazine.currentAmmo || this.playerConfig.default.actions.primary.magazine.size;
-            player.actions.primary.magazine.currentReserve = player.actions.primary.magazine.currentReserve || this.playerConfig.default.actions.primary.magazine.startingReserve;
-            player.actions.primary.magazine.maxReserve = player.actions.primary.magazine.maxReserve || this.playerConfig.default.actions.primary.magazine.maxReserve;
-            player.actions.primary.magazine.size = player.actions.primary.magazine.size || this.playerConfig.default.actions.primary.magazine.size;
-            player.actions.primary.offset = player.actions.primary.offset || this.playerConfig.default.actions.primary.offset;
-            player.actions.primary.projectile.amount = player.actions.primary.projectile.amount || this.playerConfig.default.actions.primary.projectile.amount;
-            player.actions.primary.projectile.color = player.actions.primary.projectile.color || this.playerConfig.default.actions.primary.projectile.color;
-            player.actions.primary.projectile.damage = player.actions.primary.projectile.damage || this.playerConfig.default.actions.primary.projectile.damage;
-            player.actions.primary.projectile.length = player.actions.primary.projectile.length || this.playerConfig.default.actions.primary.projectile.length;
-            player.actions.primary.projectile.range = player.actions.primary.projectile.range || this.playerConfig.default.actions.primary.projectile.range;
-            player.actions.primary.projectile.size = player.actions.primary.projectile.size || this.playerConfig.default.actions.primary.projectile.size;
-            player.actions.primary.projectile.speed = player.actions.primary.projectile.speed || this.playerConfig.default.actions.primary.projectile.speed;
-            player.actions.primary.projectile.spread = player.actions.primary.projectile.spread || this.playerConfig.default.actions.primary.projectile.spread;
-            player.actions.primary.reload.time = player.actions.primary.reload.time || this.playerConfig.default.actions.primary.reload.time;
-            player.actions.sprint.drain = player.actions.sprint.drain || this.playerConfig.default.actions.sprint.drain;
-            player.actions.sprint.multiplier = player.actions.sprint.multiplier || this.playerConfig.default.actions.sprint.multiplier;
-            player.equipment = player.equipment || this.playerConfig.default.equipment;
-            player.flags.hidden = player.flags.hidden || this.playerConfig.default.flags.hidden;
-            player.flags.invulnerable = player.flags.invulnerable || this.playerConfig.default.flags.invulnerable;
-            player.inventory.primary = player.inventory.primary || this.playerConfig.default.inventory.primary;
-            player.inventory.melee = player.inventory.melee || this.playerConfig.default.inventory.melee;
-            player.physics.acceleration = player.physics.acceleration || this.playerConfig.default.physics.acceleration;
-            player.physics.friction = player.physics.friction || this.playerConfig.default.physics.friction;
-            player.rig.body = player.rig.body || this.playerConfig.default.rig.body;
-            player.rig.head = player.rig.head || this.playerConfig.default.rig.head;
-            player.rig.headwear = player.rig.headwear || this.playerConfig.default.rig.headwear;
-            player.rig.weapon = player.rig.weapon || this.playerConfig.default.rig.weapon;
-            player.stats.defense = player.stats.defense || this.playerConfig.default.stats.defense;
-            player.stats.health.max = player.stats.health.max || this.playerConfig.default.stats.health.max;
-            player.stats.health.value = player.stats.health.max || this.playerConfig.default.stats.health.max;
-            player.stats.luck = player.stats.luck || this.playerConfig.default.stats.luck;
-            player.stats.size = player.stats.size || this.playerConfig.default.stats.size;
-            player.stats.speed = player.stats.speed || this.playerConfig.default.stats.speed;
-            player.stats.stamina.max = player.stats.stamina.max || this.playerConfig.default.stats.stamina.max;
-            player.stats.stamina.recovery.delay = player.stats.stamina.recovery.delay || this.playerConfig.default.stats.stamina.recovery.delay;
-            player.stats.stamina.recovery.rate = player.stats.stamina.recovery.rate || this.playerConfig.default.stats.stamina.recovery.rate;
-            player.stats.stamina.value = player.stats.stamina.value || this.playerConfig.default.stats.stamina.max;
-            player.unique = player.unique || this.playerConfig.default.unique
-        });
-
         // Send the spawn map to all other players
         this.roomManager.sendMessage(JSON.stringify({
             type: 'new-round',
@@ -1186,6 +1024,7 @@ class Client {
             }
         }));
     }
+
     //
     // #endregion
     //
@@ -1237,9 +1076,11 @@ class Client {
             worldData: worldData
         }));
 
-        await this.world.generateWorld(worldData); // Host worldgen
+        if (worldData !== "load") { // Generate a new world if a saved world is not loaded
+            await this.world.generateWorld(worldData);
+        }
 
-        // Also start the game for myself as the host
+        // Also start the game for the host
         this.showGameControls(this.roomManager.getCurrentRoom() || '');
         this.startGameLoop();
     }
@@ -1271,126 +1112,17 @@ class Client {
             this.playerState.myPlayer.rig.weapon = myLobbyPlayer.rig.weapon;
         }
 
-        // Send my player data
-        // TODO: You can maybe just call this.initializePlayer and use the returned player object, unsure yet.
-        // [ IMPORTANT ] Keep full track of Player object here
         this.roomManager.sendMessage(JSON.stringify({
-            type: 'player-state',
-            id: this.playerState.myPlayer.id,
-            timestamp: this.playerState.myPlayer.timestamp,
-            color: this.playerState.myPlayer.color,
-            transform: {
-                pos: {
-                    x: this.playerState.myPlayer.transform.pos.x,
-                    y: this.playerState.myPlayer.transform.pos.y,
-                },
-                rot: this.playerState.myPlayer.transform.rot
-            },
-            actions: {
-                dash: {
-                    cooldown: this.playerState.myPlayer.actions.dash.cooldown,
-                    drain: this.playerState.myPlayer.actions.dash.drain,
-                    multiplier: this.playerState.myPlayer.actions.dash.multiplier,
-                    time: this.playerState.myPlayer.actions.dash.time
-                },
-                melee: {
-                    cooldown: this.playerState.myPlayer.actions.melee.cooldown,
-                    damage: this.playerState.myPlayer.actions.melee.damage,
-                    duration: this.playerState.myPlayer.actions.melee.duration,
-                    range: this.playerState.myPlayer.actions.melee.range,
-                    size: this.playerState.myPlayer.actions.melee.size
-                },
-                primary: {
-                    buffer: this.playerState.myPlayer.actions.primary.buffer,
-                    burst: {
-                        amount: this.playerState.myPlayer.actions.primary.burst.amount,
-                        delay: this.playerState.myPlayer.actions.primary.burst.delay
-                    },
-                    magazine: {
-                        currentAmmo: this.playerState.myPlayer.actions.primary.magazine.currentAmmo,
-                        currentReserve: this.playerState.myPlayer.actions.primary.magazine.currentReserve,
-                        maxReserve: this.playerState.myPlayer.actions.primary.magazine.maxReserve,
-                        size: this.playerState.myPlayer.actions.primary.magazine.size
-                    },
-                    offset: this.playerState.myPlayer.actions.primary.offset,
-                    projectile: {
-                        amount: this.playerState.myPlayer.actions.primary.projectile.amount,
-                        color: this.playerState.myPlayer.actions.primary.projectile.color,
-                        damage: this.playerState.myPlayer.actions.primary.projectile.damage,
-                        length: this.playerState.myPlayer.actions.primary.projectile.length,
-                        range: this.playerState.myPlayer.actions.primary.projectile.range,
-                        size: this.playerState.myPlayer.actions.primary.projectile.size,
-                        speed: this.playerState.myPlayer.actions.primary.projectile.speed,
-                        spread: this.playerState.myPlayer.actions.primary.projectile.spread
-                    },
-                    reload: {
-                        time: this.playerState.myPlayer.actions.primary.reload.time
-                    }
-                },
-                sprint: {
-                    drain: this.playerState.myPlayer.actions.sprint.drain,
-                    multiplier: this.playerState.myPlayer.actions.sprint.multiplier
-                }
-            },
-            equipment: this.playerState.myPlayer.equipment,
-            flags: {
-                hidden: this.playerState.myPlayer.flags.hidden,
-                invulnerable: this.playerState.myPlayer.flags.invulnerable
-            },
-            inventory: {
-                primary: this.playerState.myPlayer.inventory.primary,
-                melee: this.playerState.myPlayer.inventory.melee
-            },
-            physics: {
-                acceleration: this.playerState.myPlayer.physics.acceleration,
-                friction: this.playerState.myPlayer.physics.friction
-            },
-            rig: {
-                body: this.playerState.myPlayer.rig.body,
-                head: this.playerState.myPlayer.rig.head,
-                headwear: this.playerState.myPlayer.rig.headwear,
-                weapon: this.playerState.myPlayer.rig.weapon
-            },
-            stats: {
-                defense: this.playerState.myPlayer.stats.defense,
-                health: {
-                    max: this.playerState.myPlayer.stats.health.max,
-                    value: this.playerState.myPlayer.stats.health.value
-                },
-                luck: this.playerState.myPlayer.stats.luck,
-                size: this.playerState.myPlayer.stats.size,
-                speed: this.playerState.myPlayer.stats.speed,
-                stamina: {
-                    max: this.playerState.myPlayer.stats.stamina.max,
-                    recovery: {
-                        delay: this.playerState.myPlayer.stats.stamina.recovery.delay,
-                        rate: this.playerState.myPlayer.stats.stamina.recovery.rate
-                    },
-                    value: this.playerState.myPlayer.stats.stamina.value,
-                },
-            },
-            unique: this.playerState.myPlayer.unique
+            type: "player-state",
+            userId: this.userId,
+            data: this.playerState.myPlayer
         }));
+
 
         this.gameLoop();
 
-        const sliderLerpTime = 300; //TODO: Define UI lerping times globally
-        const healthSliderParams: SetSliderParams = {
-            sliderId: 'healthBar',
-            targetValue: this.playerState.myPlayer.stats.health.value,
-            maxValue: this.playerState.myPlayer.stats.health.max,
-            lerpTime: sliderLerpTime
-        }
-
-        const staminaSliderParams: SetSliderParams = {
-            sliderId: 'staminaBar',
-            targetValue: this.playerState.myPlayer.stats.stamina.value,
-            maxValue: this.playerState.myPlayer.stats.stamina.max,
-            lerpTime: sliderLerpTime
-        }
-
-        this.utility.setSlider(healthSliderParams);
-        this.utility.setSlider(staminaSliderParams);
+        this.ui.updateSlider('health');
+        this.ui.updateSlider('stamina');
     }
 
     /**
@@ -1399,7 +1131,10 @@ class Client {
      * Handles animation frame requests, update loops for all systems, and drawing functions.
      */
     private gameLoop(): void {
-        if (!this.gameState.gameInProgress || !this.ui.ctx || !this.ui.canvas || !this.ui.decalCtx || !this.ui.decalCanvas) return;
+        if (
+            !this.gameState.gameInProgress || !this.ui.ctx || !this.ui.canvas ||
+            !this.ui.decalCtx || !this.ui.decalCanvas || !this.ui.postEffectsCtx
+        ) return;
 
         if (this.gameState.isPaused) { // Continue the loop but skip all updates
             requestAnimationFrame(() => this.gameLoop());
@@ -1423,14 +1158,7 @@ class Client {
 
         this.collisionsManager.checkCollisions(dt);
 
-        const sliderLerpTime = 300; //TODO: Define UI lerping times globally
-        const staminaSliderParams: SetSliderParams = {
-            sliderId: 'staminaBar',
-            targetValue: this.playerState.myPlayer.stats.stamina.value,
-            maxValue: this.playerState.myPlayer.stats.stamina.max,
-            lerpTime: sliderLerpTime
-        }
-        this.utility.setSlider(staminaSliderParams);
+        this.ui.updateSlider('stamina');
 
         // === RENDERING ===
 
@@ -1438,15 +1166,16 @@ class Client {
         this.renderingManager.clearCtx(this.ui.ctx);
 
         this.world.drawWorld();
+
         this.world.worldDebug.drawDebug();
         this.world.updateAudioZones();
 
         this.ui.ctx.drawImage(
             this.ui.decalCanvas,
             this.camera.pos.x, this.camera.pos.y,
-            CANVAS.WIDTH, CANVAS.HEIGHT,
+            VIEWPORT.WIDTH, VIEWPORT.HEIGHT,
             0, 0,
-            CANVAS.WIDTH, CANVAS.HEIGHT
+            VIEWPORT.WIDTH, VIEWPORT.HEIGHT
         );
 
         // Draw objects (with camera offset)
@@ -1507,50 +1236,43 @@ class Client {
      * Resets the game state to default.
      */
     private resetGameState(resetType: ResetType): void {
-        // Clear game flags
-        this.gameState.gameInProgress = false;
-        this.gameState.isPaused = false;
-        this.isRoundInProgress = false;
-        this.gameWinner = null;
-        this.roundWinner = null;
+        this.clear();
 
-        this.gameState.gameMaxWins = GAME.MAX_WINS;
-        this.gameState.gameMaxPlayers = GAME.MAX_PLAYERS;
+        this.gameState.clear();
 
         if (resetType === 'Room') {
             this.lobbyManager.inLobby = false;
             this.playerState.isHost = false;
         }
 
-        // Clear all collections
-        this.playerState.players.clear();
         this.combatController.projectiles.clear();
-        this.objectsManager.ammoBoxes.clear();
-        this.decalsManager.dynamicDecals.clear();
-        this.particlesManager.particles.clear();
-        this.particlesManager.emitters.clear();
-        this.particlesManager.shrapnel.clear();
-        this.upgradeManager.upgradesCompleted.clear();
 
-        this.ui.ammoReservesUIController.reserveBulletParticles = [];
+        this.decalsManager.clear();
+        this.objectsManager.clear();
+        this.particlesManager.clear();
 
         if (resetType === 'Room') {
             this.lobbyManager.lobbyPlayers.clear();
         }
 
-        // Reset UI and player
         this.renderingManager.clearCtx();
-        this.chatManager.clearChat();
-        this.ui.clearLeaderboard();
-        this.playerState.resetPlayerState();
+        this.ui.clear();
+
+        this.chatManager.clear();
+
+        this.playerState.clear();
         this.playerState.initPlayer(this.userId);
-        this.controlsManager.clearActiveKeys();
-        this.animator.clearAllAnimations();
+
+        this.controlsManager.clear();
+        this.animator.clear();
 
         this.utility.clearTimeoutCache();
 
+        this.world.clear();
+
         // Reset upgrades and equipment
         this.upgradeManager.resetUpgrades(this.playerState.myPlayer);
+        this.upgradeManager.upgradesCompleted.clear();
     }
     //
     // #endregion
@@ -1601,7 +1323,7 @@ class Client {
         }
 
         if (this.controlsManager.held(keybinds.sprint)) {
-            if (this.moveController.isMoving()) {
+            if (this.moveController.isMoveInput()) {
                 this.playerState.isSprinting = true;
             }
         } else {
@@ -1791,103 +1513,10 @@ class Client {
             isUnique: this.upgradeManager.upgrades.find(u => u.id === selectedUpgradeId)?.unique || false
         }));
 
-        // [ IMPORTANT ] Keep full track of Player object here
         this.roomManager.sendMessage(JSON.stringify({
-            type: 'player-state',
-            id: this.playerState.myPlayer.id,
-            timestamp: this.playerState.myPlayer.timestamp,
-            color: this.playerState.myPlayer.color,
-            transform: {
-                pos: {
-                    x: this.playerState.myPlayer.transform.pos.x,
-                    y: this.playerState.myPlayer.transform.pos.y,
-                },
-                rot: this.playerState.myPlayer.transform.rot
-            },
-            actions: {
-                dash: {
-                    cooldown: this.playerState.myPlayer.actions.dash.cooldown,
-                    drain: this.playerState.myPlayer.actions.dash.drain,
-                    multiplier: this.playerState.myPlayer.actions.dash.multiplier,
-                    time: this.playerState.myPlayer.actions.dash.time
-                },
-                melee: {
-                    cooldown: this.playerState.myPlayer.actions.melee.cooldown,
-                    damage: this.playerState.myPlayer.actions.melee.damage,
-                    duration: this.playerState.myPlayer.actions.melee.duration,
-                    range: this.playerState.myPlayer.actions.melee.range,
-                    size: this.playerState.myPlayer.actions.melee.size
-                },
-                primary: {
-                    buffer: this.playerState.myPlayer.actions.primary.buffer,
-                    burst: {
-                        amount: this.playerState.myPlayer.actions.primary.burst.amount,
-                        delay: this.playerState.myPlayer.actions.primary.burst.delay
-                    },
-                    magazine: {
-                        currentAmmo: this.playerState.myPlayer.actions.primary.magazine.currentAmmo,
-                        currentReserve: this.playerState.myPlayer.actions.primary.magazine.currentReserve,
-                        maxReserve: this.playerState.myPlayer.actions.primary.magazine.maxReserve,
-                        size: this.playerState.myPlayer.actions.primary.magazine.size
-                    },
-                    offset: this.playerState.myPlayer.actions.primary.offset,
-                    projectile: {
-                        amount: this.playerState.myPlayer.actions.primary.projectile.amount,
-                        color: this.playerState.myPlayer.actions.primary.projectile.color,
-                        damage: this.playerState.myPlayer.actions.primary.projectile.damage,
-                        length: this.playerState.myPlayer.actions.primary.projectile.length,
-                        range: this.playerState.myPlayer.actions.primary.projectile.range,
-                        size: this.playerState.myPlayer.actions.primary.projectile.size,
-                        speed: this.playerState.myPlayer.actions.primary.projectile.speed,
-                        spread: this.playerState.myPlayer.actions.primary.projectile.spread
-                    },
-                    reload: {
-                        time: this.playerState.myPlayer.actions.primary.reload.time
-                    }
-                },
-                sprint: {
-                    drain: this.playerState.myPlayer.actions.sprint.drain,
-                    multiplier: this.playerState.myPlayer.actions.sprint.multiplier
-                }
-            },
-            equipment: this.playerState.myPlayer.equipment,
-            flags: {
-                hidden: this.playerState.myPlayer.flags.hidden,
-                invulnerable: this.playerState.myPlayer.flags.invulnerable
-            },
-            inventory: {
-                primary: this.playerState.myPlayer.inventory.primary,
-                melee: this.playerState.myPlayer.inventory.melee
-            },
-            physics: {
-                acceleration: this.playerState.myPlayer.physics.acceleration,
-                friction: this.playerState.myPlayer.physics.friction
-            },
-            rig: {
-                body: this.playerState.myPlayer.rig.body,
-                head: this.playerState.myPlayer.rig.head,
-                headwear: this.playerState.myPlayer.rig.headwear,
-                weapon: this.playerState.myPlayer.rig.weapon
-            },
-            stats: {
-                defense: this.playerState.myPlayer.stats.defense,
-                health: {
-                    max: this.playerState.myPlayer.stats.health.max,
-                    value: this.playerState.myPlayer.stats.health.max
-                },
-                luck: this.playerState.myPlayer.stats.luck,
-                size: this.playerState.myPlayer.stats.size,
-                speed: this.playerState.myPlayer.stats.speed,
-                stamina: {
-                    max: this.playerState.myPlayer.stats.stamina.max,
-                    recovery: {
-                        delay: this.playerState.myPlayer.stats.stamina.recovery.delay,
-                        rate: this.playerState.myPlayer.stats.stamina.recovery.rate
-                    },
-                    value: this.playerState.myPlayer.stats.stamina.max
-                }
-            },
-            unique: this.playerState.myPlayer.unique
+            type: "player-state",
+            userId: this.userId,
+            data: this.playerState.myPlayer
         }));
 
         console.log('Upgrade selected, waiting for others...');

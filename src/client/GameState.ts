@@ -24,4 +24,12 @@ export class GameState {
     public gameMaxPlayers = GAME.MAX_PLAYERS;
 
     constructor() {}
+
+    public clear(): void {
+        this.gameInProgress = false;
+        this.isPaused = false;
+
+        this.gameMaxWins = GAME.MAX_WINS;
+        this.gameMaxPlayers = GAME.MAX_PLAYERS;
+    }
 }

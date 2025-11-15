@@ -1,7 +1,7 @@
-import { ParticleParams } from "./Types";
+import { GoreParticles, ParticleParams, WeaponParticles } from "./Types";
 
 export class ParticlesConfig {
-    public particles = {
+    public goreParticles: Record<string, GoreParticles> = {
         blood: {
             drip: {
                 count: {
@@ -95,7 +95,10 @@ export class ParticlesConfig {
                 stain: true,
                 colors: ["#7e0a0a", "#941414", "#b51a1a"]
             } as ParticleParams,
-        },
+        }
+    };
+
+    public weaponParticles: Record<string, WeaponParticles> = {
         glock: {
             muzzle: {
                 smoke: {
@@ -286,7 +289,7 @@ export class ParticlesConfig {
                 } as ParticleParams,
             }
         }
-    };
+    }
 
     constructor() { }
 }

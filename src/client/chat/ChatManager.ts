@@ -1,11 +1,27 @@
-import { CHAT } from "./Config";
+import { ChatMessage } from "../Types";
 
-import { RoomManager } from "./RoomManager";
-import { ChatMessage } from "./Types";
-import { UserInterface } from "./UserInterface";
+import { ChatConfig } from "./ChatConfig";
+import { RoomManager } from "../RoomManager";
+import { UserInterface } from "../UserInterface";
 
 export class ChatManager {
-    constructor(private roomManager: RoomManager, private ui: UserInterface) { }
+    public chatConfig: ChatConfig;
+
+    constructor(private roomManager: RoomManager, private ui: UserInterface) { 
+        this.chatConfig = new ChatConfig();
+    }
+
+    /**
+     * Resets the chat.
+     */
+    public clear(): void {
+        if (this.ui.chatMessages) {
+            this.ui.chatMessages.innerHTML = '';
+        }
+        if (this.ui.chatInput) {
+            this.ui.chatInput.value = '';
+        }
+    }
 
     // #region [ Chat Management ]
     //
@@ -16,22 +32,19 @@ export class ChatManager {
         if (!this.ui.chatInput || !this.ui.chatInput.value.trim()) return;
 
         const message = this.ui.chatInput.value.trim();
-        if (message.length > CHAT.MAX_MESSAGE_LENGTH) { //TODO: Abstract reliance on config
-            alert(`Message too long! Max ${CHAT.MAX_MESSAGE_LENGTH} characters.`);
+        if (message.length > this.chatConfig.defaults.maxMessageLength) {
+            alert(`Message too long! Max ${this.chatConfig.defaults.maxMessageLength} characters.`);
             return;
         }
 
-        // Send message to server
         this.roomManager.sendMessage(JSON.stringify({
             type: 'chat-message',
             message: message,
             timestamp: Date.now()
         }));
 
-        // Display own message immediately
+        // Display my message and clear input field
         this.displayChatMessage({senderId: userId, message: message, isOwn: true});
-
-        // Clear input
         this.ui.chatInput.value = '';
     }
 
@@ -62,22 +75,11 @@ export class ChatManager {
         this.ui.chatMessages.scrollTop = this.ui.chatMessages.scrollHeight;
 
         // Limit message history
-        while (this.ui.chatMessages.children.length > CHAT.MAX_MESSAGES) {
+        while (this.ui.chatMessages.children.length > this.chatConfig.defaults.maxMessages) {
             this.ui.chatMessages.removeChild(this.ui.chatMessages.firstChild!);
         }
     }
 
-    /**
-     * Resets the chat.
-     */
-    public clearChat(): void {
-        if (this.ui.chatMessages) {
-            this.ui.chatMessages.innerHTML = '';
-        }
-        if (this.ui.chatInput) {
-            this.ui.chatInput.value = '';
-        }
-    }
     //
     // #endregion
 }

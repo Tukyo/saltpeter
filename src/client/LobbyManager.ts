@@ -1,9 +1,11 @@
 import { LobbyControlsParams, LobbyOptionsParams, LobbyPlayer, SetInputParams, SetToggleParams } from "./Types";
 
-import { UserInterface } from "./UserInterface";
-import { RoomManager } from "./RoomManager";
-import { Utility } from "./Utility";
 import { CharacterManager } from "./CharacterManager";
+import { RoomManager } from "./RoomManager";
+import { SettingsManager } from "./SettingsManager";
+import { UserInterface } from "./UserInterface";
+import { Utility } from "./Utility";
+
 import { PlayerState } from "./player/PlayerState";
 import { PlayerConfig } from "./player/PlayerConfig";
 
@@ -17,6 +19,7 @@ export class LobbyManager {
         private playerConfig: PlayerConfig,
         private playerState: PlayerState,
         private roomManager: RoomManager,
+        private settingsManager: SettingsManager,
         private ui: UserInterface,
         private utility: Utility
     ) { }
@@ -40,12 +43,7 @@ export class LobbyManager {
             id: userId,
             color: myPlayer.color,
             isHost: isHost,
-            rig: { //TODO: Load from the user's saved charCustomization
-                body: this.playerConfig.default.rig.body,
-                head: this.playerConfig.default.rig.head,
-                headwear: this.playerConfig.default.rig.headwear,
-                weapon: this.playerConfig.default.rig.weapon
-            },
+            rig: this.settingsManager.getSettings().character.rig,
             transform: {
                 pos: { x: centerX, y: centerY },
                 rot: 0
@@ -297,6 +295,10 @@ export class LobbyManager {
 
         // Update the rig
         myLobbyPlayer.rig[rigProp] = allVariants[newIndex];
+
+        this.settingsManager.updateSettings({
+            character: { rig: myLobbyPlayer.rig }
+        });
 
         window.dispatchEvent(new CustomEvent("customEvent_renderCharacter"));
     }

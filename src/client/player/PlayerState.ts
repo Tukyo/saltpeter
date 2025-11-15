@@ -18,6 +18,7 @@ export class PlayerState {
     public isSprinting = false;
     public isDashing = false;
     public isStaminaRecoveryBlocked = false;
+    public isSwimming = false;
 
     public lastSentX = 0;
     public lastSentY = 0;
@@ -44,6 +45,14 @@ export class PlayerState {
         this.myPlayer = this.initPlayer(this.userId);
     }
 
+    /**
+     * Resets the internal state of the player.
+     */
+    public clear(): void {
+        this.players.clear();
+        this.resetPlayerState();
+    }
+
     // #region [ State ]
     //
     // [ IMPORTANT ] Keep full track of Player object here
@@ -61,7 +70,7 @@ export class PlayerState {
                 rot: 0
             },
             timestamp: Date.now(),
-            color: this.utility.getRandomColor(), // TODO: Replace with char customization
+            color: this.utility.getRandomColor(),
             actions: {
                 dash: {
                     cooldown: this.playerConfig.default.actions.dash.cooldown,
@@ -160,6 +169,7 @@ export class PlayerState {
         this.isSprinting = false;
         this.isDashing = false;
         this.isStaminaRecoveryBlocked = false;
+        this.isSwimming = false;
 
         this.playerVelocityX = 0;
         this.playerVelocityY = 0;

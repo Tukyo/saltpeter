@@ -1,9 +1,3 @@
-export const OBJECT_DEFAULTS = {
-    DATA: {
-        ID_LENGTH: 8
-    },
-};
-
 export const SHRAPNEL = {
     PIECE: [
         '/assets/img/effects/shrapnel/shrapnel_00.png',
@@ -27,7 +21,7 @@ export const WORLD = {
     BORDER_MARGIN: 15
 };
 
-export const CANVAS = {
+export const VIEWPORT = {
     WIDTH: 800,
     HEIGHT: 600
 };
@@ -97,6 +91,7 @@ export const GAME = {
             ATTACK: GAMEPAD_MAP.RT
         }
     },
+    DATA: { ID_LENGTH: 8 },
     GAME_END_DELAY: 5000,
     GRAPHICS: {
         PHYSICS: {
@@ -121,11 +116,6 @@ export const UI = {
 export const ROOM = {
     ID_PREFIX: 'room_',
     ID_LENGTH: 10
-};
-
-export const CHAT = {
-    MAX_MESSAGES: 100,
-    MAX_MESSAGE_LENGTH: 200
 };
 
 export const NETWORK = {
