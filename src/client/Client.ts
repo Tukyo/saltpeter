@@ -15,7 +15,6 @@ import { EventsManager } from './EventsManager';
 import { GameState } from './GameState';
 import { LobbyManager } from './LobbyManager';
 import { ObjectsManager } from './ObjectsManager';
-import { ParticlesManager } from './ParticlesManager';
 import { RenderingManager } from './RenderingManager';
 import { RoomController } from './RoomController';
 import { RoomManager } from './RoomManager';
@@ -30,6 +29,8 @@ import { AudioManager } from './audio/AudioManager';
 
 import { ChatManager } from './chat/ChatManager';
 
+import { ParticlesManager } from './particles/ParticlesManager';
+
 import { CombatController } from './player/CombatController';
 import { DashController } from './player/DashController';
 import { LuckController } from './player/LuckController';
@@ -40,6 +41,7 @@ import { PlayerState } from './player/PlayerState';
 import { StaminaController } from './player/StaminaController';
 
 import { World } from './world/World';
+import { ParticlesController } from './particles/ParticlesController';
 
 class Client {
     private userId: string;
@@ -69,6 +71,7 @@ class Client {
     private luckController: LuckController;
     private moveController: MoveController;
     private objectsManager: ObjectsManager;
+    private particlesController: ParticlesController;
     private particlesManager: ParticlesManager;
     private playerConfig: PlayerConfig;
     private playerController: PlayerController;
@@ -148,7 +151,7 @@ class Client {
         this.staminaController = new StaminaController(this.playerState);
         this.luckController = new LuckController(this.playerState);
 
-        this.audioManager = new AudioManager(this.audioConfig, this.roomManager, this.settingsManager, this.utility);
+        this.audioManager = new AudioManager(this.roomManager, this.settingsManager, this.utility);
         this.animator = new Animator(this.playerState, this.roomManager, this.userId);
 
         this.world = new World(
@@ -195,6 +198,15 @@ class Client {
             this.ui,
             this.userId,
             this.utility
+        );
+
+        this.particlesController = new ParticlesController(
+            this.audioConfig,
+            this.audioManager,
+            this.particlesManager,
+            this.playerState,
+            this.utility,
+            this.world
         );
 
         this.playerController = new PlayerController(

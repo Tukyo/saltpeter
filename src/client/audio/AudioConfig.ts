@@ -179,48 +179,69 @@ export class AudioConfig {
             weapon: {
                 glock: {
                     attack: [
-                        '/assets/audio/sfx/weapons/glock/glock_attack_00.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_attack_01.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_attack_02.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_attack_03.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_attack_04.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_attack_05.ogg'
+                        '/assets/audio/sfx/weapons/glock/attack/glock_attack_00.ogg',
+                        '/assets/audio/sfx/weapons/glock/attack/glock_attack_01.ogg',
+                        '/assets/audio/sfx/weapons/glock/attack/glock_attack_02.ogg',
+                        '/assets/audio/sfx/weapons/glock/attack/glock_attack_03.ogg',
+                        '/assets/audio/sfx/weapons/glock/attack/glock_attack_04.ogg',
+                        '/assets/audio/sfx/weapons/glock/attack/glock_attack_05.ogg'
                     ],
                     empty: [
-                        '/assets/audio/sfx/weapons/glock/glock_empty_00.ogg'
+                        '/assets/audio/sfx/weapons/glock/empty/glock_empty_00.ogg'
                     ],
                     reload: {
                         end: [
-                            '/assets/audio/sfx/weapons/glock/glock_reload_end_00.ogg',
-                            '/assets/audio/sfx/weapons/glock/glock_reload_end_01.ogg',
-                            '/assets/audio/sfx/weapons/glock/glock_reload_end_02.ogg',
-                            '/assets/audio/sfx/weapons/glock/glock_reload_end_03.ogg'
+                            '/assets/audio/sfx/weapons/glock/reload/glock_reload_end_00.ogg',
+                            '/assets/audio/sfx/weapons/glock/reload/glock_reload_end_01.ogg',
+                            '/assets/audio/sfx/weapons/glock/reload/glock_reload_end_02.ogg',
+                            '/assets/audio/sfx/weapons/glock/reload/glock_reload_end_03.ogg'
 
                         ],
                         start: [
-                            '/assets/audio/sfx/weapons/glock/glock_reload_start_00.ogg',
-                            '/assets/audio/sfx/weapons/glock/glock_reload_start_01.ogg',
-                            '/assets/audio/sfx/weapons/glock/glock_reload_start_02.ogg',
-                            '/assets/audio/sfx/weapons/glock/glock_reload_start_03.ogg'
+                            '/assets/audio/sfx/weapons/glock/reload/glock_reload_start_00.ogg',
+                            '/assets/audio/sfx/weapons/glock/reload/glock_reload_start_01.ogg',
+                            '/assets/audio/sfx/weapons/glock/reload/glock_reload_start_02.ogg',
+                            '/assets/audio/sfx/weapons/glock/reload/glock_reload_start_03.ogg'
                         ]
                     },
-                    shell: [
-                        '/assets/audio/sfx/weapons/glock/glock_shell_00.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_01.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_02.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_03.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_04.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_05.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_06.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_07.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_08.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_09.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_10.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_11.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_12.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_13.ogg',
-                        '/assets/audio/sfx/weapons/glock/glock_shell_14.ogg'
-                    ],
+                    shell: {
+                        hard: [
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_00.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_01.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_02.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_03.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_04.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_05.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_06.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_07.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_08.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_09.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_10.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_11.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_12.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_13.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_hard_14.ogg'
+                        ],
+                        soft: [
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_soft_00.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_soft_01.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_soft_02.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_soft_03.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_soft_04.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_soft_05.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_soft_06.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_soft_07.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_soft_08.ogg'
+                        ],
+                        water: [
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_water_00.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_water_01.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_water_02.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_water_03.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_water_04.ogg',
+                            '/assets/audio/sfx/weapons/glock/shell/glock_shell_water_05.ogg'
+                        ]
+                    }
                 }
             } as WeaponSFX
         },

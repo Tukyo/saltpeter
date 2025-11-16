@@ -1,4 +1,4 @@
-import { GoreParticles, ParticleParams, WeaponParticles } from "./Types";
+import { GoreParticles, MaterialParticles, ParticleParams, WeaponParticles } from "../Types";
 
 export class ParticlesConfig {
     public goreParticles: Record<string, GoreParticles> = {
@@ -240,56 +240,34 @@ export class ParticlesConfig {
                     spread: 0.4,
                     stain: false,
                     colors: ["#d4af37", "#c69e1c", "#dcb01f"]
-                } as ParticleParams,
-                sparks: {
-                    count: {
-                        min: 8,
-                        max: 16
-                    },
-                    lifetime: {
-                        min: 150,
-                        max: 300
-                    },
-                    noise: {
-                        strength: {
-                            min: 0.25,
-                            max: 5
-                        },
-                        scale: {
-                            min: 0.25,
-                            max: 1.5
-                        }
-                    },
-                    opacity: {
-                        min: 0.4,
-                        max: 0.8
-                    },
-                    speed: {
-                        min: 4,
-                        max: 10
-                    },
-                    size: {
-                        min: 1,
-                        max: 3
-                    },
-                    sizeOverLifetime: {
-                        min: 0,
-                        max: 0
-                    },
-                    torque: {
-                        min: -720,
-                        max: 720
-                    },
-                    collide: false,
-                    fade: true,
-                    paint: false,
-                    spread: 0.6,
-                    stain: false,
-                    colors: ["#ffaa00", "#ffcf70", "#f9dea7"]
-                } as ParticleParams,
+                } as ParticleParams
             }
         }
     }
+
+    public materialParticles: Record<string, MaterialParticles> = {
+        metal: {
+            ranged: {
+                count: { min: 8, max: 16 },
+                lifetime: { min: 150, max: 300 },
+                noise: {
+                    strength: { min: 0.25, max: 5 },
+                    scale: { min: 0.25, max: 1.5 }
+                },
+                opacity: { min: 0.4, max: 0.8 },
+                speed: { min: 4, max: 10 },
+                size: { min: 1, max: 3 },
+                sizeOverLifetime: { min: 0, max: 0 },
+                torque: { min: -720, max: 720 },
+                collide: false,
+                fade: true,
+                paint: false,
+                spread: 0.6,
+                stain: false,
+                colors: ["#ffaa00", "#ffcf70", "#f9dea7"]
+            }
+        }
+    };
 
     constructor() { }
 }

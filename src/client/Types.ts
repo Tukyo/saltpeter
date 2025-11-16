@@ -281,7 +281,11 @@ export interface WeaponSFX {
       start: string[];
       end: string[];
     };
-    shell?: string[];
+    shell?: {
+      hard: string[];
+      soft: string[];
+      water: string[];
+    }
   };
 }
 
@@ -577,8 +581,12 @@ export interface WeaponParticles {
   };
   projectile: {
     shell: ParticleParams;
-    sparks: ParticleParams;
   };
+}
+
+export interface MaterialParticles {
+  ranged?: ParticleParams;
+  melee?: ParticleParams;
 }
 
 export type Decal = {
@@ -616,6 +624,11 @@ export type ImageDecalParams = {
   scale: number;
   rotation: number;
 };
+
+export interface MaterialDecals {
+  ranged?: ParametricDecalParams;
+  melee?: ParametricDecalParams;
+}
 
 export type Shrapnel = {
   amount: number;
@@ -824,8 +837,19 @@ export interface WorldRegion {
   area: number;
 }
 
+export type WorldLayerName =
+  | "foundation"
+  | "substrate"
+  | "sediment"
+  | "alluvium"
+  | "soil"
+  | "topsoil"
+  | "colluvium"
+  | "summit"
+
 export interface WorldLayer extends MaterialLayer {
   height: number;
+  name: WorldLayerName;
 }
 
 export interface NetworkChunk {
@@ -833,7 +857,7 @@ export interface NetworkChunk {
   version: number;
   size: number;
   cellData: CellData;
-  layer: string;
+  layer: WorldLayerName;
 }
 
 export type CellData = {
@@ -861,23 +885,61 @@ export type PixelWaterData = {
 // #region [ Materials ]
 //
 export type Material = {
-  name: string;
+  name: MaterialName;
   type: 'terrain' | 'mineral' | 'surface' | 'liquid' | 'organic';
   colors: string[];
   physics: Liquid | Solid | Gas;
   tags?: MaterialTag[];
+  mutations?: Partial<Record<MutationTypes, MaterialName>>;
 }
 
 export interface MaterialLayer {
-  name: string;
   materials: {
-    material: string;
+    material: MaterialName;
     weight: number;
     blend: number;
   }[];
 }
 
 export enum PhysicsMaterialTypes { Liquid, Solid, Gas }
+
+export type MaterialName =
+  | "basalt"
+  | "bedrock"
+  | "clay"
+  | "clay_wet"
+  | "dirt"
+  | "granite"
+  | "grass"
+  | "gravel"
+  | "ice"
+  | "permafrost"
+  | "loam"
+  | "limestone"
+  | "moss"
+  | "mud"
+  | "peat"
+  | "sand"
+  | "sand_wet"
+  | "sandstone"
+  | "scree"
+  | "shale"
+  | "silt"
+  | "silt_wet"
+  | "slate"
+  | "snow"
+  | "stone"
+  | "coal"
+  | "iron"
+  | "gold"
+  | "silver"
+  | "copper"
+  | "flesh"
+  | "wood"
+  | "concrete"
+  | "metal"
+  | "asphalt"
+  | "water"
 
 export enum FrictionTypes {
   Sticky = 0.7,
@@ -916,8 +978,16 @@ interface Gas extends PhysicsMaterial {
 
 export type MaterialTag =
   | "absorbent" // Can absorb liquids
+  | "erosion_source" // This material is in the world erosion template
   | "imprint_on_footstep" // Footsteps can be imprinted into the material
+  | "soft" // If this is present, the material is not hard
   | "track_on_footstep" // Material stains after being stepped on
+
+export type MutationTypes =
+  | "wet"
+  | "dry"
+  // | "frozen"
+  // | "burnt"
 
 //
 // #endregion

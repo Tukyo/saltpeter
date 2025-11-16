@@ -1,12 +1,11 @@
 import { GAME, SHRAPNEL, WORLD } from "../Config";
-import { AttackType, AudioParams, CreateParticleParams, DecalParams, PlayerHitParams, DamageEntity, ProjectileOverrides, Shrapnel, Vec2 } from "../Types";
+import { AttackType, AudioParams, CreateParticleParams, DecalParams, PlayerHitParams, DamageEntity, ProjectileOverrides, Shrapnel, Vec2, Particle } from "../Types";
 
 import { Animator } from "../Animator";
 import { CollisionsManager } from "../CollisionsManager";
 import { DecalsManager } from "../DecalsManager";
 import { GameState } from "../GameState";
 import { LuckController } from "./LuckController";
-import { ParticlesManager } from "../ParticlesManager";
 import { PlayerController, } from "./PlayerController";
 import { PlayerState } from "./PlayerState";
 import { RoomManager } from "../RoomManager";
@@ -15,6 +14,8 @@ import { Utility } from "../Utility";
 
 import { AudioConfig } from "../audio/AudioConfig";
 import { AudioManager } from "../audio/AudioManager";
+
+import { ParticlesManager } from "../particles/ParticlesManager";
 
 import { World } from "../world/World";
 
@@ -50,9 +51,6 @@ export class CombatController {
                 break;
             case 'ranged':
                 this.startBurst();
-                break;
-            default:
-                console.warn(`Unknown attack type: ${type}`);
                 break;
         }
     }
@@ -178,11 +176,10 @@ export class CombatController {
 
         this.roomManager.sendMessage(JSON.stringify({
             type: 'projectile-launch',
-            projectile: meleeProjectile // TODO: Need to attach isMelee or something to read this in updateProjectiles to get if melee or ranged!
+            projectile: meleeProjectile
         }));
 
-        // Remove melee projectile after it has traveled its duration
-        this.utility.safeTimeout(() => {
+        this.utility.safeTimeout(() => { // Remove meleeProjectile after it reaches duration
             this.projectiles.delete(meleeProjectile.id);
             this.playerState.isMelee = false;
 
@@ -413,24 +410,6 @@ export class CombatController {
             volume: { min: 0.965, max: 1 }
         });
 
-        const shellSfx = this.utility.getRandomInArray(this.audioConfig.resources.sfx.weapon[currentWeapon].shell ?? [])
-
-        this.audioManager.playAudioNetwork({
-            src: shellSfx, // TODO: Get soft or hard for this based on the ground it "hits"
-            delay: { min: 0.25, max: 0.5 }, // Play with a short delay trigger to simulate the shell hitting the ground
-            listener: {
-                x: playerX,
-                y: playerY
-            },
-            output: 'sfx',
-            pitch: { min: 0.95, max: 1.125 },
-            spatial: {
-                blend: 1.0,
-                pos: { x: playerX, y: playerY }
-            },
-            volume: { min: 0.375, max: 0.85 }
-        });
-
         // Create projectiles
         for (let i = 0; i < projectileAmount; i++) {
             if (this.playerState.myPlayer.unique.length > 0 && canTriggerUnique) {
@@ -642,58 +621,64 @@ export class CombatController {
                     const inBounds = impactX >= 0 && impactX <= WORLD.WIDTH && impactY >= 0 && impactY <= WORLD.HEIGHT;
                     if (!inBounds) return;
 
-                    const currentWeapon = myPlayer.inventory.primary;
+                    if (projectile.distanceTraveled >= projectile.range) { // Only spawn effects on impact, not OOB removal
+                        const material = this.world.getMaterialAt(Math.round(impactX), Math.round(impactY));
+                        if (!material) { console.warn('No material returned from hit.'); return; }
+                        const matName = material.name.toLowerCase();
 
-                    if (projectile.distanceTraveled >= projectile.range) {
-                        const decalParams: DecalParams = {
-                            id: `impact_${id}`,
-                            pos: {
-                                x: impactX,
-                                y: impactY
+                        const matParticles = this.particlesManager.particlesConfig.materialParticles[matName];
+                        const impactParticles = matParticles?.[projectile.type];
+
+                        if (!impactParticles) {
+                            console.warn(`No impact particles for material: ${matName}, type: ${projectile.type}`);
+                        } else {
+                            const sparksParams: CreateParticleParams = {
+                                id: `impact_particle_${id}`,
+                                pos: { x: impactX, y: impactY },
+                                particleParams: impactParticles
+                            };
+
+                            this.particlesManager.createParticles(sparksParams);
+                        }
+
+                        const matDecals = this.decalsManager.decalsConfig.materialDecals[matName];
+                        const impactDecal = matDecals?.[projectile.type];
+
+                        if (impactDecal) {
+                            this.decalsManager.createDecal({
+                                id: `impact_decal_${id}`,
+                                pos: { x: impactX, y: impactY },
+                                type: 'parametric',
+                                parametric: impactDecal
+                            });
+                        } else {
+                            console.warn(`No impact decal for material: ${matName}, type: ${projectile.type}`);
+                        }
+
+                        const impactSounds = this.audioConfig.resources.sfx.impact[matName];
+                        if (!impactSounds) { console.warn('No impact sounds for:', matName); return; }
+
+                        const impactSoundList = impactSounds[projectile.type];
+                        if (!impactSoundList || impactSoundList.length <= 0) { console.warn('No impact soundlist for:', impactSounds); return; }
+
+                        const sfxParams: AudioParams = {
+                            src: this.utility.getRandomInArray(impactSoundList),
+                            listener: {
+                                x: myPlayerX,
+                                y: myPlayerY
                             },
-                            type: 'parametric',
-                            parametric: this.decalsManager.decalsConfig.decals.projectile
-                        };
-                        this.decalsManager.createDecal(decalParams);
+                            output: 'sfx',
+                            pitch: { min: 0.95, max: 1.125 },
+                            spatial: {
+                                blend: 1.0,
+                                pos: { x: impactX, y: impactY }
+                            },
+                            volume: { min: 0.965, max: 1 }
+                        }
+                        this.audioManager.playAudioNetwork(sfxParams);
+
+                        this.world.worldEdit.requestCraterAt(projectile.transform.pos); // TODO: Update this functionality
                     }
-
-                    const sparksParams: CreateParticleParams = {
-                        id: `sparks_${id}`,
-                        pos: {
-                            x: impactX,
-                            y: impactY
-                        },
-                        particleParams: this.particlesManager.particlesConfig.weaponParticles[currentWeapon].projectile.sparks // TODO: Create material based particles on hit
-                    }
-                    this.particlesManager.createParticles(sparksParams);
-
-                    const material = this.world.getMaterialAt(Math.round(impactX), Math.round(impactY)); // Snap to nearest pixel to avoid sub-pixel sampling errors 
-                    if (!material) { console.warn('No material returned from hit.'); return; }
-
-                    const matName = material.name.toLowerCase();
-                    const impactSounds = this.audioConfig.resources.sfx.impact[matName];
-                    if (!impactSounds) { console.warn('No impact sounds for:', matName); return; }
-
-                    const impactSoundList = impactSounds[projectile.type];
-                    if (!impactSoundList || impactSoundList.length <= 0) { console.warn('No impact soundlist for:', impactSounds); return; }
-
-                    const sfxParams: AudioParams = {
-                        src: this.utility.getRandomInArray(impactSoundList),
-                        listener: {
-                            x: myPlayerX,
-                            y: myPlayerY
-                        },
-                        output: 'sfx',
-                        pitch: { min: 0.95, max: 1.125 },
-                        spatial: {
-                            blend: 1.0,
-                            pos: { x: impactX, y: impactY }
-                        },
-                        volume: { min: 0.965, max: 1 }
-                    }
-                    this.audioManager.playAudioNetwork(sfxParams);
-
-                    this.world.worldEdit.requestCraterAt(projectile.transform.pos); // TODO: Update this functionality
                 }
             }
         });
@@ -701,24 +686,37 @@ export class CombatController {
         projectilesToRemove.forEach(id => { this.projectiles.delete(id); }); // Remove projectiles locally
     }
 
+    private cachedPrimaryBuffer: number = 0;
     /**
-     * Used to toggle auto fire
+     * Used to enable auto fire on the current ranged weapon.
      */
-    public toggleAutoFire(timestamp: number): void {
+    public enableAutoFire(timestamp?: number, bufferMult?: number): void {
         this.playerState.canAutoFire = true;
 
-        const cachedBuffer = this.playerState.myPlayer.actions.primary.buffer
+        this.cachedPrimaryBuffer = this.playerState.myPlayer.actions.primary.buffer
 
-        this.playerState.myPlayer.actions.primary.buffer *= 0.5; // TODO: Pass the buffer change
+        if (bufferMult !== undefined) {
+            this.playerState.myPlayer.actions.primary.buffer *= bufferMult;
+        }
 
-        console.log(`Auto-fire enabled until ${timestamp}`);
+        console.log('Auto-fire enabled.');
 
-        this.utility.safeTimeout(() => {
-            this.playerState.canAutoFire = false;
-            this.playerState.myPlayer.actions.primary.buffer = cachedBuffer;
-            console.log('Auto-fire disabled.');
-        }, timestamp - Date.now()); // Duration of override
-    } // TODO: Timestamp duration should be optional, if not passed toggle is permanent on/off
+        if (timestamp !== undefined) {
+            this.utility.safeTimeout(() => {
+                this.playerState.canAutoFire = false;
+                if (bufferMult !== undefined) { this.playerState.myPlayer.actions.primary.buffer = this.cachedPrimaryBuffer; }
+                console.log('Auto-fire disabled.');
+            }, timestamp - Date.now()); // Duration of override
+        }
+    }
+
+    /**
+     * Disables auto fire for the primary weapon and restores the original shot buffer.
+     */
+    public disableAutoFire(): void {
+        this.playerState.canAutoFire = false;
+        this.playerState.myPlayer.actions.primary.buffer = this.cachedPrimaryBuffer;
+    }
     //
     // #endregion
 

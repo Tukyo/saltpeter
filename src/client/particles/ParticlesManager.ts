@@ -1,16 +1,16 @@
-import { GAME, WORLD } from "./Config";
-import { CreateParticleParams, DecalParams, Emitter, EmitterParams, Particle, ParticleParams, PlayerHitParams, Shrapnel, ShrapnelPiece } from "./Types";
+import { GAME, WORLD } from "../Config";
+import { CreateParticleParams, DecalParams, Emitter, EmitterParams, Particle, ParticleParams, PlayerHitParams, Shrapnel, ShrapnelPiece } from "../Types";
 
-import { Camera } from "./Camera";
-import { CharacterConfig } from "./CharacterConfig";
-import { DecalsManager } from "./DecalsManager";
-import { RenderingManager } from "./RenderingManager";
-import { RoomManager } from "./RoomManager";
-import { UserInterface } from "./UserInterface";
-import { Utility } from "./Utility";
+import { Camera } from "../Camera";
+import { CharacterConfig } from "../CharacterConfig";
+import { DecalsManager } from "../DecalsManager";
+import { RenderingManager } from "../RenderingManager";
+import { RoomManager } from "../RoomManager";
+import { UserInterface } from "../UserInterface";
+import { Utility } from "../Utility";
 
-import { PlayerState } from "./player/PlayerState";
-import { CollisionsManager } from "./CollisionsManager";
+import { PlayerState } from "../player/PlayerState";
+import { CollisionsManager } from "../CollisionsManager";
 import { ParticlesConfig } from "./ParticlesConfig";
 
 export class ParticlesManager {
@@ -19,6 +19,8 @@ export class ParticlesManager {
     public particles: Map<string, Particle> = new Map();
     public emitters: Map<string, Emitter> = new Map();
     public shrapnel: Map<string, ShrapnelPiece> = new Map();
+
+    private collisionListeners: Array<(p: Particle) => void> = [];
 
     constructor(
         private camera: Camera,
@@ -191,6 +193,7 @@ export class ParticlesManager {
 
                     // Simulate collision with ground/surface
                     particle.hasCollided = true;
+                    this.emitCollision(particle);
 
                     // Reduce speed
                     const speedReduction = 0.875 + Math.random() * 0.1;
@@ -633,6 +636,20 @@ export class ParticlesManager {
         });
     }
 
+    //
+    // #endregion
+
+    // #region [ Events ]
+    //
+
+    public addCollisionListener(fn: (p: Particle) => void): void { this.collisionListeners.push(fn); }
+
+
+    private emitCollision(p: Particle): void {
+        for (let i = 0; i < this.collisionListeners.length; i++) {
+            this.collisionListeners[i](p);
+        }
+    }
     //
     // #endregion
 }

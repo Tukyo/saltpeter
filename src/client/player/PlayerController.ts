@@ -1,5 +1,5 @@
 import { NETWORK } from "../Config";
-import { AudioParams, CreateParticleParams, DeathDecal, DecalParams, EmitterParams, FootstepParams, LiquidFrictionTypes, PixelWaterData, PlayerHitParams, SetSliderParams, Vec2 } from "../Types";
+import { AudioParams, CreateParticleParams, DeathDecal, DecalParams, EmitterParams, FootstepParams, LiquidFrictionTypes, Material, PixelWaterData, PlayerHitParams, Vec2 } from "../Types";
 
 import { DecalsManager } from "../DecalsManager";
 import { GameState } from "../GameState";
@@ -7,17 +7,22 @@ import { LuckController } from "./LuckController";
 import { MoveController } from "./MoveController";
 import { ObjectsManager } from "../ObjectsManager";
 import { PlayerState } from "./PlayerState";
-import { ParticlesManager } from "../ParticlesManager";
 import { RoomManager } from "../RoomManager";
 import { UserInterface } from "../UserInterface";
 import { Utility } from "../Utility";
 
 import { AudioConfig } from "../audio/AudioConfig";
 import { AudioManager } from "../audio/AudioManager";
+
+import { ParticlesManager } from "../particles/ParticlesManager";
+
 import { World } from "../world/World";
 
 export class PlayerController {
-
+    public lastMaterial: Material | null = null;
+    public lastWaterData: PixelWaterData | null = null;
+    public lastFriction: number = 0;
+    
     // Footstep Configuration
     //
     private footstepInterval = 0;
@@ -33,8 +38,6 @@ export class PlayerController {
     private readonly POSITION_SAMPLE_INTERVAL = 250; // ms
 
     private lastSampleTime = 0;
-    private lastWaterData: PixelWaterData | null = null;
-    private lastFriction: number = 0;
 
     constructor(
         private audioConfig: AudioConfig,
@@ -276,44 +279,46 @@ export class PlayerController {
         }
     }
 
-private applyEnvironmentalFriction(delta: number): void {
-    let appliedFriction = this.lastFriction;
+    private applyEnvironmentalFriction(delta: number): void {
+        let appliedFriction = this.lastFriction;
 
-    if (this.lastWaterData && this.lastWaterData.hasWater) {
-        const depth = this.lastWaterData.waterLevel;
+        if (this.lastWaterData && this.lastWaterData.hasWater) {
+            const depth = this.lastWaterData.waterLevel;
 
-        if (depth >= this.DEEP_WATER_DEPTH) {
-            // fully submerged → use water friction directly
-            appliedFriction = LiquidFrictionTypes.Water;
-        } else {
-            // shallow / medium → increase drag temporarily
-            const blend = this.utility.clamp(depth / this.DEEP_WATER_DEPTH, 0, 1);
+            if (depth >= this.DEEP_WATER_DEPTH) {
+                // fully submerged → use water friction directly
+                appliedFriction = LiquidFrictionTypes.Water;
+            } else {
+                // shallow / medium → increase drag temporarily
+                const blend = this.utility.clamp(depth / this.DEEP_WATER_DEPTH, 0, 1);
 
-            // inverted curve: shallow = strongest drag
-            const shallowDragBoost = 1 - Math.pow(blend, 2);
+                // inverted curve: shallow = strongest drag
+                const shallowDragBoost = 1 - Math.pow(blend, 2);
 
-            // compound land friction and extra shallow drag
-            appliedFriction = this.lastFriction * (1 - 0.25 * shallowDragBoost);
+                // compound land friction and extra shallow drag
+                appliedFriction = this.lastFriction * (1 - 0.25 * shallowDragBoost);
+            }
         }
+
+        appliedFriction = this.utility.clamp(appliedFriction, 0.7, 1.0);
+
+        const frictionFactor = Math.pow(appliedFriction, delta);
+        this.playerState.playerVelocityX *= frictionFactor;
+        this.playerState.playerVelocityY *= frictionFactor;
     }
-
-    appliedFriction = this.utility.clamp(appliedFriction, 0.7, 1.0);
-
-    const frictionFactor = Math.pow(appliedFriction, delta);
-    this.playerState.playerVelocityX *= frictionFactor;
-    this.playerState.playerVelocityY *= frictionFactor;
-}
-
-
 
     private samplePlayerPosition(now: number): void {
         const playerPos = this.playerState.myPlayer.transform.pos;
         const samplePos: Vec2 = { x: Math.round(playerPos.x), y: Math.round(playerPos.y) };
 
-        this.lastWaterData = this.world.getWaterData(samplePos); // TODO: Performance overhead, have to find another way
+        this.lastWaterData = this.world.getWaterData(samplePos);
         this.lastSampleTime = now;
 
-        const surface = this.world.getPhysicsAt(samplePos.x, samplePos.y);
+        const mat = this.world.getMaterialAt(samplePos.x, samplePos.y);
+        this.lastMaterial = mat || null;
+
+        const surface = this.world.getPhysicsAt(samplePos.x, samplePos.y, mat);
+
         if (surface && "friction" in surface) {
             const value = (surface as { friction?: number }).friction;
             if (typeof value === "number") {
@@ -326,10 +331,14 @@ private applyEnvironmentalFriction(delta: number): void {
             const inDeepWater = this.lastWaterData.waterLevel >= this.DEEP_WATER_DEPTH;
             if (inDeepWater && !this.playerState.isSwimming) {
                 this.playerState.isSwimming = true;
-                console.log("Entered swimming state, waterLevel: " + this.lastWaterData.waterLevel);
+                console.log(
+                    "Entered swimming state, waterLevel: " + this.lastWaterData.waterLevel
+                );
             } else if (!inDeepWater && this.playerState.isSwimming) {
                 this.playerState.isSwimming = false;
-                console.log("Exited swimming state, waterLevel: " + this.lastWaterData.waterLevel);
+                console.log(
+                    "Exited swimming state, waterLevel: " + this.lastWaterData.waterLevel
+                );
             }
         } else if (this.playerState.isSwimming) {
             this.playerState.isSwimming = false;

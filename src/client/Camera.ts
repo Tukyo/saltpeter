@@ -1,8 +1,9 @@
 import { VIEWPORT, WORLD } from "./Config";
 import { Vec2 } from "./Types";
 
-import { PlayerState } from "./player/PlayerState";
 import { Utility } from "./Utility";
+
+import { PlayerState } from "./player/PlayerState";
 
 export class Camera {
     public pos: Vec2 = { x: 0, y: 0 }

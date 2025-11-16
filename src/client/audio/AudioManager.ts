@@ -1,20 +1,19 @@
 import { WORLD } from "../Config";
 import { ActiveAudio, AudioFileType, AudioMixer, AudioMixerName, AudioParams } from "../Types";
 
-import { AudioConfig } from "./AudioConfig";
-
 import { RoomManager } from "../RoomManager";
 import { SettingsManager } from "../SettingsManager";
 import { Utility } from "../Utility";
 
 export class AudioManager {
     private audioContext: AudioContext;
+
     private buffers: Map<string, AudioBuffer> = new Map();
     private mixers: Map<AudioMixerName, GainNode> = new Map();
+
     private loops: Set<{ source: AudioBufferSourceNode; gain: GainNode; params: AudioParams }> = new Set();
 
     constructor(
-        private audioConfig: AudioConfig,
         private roomManager: RoomManager,
         private settingsManager: SettingsManager,
         private utility: Utility

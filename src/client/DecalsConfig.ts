@@ -1,23 +1,7 @@
-import { ParametricDecalParams } from "./Types";
+import { MaterialDecals, ParametricDecalParams } from "./Types";
 
 export class DecalsConfig {
     public decals = {
-        projectile: {
-            radius: {
-                min: 4,
-                max: 8
-            },
-            density: {
-                min: 0.175,
-                max: 0.35
-            },
-            opacity: {
-                min: 0.15,
-                max: 0.25
-            },
-            variation: 0.215,
-            colors: ["#000000", "#191919", "#39362d"]
-        } as ParametricDecalParams,
         blood: {
             radius: {
                 min: 5,
@@ -50,6 +34,18 @@ export class DecalsConfig {
             variation: 0.2,
             colors: ["#434343", "#2a2a2a", "#3b1d1d"]
         } as ParametricDecalParams
+    };
+
+    public materialDecals: Record<string, MaterialDecals> = {
+        metal: {
+            ranged: {
+                radius: { min: 4, max: 8 },
+                density: { min: 0.175, max: 0.35 },
+                opacity: { min: 0.15, max: 0.25 },
+                variation: 0.215,
+                colors: ["#39362d", "#2a2823", "#4c4638"]
+            }
+        },
     };
 
     constructor() { }

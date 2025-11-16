@@ -137,7 +137,7 @@ export class DashController {
             this.playerState.isDashing = false;
 
             if (this.playerState.myPlayer.equipment.includes('switch')) {
-                this.combatController.toggleAutoFire(Date.now() + this.playerState.myPlayer.actions.dash.cooldown);
+                this.combatController.enableAutoFire(Date.now() + this.playerState.myPlayer.actions.dash.cooldown, 0.5);
             }
 
             console.log('Dash ended');

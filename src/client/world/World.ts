@@ -1,5 +1,5 @@
 import { VIEWPORT, WORLD } from "../Config";
-import { WorldLayer, CellData, Material, PhysicsMaterialTypes, PixelData, Vec2, NoiseType, NetworkChunk, PixelWaterData, WorldData, WorldRegion, RegionName, AudioZone, ActiveAudio } from "../Types";
+import { WorldLayer, CellData, Material, PhysicsMaterialTypes, PixelData, Vec2, NoiseType, NetworkChunk, PixelWaterData, WorldData, WorldRegion, RegionName, AudioZone, ActiveAudio, MaterialName } from "../Types";
 
 import { Camera } from "../Camera";
 import { ControlsManager } from "../ControlsManager";
@@ -31,7 +31,7 @@ export class World {
     public worldDebug: WorldDebug;
     public worldEdit: WorldEdit;
 
-    private erosionTemplate: { name: string; index: number }[] | null = null;
+    private erosionTemplate: { name: MaterialName; index: number }[] | null = null;
     private chunkBuffer: { cx: number; cy: number; loaded: boolean }[] = [];
     private worldBuffer: CellData | null = null;
 
@@ -548,35 +548,21 @@ export class World {
     /**
      * Gets or creates the erosion template from the chosen materials.
      */
-    private getErosionTemplate(): { name: string; index: number }[] {
+    private getErosionTemplate(): { name: MaterialName; index: number }[] {
         if (this.erosionTemplate) return this.erosionTemplate;
-
-        const erosionMaterialNames: string[] = [
-            "silt",
-            "sand",
-            "gravel",
-            "dirt",
-            "clay",
-            "shale",
-            "limestone",
-            "stone",
-            "slate",
-            "basalt",
-            "granite",
-            "bedrock"
-        ]; // These materials will be possibly exposed during erosion
 
         const lookup = this.worldConfig.materialIndex;
 
-        const cached: { name: string; index: number }[] = erosionMaterialNames
-            .map((name: string) => ({
-                name,
-                index: lookup[name]
-            }))
-            .filter(m => m.index !== undefined);
+        const cached: { name: MaterialName; index: number }[] =
+            this.worldConfig.materialsList
+                .filter(mat => mat.tags?.includes("erosion_source"))
+                .map(mat => ({
+                    name: mat.name,
+                    index: lookup[mat.name]
+                }));
 
         this.erosionTemplate = cached;
-        console.log("Cached erosion materials...");
+        console.log("Cached erosion materials from tags...");
 
         return cached;
     }
@@ -604,13 +590,6 @@ export class World {
         const width = WORLD.WIDTH;
         const height = WORLD.HEIGHT;
         const totalPixels = width * height;
-
-        const wetMaterialMap: Record<string, string> = {
-            "clay": "clay_wet",
-            "dirt": "mud",
-            "sand": "sand_wet",
-            "silt": "silt_wet"
-        };
 
         const message = this.worldConfig.getWorldgenMessage("hydration");
         await this.utility.yield(message);
@@ -669,7 +648,6 @@ export class World {
             wetness.set(tmp);
         }
 
-
         // === 3. Add subtle low-frequency noise for realism ===
         const moistureNoiseScale = 0.0025;
         for (let y = 0; y < height; y++) {
@@ -696,17 +674,16 @@ export class World {
             const matIndex = packed >> 2;
             const colorIndex = packed & 0b11;
             const mat = allMaterials[matIndex];
+
             if (!mat.tags || !mat.tags.includes("absorbent")) continue;
 
             // chance of wet conversion increases with wetness
             const probability = (w - dryThreshold) / (1 - dryThreshold);
             if (Math.random() < probability) {
-                const wetName = wetMaterialMap[mat.name];
-                if (wetName) {
-                    const wetIndex = materialIndexLookup[wetName];
-                    if (wetIndex >= 0) {
-                        newPixelData[i] = (wetIndex << 2) | colorIndex;
-                    }
+                const wetMat = this.worldConfig.mutate(mat, "wet");
+                if (wetMat) {
+                    const wetIndex = materialIndexLookup[wetMat.name];
+                    newPixelData[i] = (wetIndex << 2) | colorIndex;
                 }
             }
         }
@@ -719,7 +696,6 @@ export class World {
             cellLayerGrid
         };
     }
-
 
     /**
      * Helper method that returns PixelWaterData.
@@ -1334,8 +1310,8 @@ export class World {
     /**
      * Gets the physics properties of a pixel.
      */
-    public getPhysicsAt(x: number, y: number) {
-        const mat = this.getMaterialAt(x, y);
+    public getPhysicsAt(x: number, y: number, material?: Material | null) {
+        const mat = material ?? this.getMaterialAt(x, y);
         return mat ? mat.physics : null;
     }
 
